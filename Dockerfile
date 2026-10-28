@@ -6,7 +6,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=1 go build -trimpath -tags sqlite_omit_load_extension -ldflags="-s -w" -o /out/capscope ./cmd/capscope
+RUN CGO_ENABLED=1 go build -trimpath -tags "sqlite_omit_load_extension fts5" -ldflags="-s -w" -o /out/capscope ./cmd/capscope
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata

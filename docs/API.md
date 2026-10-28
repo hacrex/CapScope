@@ -29,7 +29,7 @@ All endpoints except `/healthz` require Basic auth when `AUTH_PASS` is set. Resp
 |---|---|
 | `app` | App name |
 | `container` | Container name or id prefix |
-| `q` | Search text. Case-insensitive substring |
+| `q` | Search text. Case-insensitive. Uses an FTS5 token/prefix index as a fast path (each word matches as a prefix, so `dat` finds `database`); when the index finds nothing, falls back to a `LIKE` substring match (so mid-word searches still work) |
 | `regex` | `1` treats `q` as a case-insensitive regular expression. Invalid patterns return 400 |
 | `level` | Comma list of `error`, `warn`, `info`, `debug` |
 | `stream` | `stdout` or `stderr` |

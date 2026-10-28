@@ -66,6 +66,17 @@ var migrations = []string{
 	 );
 	 CREATE INDEX idx_snapshots_app_ts ON snapshots(app, ts);
 	 CREATE INDEX idx_snapshots_ts ON snapshots(ts);`,
+
+	// FTS5 index over logs.line. External content: the text stays in logs,
+	// triggers keep the index in sync with inserts and the retention deletes.
+	`CREATE VIRTUAL TABLE logs_fts USING fts5(line, content='logs', content_rowid='id');
+	 CREATE TRIGGER logs_ai AFTER INSERT ON logs BEGIN
+	   INSERT INTO logs_fts(rowid, line) VALUES (new.id, new.line);
+	 END;
+	 CREATE TRIGGER logs_ad AFTER DELETE ON logs BEGIN
+	   INSERT INTO logs_fts(logs_fts, rowid, line) VALUES('delete', old.id, old.line);
+	 END;
+	 INSERT INTO logs_fts(logs_fts) VALUES('rebuild');`,
 }
 
 // Open creates or migrates the database at path.
@@ -229,6 +240,12 @@ func escapeLike(s string) string {
 }
 
 func (q LogQuery) where() (string, []any) {
+	return q.whereOpts(true)
+}
+
+// whereOpts builds the filter clauses. withQ controls the text-search clause:
+// false when the caller supplies its own (FTS MATCH) instead of LIKE.
+func (q LogQuery) whereOpts(withQ bool) (string, []any) {
 	var cl []string
 	var args []any
 	if q.App != "" {
@@ -247,7 +264,7 @@ func (q LogQuery) where() (string, []any) {
 			args = append(args, l)
 		}
 	}
-	if q.Q != "" && q.Regex == nil {
+	if withQ && q.Q != "" && q.Regex == nil {
 		cl, args = append(cl, `line LIKE ? ESCAPE '\'`), append(args, "%"+escapeLike(q.Q)+"%")
 	}
 	if q.SinceMs > 0 {
@@ -300,10 +317,33 @@ func (q LogQuery) Match(r LogRow) bool {
 	return true
 }
 
+// ftsQuery converts free text into a safe FTS5 MATCH expression: each
+// whitespace-separated token is quoted (embedded quotes doubled) and
+// prefix-matched, so as-you-type queries like "dat" find "database".
+func ftsQuery(s string) string {
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return ""
+	}
+	quoted := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.ReplaceAll(f, `"`, `""`)
+		quoted = append(quoted, `"`+f+`"*`)
+	}
+	return strings.Join(quoted, " AND ")
+}
+
 // QueryLogs returns rows oldest-first. Without AfterID it returns the newest Limit rows.
+// Text search uses the FTS5 index as a fast path and falls back to LIKE when the
+// index finds nothing (so mid-word substring searches still work).
 func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	if q.Limit <= 0 || q.Limit > 5000 {
 		q.Limit = 500
+	}
+	if q.Q != "" && q.Regex == nil {
+		if rows, err := s.queryLogsFTS(ctx, q); err == nil && len(rows) > 0 {
+			return rows, nil
+		}
 	}
 	where, args := q.where()
 	order := "DESC"
@@ -345,11 +385,59 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 		return nil, err
 	}
 	if order == "DESC" {
-		for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-			out[i], out[j] = out[j], out[i]
-		}
+		flipAsc(out)
 	}
 	return out, nil
+}
+
+// queryLogsFTS searches via the FTS5 index. Returns nil, nil when the query
+// has no usable tokens.
+func (s *Store) queryLogsFTS(ctx context.Context, q LogQuery) ([]LogRow, error) {
+	match := ftsQuery(q.Q)
+	if match == "" {
+		return nil, nil
+	}
+	where, args := q.whereOpts(false)
+	if where == "" {
+		where = " WHERE "
+	} else {
+		where += " AND "
+	}
+	where += "id IN (SELECT rowid FROM logs_fts WHERE logs_fts MATCH ?)"
+	args = append(args, match)
+	order := "DESC"
+	if q.AfterID > 0 {
+		order = "ASC"
+	}
+	query := "SELECT id, ts, container_id, container, app, stream, level, line FROM logs" + where + " ORDER BY id " + order + " LIMIT ?"
+	args = append(args, q.Limit)
+	rows, err := s.r.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]LogRow, 0, 64)
+	for rows.Next() {
+		var r LogRow
+		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.Stream, &r.Level, &r.Line); err != nil {
+			return nil, err
+		}
+		r.TSMs = r.TS / 1_000_000
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if order == "DESC" {
+		flipAsc(out)
+	}
+	return out, nil
+}
+
+func flipAsc(out []LogRow) {
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
 }
 
 // ---- metrics ----

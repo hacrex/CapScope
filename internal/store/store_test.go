@@ -65,6 +65,70 @@ func TestLogsInsertQueryFilters(t *testing.T) {
 	}
 }
 
+func TestFTSSearch(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now()
+	rows := []LogRow{
+		row("web", "connected to database primary", "info", now),
+		row("web", "ERROR db down", "error", now.Add(time.Second)),
+		row("web", "normal line", "info", now.Add(2*time.Second)),
+		row("api", "database replica lagging", "warn", now.Add(3*time.Second)),
+	}
+	if err := s.InsertLogs(rows); err != nil {
+		t.Fatal(err)
+	}
+	// token match across words
+	got, err := s.QueryLogs(ctx, LogQuery{Q: "db down"})
+	if err != nil || len(got) != 1 || got[0].Level != "error" {
+		t.Fatalf("token match: got=%+v err=%v", got, err)
+	}
+	// prefix match (as-you-type): "dat" must find "database"
+	got, err = s.QueryLogs(ctx, LogQuery{Q: "dat"})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("prefix match: got=%+v err=%v", got, err)
+	}
+	// combined with app filter
+	got, err = s.QueryLogs(ctx, LogQuery{Q: "database", App: "api"})
+	if err != nil || len(got) != 1 || got[0].App != "api" {
+		t.Fatalf("fts + app filter: got=%+v err=%v", got, err)
+	}
+	// LIKE fallback: mid-word substring FTS cannot see
+	got, err = s.QueryLogs(ctx, LogQuery{Q: "abase prim"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("like fallback: got=%+v err=%v", got, err)
+	}
+	// quoted user input must not break the MATCH parser
+	got, err = s.QueryLogs(ctx, LogQuery{Q: `we"ird`})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("quoted input: got=%+v err=%v", got, err)
+	}
+	// retention deletes must keep the index in sync
+	if _, err := s.Prune(ctx, time.Nanosecond, time.Hour, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.QueryLogs(ctx, LogQuery{Q: "database"})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("search after prune: got=%+v err=%v", got, err)
+	}
+}
+
+func TestFTSQuerySanitized(t *testing.T) {
+	cases := map[string]string{
+		"dat":        `"dat"*`,
+		"db down":    `"db"* AND "down"*`,
+		`say "hi"`:   `"say"* AND """hi"""*`,
+		"   ":        "",
+		`""`:         `""""""*`,
+		"error code": `"error"* AND "code"*`,
+	}
+	for in, want := range cases {
+		if got := ftsQuery(in); got != want {
+			t.Errorf("ftsQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSnapshotRoundTrip(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
