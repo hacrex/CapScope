@@ -1,0 +1,26 @@
+# Quick start outside CapRover. Change AUTH_PASS before exposing the port.
+services:
+  capscope:
+    build: ..
+    ports: ["8080:8080"]
+    environment:
+      AUTH_USER: admin
+      AUTH_PASS: change-me
+      # LOG_RETENTION: 7d
+      # MAX_DB_MB: 1024
+      # EXCLUDE: '^captain-'
+    volumes:
+      - capscope-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  capscope-data:
+
+# Safer variant: let a socket proxy expose only read-only container endpoints, drop the socket
+# mount above, and set DOCKER_HOST=tcp://socket-proxy:2375 on capscope.
+#
+#   socket-proxy:
+#     image: tecnativa/docker-socket-proxy
+#     environment: { CONTAINERS: 1, EVENTS: 1, PING: 1, POST: 0 }
+#     volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]

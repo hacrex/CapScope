@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CapScope</title>
+<style>
+:root{
+  --bg:#0f1318;--panel:#161b22;--panel2:#1c232c;--line:#2a323d;--text:#d7dde5;--muted:#8793a2;
+  --accent:#4aa3ff;--err:#ff6b6b;--warn:#f2b84b;--ok:#4cc38a;--dbg:#6b7787;--mark:#5a4a00;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#f6f8fa;--panel:#fff;--panel2:#eef1f5;--line:#d5dbe3;--text:#1d2630;--muted:#5d6b7b;
+  --accent:#0969da;--err:#cf222e;--warn:#9a6700;--ok:#1a7f4b;--dbg:#8a96a5;--mark:#fff1a8;}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:16px;margin:0;letter-spacing:.2px}
+header .sp{flex:1}
+.chip{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.chip.live{color:var(--ok);border-color:var(--ok)}
+.chip.bad{color:var(--err);border-color:var(--err)}
+main{flex:1;display:flex;min-height:0}
+aside{width:260px;border-right:1px solid var(--line);background:var(--panel);overflow:auto;flex:none}
+aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:14px 14px 6px}
+.app{padding:8px 14px;cursor:pointer;border-left:3px solid transparent}
+.app:hover{background:var(--panel2)}
+.app.sel{background:var(--panel2);border-left-color:var(--accent)}
+.app .n{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+.app .m{font-size:12px;color:var(--muted);display:flex;gap:10px;margin-top:2px}
+.badge{font-size:11px;border-radius:4px;padding:0 6px;font-weight:600}
+.badge.e{background:var(--err);color:#fff}.badge.w{background:var(--warn);color:#000}
+section.content{flex:1;display:flex;flex-direction:column;min-width:0}
+nav.tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line);background:var(--panel)}
+nav.tabs button{background:none;border:0;color:var(--muted);padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;font:inherit}
+nav.tabs button.sel{color:var(--text);border-bottom-color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);align-items:center}
+input,select,button.b{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+input[type=search]{min-width:220px}
+button.b{cursor:pointer}button.b:hover{border-color:var(--accent)}button.b.on{border-color:var(--accent);color:var(--accent)}
+label.chk{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:13px}
+#logs{flex:1;overflow:auto;font:12.5px/1.5 var(--mono);padding:6px 0;background:var(--bg)}
+.ln{display:flex;gap:10px;padding:0 12px;white-space:pre-wrap;word-break:break-word}
+.ln:hover{background:var(--panel2)}
+.ln .t{color:var(--muted);flex:none}.ln .c{color:var(--accent);flex:none;min-width:18px;text-align:right}
+.ln.error .x{color:var(--err)}.ln.warn .x{color:var(--warn)}.ln.debug .x{color:var(--dbg)}.ln.e .t{border-left:2px solid var(--err);padding-left:6px;margin-left:-8px}
+mark{background:var(--mark);color:inherit}
+.pane{flex:1;overflow:auto;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+.card h3{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600}
+canvas{width:100%;height:200px;display:block}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+tr.row{cursor:pointer}tr.row:hover{background:var(--panel2)}
+.k{font-size:11px;font-weight:700;border-radius:4px;padding:1px 7px;text-transform:uppercase}
+.k.oom{background:var(--err);color:#fff}.k.crash{background:var(--warn);color:#000}.k.killed{background:var(--dbg);color:#fff}.k.clean_exit{background:var(--ok);color:#fff}
+.empty{color:var(--muted);padding:40px;text-align:center}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:8px 0 14px}.kv b{color:var(--muted);font-weight:500}
+pre.logbox{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;max-height:340px;font:12px/1.5 var(--mono);white-space:pre-wrap}
+.sum{padding:10px 12px;border-left:3px solid var(--warn);background:var(--panel2);border-radius:4px}
+a{color:var(--accent)}
+@media (max-width:760px){aside{display:none}input[type=search]{min-width:140px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>CapScope</h1><span class="chip" id="conn">connecting</span>
+  <span class="sp"></span>
+  <span class="chip" id="crashchip" title="Crash snapshots in the last 24h" style="cursor:pointer;display:none"></span>
+  <select id="appSelMobile" style="display:none"></select>
+</header>
+<main>
+  <aside><h2>Apps</h2><div id="apps"></div></aside>
+  <section class="content">
+    <nav class="tabs" id="tabs">
+      <button data-t="logs" class="sel">Logs</button><button data-t="metrics">Metrics</button><button data-t="crashes">Crashes</button>
+    </nav>
+    <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
+      <div class="bar">
+        <input type="search" id="q" placeholder="Search logs">
+        <label class="chk"><input type="checkbox" id="rx"> regex</label>
+        <select id="lvl"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="info">info</option><option value="debug">debug</option></select>
+        <select id="strm"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
+        <select id="cont"><option value="">all replicas</option></select>
+        <button class="b on" id="follow">Follow</button>
+        <button class="b" id="pause">Pause</button>
+        <button class="b" id="older">Load older</button>
+        <span class="chip" id="cnt"></span>
+      </div>
+      <div id="logs"></div>
+    </div>
+    <div id="view-metrics" class="pane" style="display:none">
+      <div class="bar" style="margin:-16px -16px 16px;border-top:0">
+        <select id="range"><option value="15m">15 minutes</option><option value="1h" selected>1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select>
+        <select id="mcont"><option value="">whole app</option></select>
+      </div>
+      <div class="grid">
+        <div class="card"><h3>CPU % (sum of cores used)</h3><canvas id="ccpu"></canvas></div>
+        <div class="card"><h3>Memory</h3><canvas id="cmem"></canvas></div>
+      </div>
+    </div>
+    <div id="view-crashes" class="pane" style="display:none"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const S={app:null,tab:'logs',paused:false,follow:true,es:null,loaded:false,pending:[],minId:0,maxId:0,conts:[],apps:[],lines:0};
+const MAXDOM=3000;
+
+async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json();}
+const fmtTime=ms=>{const d=new Date(ms);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
+const fmtDT=ms=>new Date(ms).toLocaleString();
+const mib=b=>(b/1048576).toFixed(b>1073741824?0:1)+' MiB';
+function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';}
+
+/* ---------- sidebar ---------- */
+async function refreshApps(){
+  try{
+    const [a,c]=await Promise.all([api('/api/apps'),api('/api/containers')]);
+    S.conts=c.containers;S.apps=a.apps;
+    const live={};for(const x of S.conts){(live[x.app]=live[x.app]||[]).push(x);}
+    const names=new Set([...a.apps.map(x=>x.app),...Object.keys(live)]);
+    const byName=Object.fromEntries(a.apps.map(x=>[x.app,x]));
+    const box=$('#apps');box.innerHTML='';
+    [...names].sort().forEach(n=>{
+      const cs=live[n]||[],h=byName[n]||{};
+      const cpu=cs.reduce((t,x)=>t+x.cpu,0),mem=cs.reduce((t,x)=>t+x.mem,0);
+      const el=document.createElement('div');el.className='app'+(n===S.app?' sel':'');
+      const nm=document.createElement('div');nm.className='n';
+      const t=document.createElement('span');t.textContent=n;nm.append(t);
+      const b=document.createElement('span');
+      if(h.errors_1h){const e=document.createElement('span');e.className='badge e';e.textContent=h.errors_1h;e.title='errors in the last hour';b.append(e,' ');}
+      if(h.warns_1h){const w=document.createElement('span');w.className='badge w';w.textContent=h.warns_1h;w.title='warnings in the last hour';b.append(w);}
+      nm.append(b);
+      const m=document.createElement('div');m.className='m';
+      m.textContent=cs.length?`${cs.length} running  ${cpu.toFixed(1)}% cpu  ${mib(mem)}`:'not running';
+      el.append(nm,m);el.onclick=()=>selectApp(n);box.append(el);
+    });
+    $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
+    if(!S.app&&names.size)selectApp([...names].sort()[0]);
+    fillContainerSelects();
+  }catch(e){$('#conn').textContent='offline';$('#conn').className='chip bad';}
+}
+function fillContainerSelects(){
+  for(const id of ['#cont','#mcont']){
+    const sel=$(id),cur=sel.value;
+    const first=sel.options[0].outerHTML;sel.innerHTML=first;
+    S.conts.filter(c=>c.app===S.app).forEach(c=>{const o=document.createElement('option');o.value=c.name;if(id==='#mcont')o.value=c.id;o.textContent='replica '+(c.replica||c.name);sel.append(o);});
+    sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+  }
+}
+function selectApp(n){S.app=n;document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.querySelector('span').textContent===n));fillContainerSelects();show();}
+
+/* ---------- tabs ---------- */
+$('#tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;S.tab=t;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));show();};
+$('#crashchip').onclick=()=>{S.tab='crashes';document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t==='crashes'));show();};
+function show(){
+  $('#view-logs').style.display=S.tab==='logs'?'flex':'none';
+  $('#view-metrics').style.display=S.tab==='metrics'?'block':'none';
+  $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
+  if(S.tab==='logs')startLogs();else{stopStream();}
+  if(S.tab==='metrics')loadMetrics();
+  if(S.tab==='crashes')loadCrashes();
+}
+
+/* ---------- logs ---------- */
+function params(extra){
+  const p=new URLSearchParams();
+  if(S.app)p.set('app',S.app);
+  if($('#cont').value)p.set('container',$('#cont').value);
+  if($('#q').value)p.set('q',$('#q').value);
+  if($('#rx').checked)p.set('regex','1');
+  if($('#lvl').value)p.set('level',$('#lvl').value);
+  if($('#strm').value)p.set('stream',$('#strm').value);
+  for(const k in extra)p.set(k,extra[k]);
+  return p.toString();
+}
+function stopStream(){if(S.es){S.es.close();S.es=null;}}
+async function startLogs(){
+  stopStream();S.loaded=false;S.pending=[];S.lines=0;$('#logs').innerHTML='';S.minId=0;S.maxId=0;
+  if(!S.app)return;
+  const my=S.es=new EventSource('/api/logs/stream?'+params({}));
+  my.onmessage=e=>{const r=JSON.parse(e.data);if(!S.loaded||S.paused)S.pending.push(r);else addRow(r);};
+  my.onerror=()=>{$('#conn').className='chip bad';};my.onopen=()=>{$('#conn').className='chip live';};
+  try{
+    const d=await api('/api/logs?'+params({limit:500}));
+    if(S.es!==my)return;
+    d.logs.forEach(r=>addRow(r,true));
+    S.loaded=true;flushPending();scrollEnd(true);
+  }catch(e){$('#logs').textContent=String(e.message||e);}
+}
+function flushPending(){const p=S.pending;S.pending=[];for(const r of p)if(r.id>S.maxId)addRow(r);}
+function highlight(el,text){
+  const q=$('#q').value;
+  if(!q||$('#rx').checked){el.textContent=text;return;}
+  const lo=text.toLowerCase(),ql=q.toLowerCase();let i=0,j;
+  while((j=lo.indexOf(ql,i))>=0){el.append(text.slice(i,j));const m=document.createElement('mark');m.textContent=text.slice(j,j+q.length);el.append(m);i=j+q.length;}
+  el.append(text.slice(i));
+}
+function lineEl(r){
+  const d=document.createElement('div');d.className='ln '+(r.level||'')+(r.stream==='e'?' e':'');d.dataset.id=r.id;
+  const t=document.createElement('span');t.className='t';t.textContent=fmtTime(r.ts);
+  const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||'';
+  const x=document.createElement('span');x.className='x';highlight(x,r.line);
+  d.append(t,c,x);return d;
+}
+function addRow(r,old){
+  const box=$('#logs');
+  const near=box.scrollHeight-box.scrollTop-box.clientHeight<60;
+  box.append(lineEl(r));S.lines++;
+  if(r.id>S.maxId)S.maxId=r.id;if(!S.minId||r.id<S.minId)S.minId=r.id;
+  while(box.childElementCount>MAXDOM){box.firstChild.remove();}
+  $('#cnt').textContent=box.childElementCount+' lines';
+  if(!old&&S.follow&&near)scrollEnd();
+}
+function scrollEnd(force){const b=$('#logs');if(S.follow||force)b.scrollTop=b.scrollHeight;}
+$('#logs').addEventListener('scroll',()=>{const b=$('#logs');const atEnd=b.scrollHeight-b.scrollTop-b.clientHeight<60;if(!atEnd&&S.follow){S.follow=false;$('#follow').classList.remove('on');}});
+$('#follow').onclick=()=>{S.follow=!S.follow;$('#follow').classList.toggle('on',S.follow);if(S.follow)scrollEnd(true);};
+$('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.paused);$('#pause').textContent=S.paused?'Resume':'Pause';if(!S.paused)flushPending();};
+$('#older').onclick=async()=>{
+  if(!S.minId)return;
+  const d=await api('/api/logs?'+params({limit:500,before_id:S.minId}));
+  const box=$('#logs'),h=box.scrollHeight;
+  const frag=document.createDocumentFragment();d.logs.forEach(r=>{frag.append(lineEl(r));if(!S.minId||r.id<S.minId)S.minId=r.id;});
+  box.prepend(frag);box.scrollTop=box.scrollHeight-h;
+};
+let deb;const redo=()=>{clearTimeout(deb);deb=setTimeout(startLogs,300);};
+['#q','#rx','#lvl','#strm','#cont'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',redo));
+
+/* ---------- metrics ---------- */
+function draw(canvas,pts,key,fmt,limitKey){
+  const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
+  canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
+  const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
+  g.clearRect(0,0,w,h);
+  if(!pts.length){g.fillStyle=col('--muted');g.font='13px system-ui';g.fillText('No samples in this range yet',12,24);return;}
+  const L=52,R=8,T=8,B=20,x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1;
+  let max=Math.max(...pts.map(p=>p[key]));const lim=limitKey?pts[pts.length-1][limitKey]:0;
+  if(lim>0&&lim<max*4)max=Math.max(max,lim);max=max*1.1||1;
+  const X=t=>L+(t-x0)/(x1-x0||1)*(w-L-R),Y=v=>T+(1-v/max)*(h-T-B);
+  g.strokeStyle=col('--line');g.fillStyle=col('--muted');g.font='11px system-ui';g.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=max*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(fmt(v),4,y+4);}
+  g.fillText(fmtTime(x0).slice(0,5),L,h-4);const e=fmtTime(x1).slice(0,5);g.fillText(e,w-R-g.measureText(e).width,h-4);
+  if(lim>0){g.strokeStyle=col('--err');g.setLineDash([5,4]);g.beginPath();g.moveTo(L,Y(lim));g.lineTo(w-R,Y(lim));g.stroke();g.setLineDash([]);}
+  g.strokeStyle=col('--accent');g.lineWidth=1.6;g.beginPath();
+  pts.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+}
+async function loadMetrics(){
+  if(!S.app)return;
+  const p=new URLSearchParams({app:S.app,range:$('#range').value});if($('#mcont').value)p.set('container',$('#mcont').value);
+  const d=await api('/api/metrics?'+p);
+  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%');
+  draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit');
+}
+$('#range').onchange=loadMetrics;$('#mcont').onchange=loadMetrics;
+
+/* ---------- crashes ---------- */
+async function loadCrashes(){
+  const box=$('#view-crashes');box.innerHTML='';
+  const only=S.crashOnlyApp&&S.app;
+  const d=await api('/api/snapshots?limit=100'+(only?'&app='+encodeURIComponent(S.app):''));
+  const bar=document.createElement('div');bar.style.marginBottom='12px';
+  const lab=document.createElement('label');lab.className='chk';
+  const cb=document.createElement('input');cb.type='checkbox';cb.id='onlyapp';cb.checked=!!only;cb.onchange=()=>{S.crashOnlyApp=cb.checked;loadCrashes();};
+  lab.append(cb,'only show '+(S.app||'selected app'));bar.append(lab);box.append(bar);
+  if(!d.snapshots.length){const e=document.createElement('div');e.className='empty';e.textContent='No crash snapshots yet. They are saved automatically when a container dies with a non-zero exit code or is OOM killed.';box.append(e);return;}
+  const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>App</th><th>Kind</th><th>Exit</th><th>Summary</th></tr>';
+  d.snapshots.forEach(s=>{
+    const tr=document.createElement('tr');tr.className='row';
+    const cells=[fmtDT(s.ts)+' ('+ago(s.ts)+')',s.app,null,String(s.exit_code),s.summary];
+    cells.forEach((c,i)=>{const td=document.createElement('td');if(i===2){const k=document.createElement('span');k.className='k '+s.kind;k.textContent=s.kind.replace('_',' ');td.append(k);}else td.textContent=c;tr.append(td);});
+    tr.onclick=()=>openCrash(s.id);tb.append(tr);
+  });
+  box.append(tb);
+}
+async function openCrash(id){
+  const s=await api('/api/snapshots/'+id);const box=$('#view-crashes');box.innerHTML='';
+  const back=document.createElement('button');back.className='b';back.textContent='Back to list';back.onclick=loadCrashes;
+  const dl=document.createElement('a');dl.href='/api/snapshots/'+id+'/export';dl.textContent='Download as Markdown';dl.style.marginLeft='12px';
+  const h=document.createElement('h2');h.textContent=`${s.app}: ${s.kind.replace('_',' ')} (exit ${s.exit_code})`;
+  const sum=document.createElement('div');sum.className='sum';sum.textContent=s.summary;
+  const kv=document.createElement('div');kv.className='kv';
+  [['Time',fmtDT(s.ts)],['Container',s.container],['Image',s.image],['Uptime',s.uptime_sec+'s'],['Restart count',s.restart_count],['Memory limit',s.mem_limit?mib(s.mem_limit):'none'],['Docker error',s.error||'none']].forEach(([k,v])=>{const a=document.createElement('b'),b=document.createElement('span');a.textContent=k;b.textContent=v;kv.append(a,b);});
+  const card=document.createElement('div');card.className='card';card.innerHTML='<h3>Memory before death</h3><canvas id="cs"></canvas>';
+  const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
+  const pre=document.createElement('pre');pre.className='logbox';
+  pre.textContent=s.logs.map(l=>`${fmtTime(l.ts)} ${l.stream==='e'?'err':'out'} ${l.line}`).join('\n');
+  box.append(back,dl,h,sum,kv,card,lh,pre);pre.scrollTop=pre.scrollHeight;
+  draw($('#cs'),s.metrics,'mem',v=>mib(v),'mem_limit');
+}
+async function crashChip(){
+  try{const d=await api('/api/snapshots?limit=200');const n=d.snapshots.filter(s=>Date.now()-s.ts<864e5).length;
+    const c=$('#crashchip');c.style.display=n?'':'none';c.textContent=n+' crash'+(n>1?'es':'')+' in 24h';c.className='chip bad';}catch(e){}
+}
+
+refreshApps().then(()=>crashChip());
+setInterval(refreshApps,10000);setInterval(crashChip,60000);
+addEventListener('resize',()=>{if(S.tab==='metrics')loadMetrics();});
+</script>
+</body>
+</html>

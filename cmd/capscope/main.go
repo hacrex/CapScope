@@ -1,0 +1,103 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"capscope/internal/api"
+	"capscope/internal/collector"
+	"capscope/internal/config"
+	"capscope/internal/docker"
+	"capscope/internal/hub"
+	"capscope/internal/store"
+)
+
+func main() {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: levelFromEnv()}))
+	if err := run(log); err != nil {
+		log.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.AuthPass == "" {
+		log.Warn("authentication is disabled (ALLOW_NO_AUTH=true); anyone who can reach this port can read all container logs")
+	}
+	if i := strings.LastIndex(cfg.DBPath, "/"); i > 0 {
+		if err := os.MkdirAll(cfg.DBPath[:i], 0o755); err != nil {
+			return err
+		}
+	}
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	dk, err := docker.New(cfg.DockerHost)
+	if err != nil {
+		return err
+	}
+	pctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = dk.Ping(pctx)
+	cancel()
+	if err != nil {
+		return errors.New("cannot reach Docker at " + cfg.DockerHost + ": " + err.Error())
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	h := hub.New()
+	mgr := collector.NewManager(cfg, dk, st, h, log)
+	done := make(chan struct{})
+	go func() { mgr.Run(ctx); close(done) }()
+
+	srv := &http.Server{
+		Addr:              cfg.Listen,
+		Handler:           api.New(cfg, st, mgr, h, log).Handler(),
+		ReadHeaderTimeout: 10 * time.Second, // no WriteTimeout: SSE streams are long-lived
+	}
+	ln, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return err
+	}
+	go func() {
+		<-ctx.Done()
+		sctx, c := context.WithTimeout(context.Background(), 5*time.Second)
+		defer c()
+		_ = srv.Shutdown(sctx)
+	}()
+	log.Info("capscope started", "listen", cfg.Listen, "db", cfg.DBPath, "docker", cfg.DockerHost)
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	<-done // let the writer flush buffered rows
+	log.Info("stopped")
+	return nil
+}
+
+func levelFromEnv() slog.Level {
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	}
+	return slog.LevelInfo
+}
