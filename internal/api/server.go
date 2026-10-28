@@ -2,8 +2,10 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -39,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/apps", s.apps)
 	mux.HandleFunc("GET /api/logs", s.logs)
 	mux.HandleFunc("GET /api/logs/stream", s.logStream)
+	mux.HandleFunc("GET /api/sql", s.sql)
 	mux.HandleFunc("GET /api/metrics", s.metrics)
 	mux.HandleFunc("GET /api/snapshots", s.snapshots)
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
@@ -155,6 +158,25 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"logs": rows})
+}
+
+// sql runs one read-only ad-hoc statement over the stored tables. Validation
+// and the row cap live in store.QuerySQL; a 5s deadline keeps a heavy scan
+// from pinning the read pool.
+func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	res, err := s.st.QuerySQL(ctx, r.URL.Query().Get("query"), limit)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidQuery) {
+			fail(w, 400, err)
+		} else {
+			fail(w, 500, err)
+		}
+		return
+	}
+	writeJSON(w, res)
 }
 
 // logStream pushes new rows as Server-Sent Events. Rows arrive after they are committed, so each has an id.

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -90,6 +91,40 @@ func TestLogsAPIAndSnapshotExport(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestSQLAPI(t *testing.T) {
+	srv, st, _ := setup(t)
+	now := time.Now()
+	_ = st.InsertLogs([]store.LogRow{
+		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "o", Level: "info", Line: "hello"},
+		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: "bad thing"},
+	})
+	q := url.QueryEscape("SELECT level, count(*) AS n FROM logs GROUP BY level ORDER BY level")
+	var out struct {
+		Columns   []string `json:"columns"`
+		Rows      [][]any  `json:"rows"`
+		Truncated bool     `json:"truncated"`
+		MS        int64    `json:"ms"`
+	}
+	resp := get(t, srv.URL+"/api/sql?query="+q, true)
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode != 200 || len(out.Columns) != 2 || out.Columns[0] != "level" || len(out.Rows) != 2 {
+		t.Fatalf("sql: %d %+v", resp.StatusCode, out)
+	}
+	if r := get(t, srv.URL+"/api/sql?query="+url.QueryEscape("DELETE FROM logs"), true); r.StatusCode != 400 {
+		t.Errorf("write statement should be 400, got %d", r.StatusCode)
+	}
+	if r := get(t, srv.URL+"/api/sql?query=SELECT%201", false); r.StatusCode != 401 {
+		t.Errorf("sql should require auth, got %d", r.StatusCode)
+	}
+	// The rejected write must not have run.
+	var still struct{ Rows [][]any }
+	resp = get(t, srv.URL+"/api/sql?query="+url.QueryEscape("SELECT count(*) FROM logs"), true)
+	_ = json.NewDecoder(resp.Body).Decode(&still)
+	if len(still.Rows) != 1 || still.Rows[0][0].(float64) != 2 {
+		t.Fatalf("rows after rejected write: %+v", still.Rows)
+	}
+}
 
 func TestSSEDeliversPublishedRows(t *testing.T) {
 	srv, _, h := setup(t)

@@ -74,6 +74,8 @@ button.b{cursor:pointer;display:inline-flex;align-items:center;gap:4px;user-sele
 button.b.on{border-color:var(--accent);color:var(--accent);background:var(--panel)}
 label.chk{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer}
 label.chk input{width:14px;height:14px;accent-color:var(--accent)}
+body.sql #q{font-family:var(--mono);font-size:13px}
+body.sql .hide-sql{display:none}
 .pop{position:absolute;top:100%;left:16px;margin-top:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;min-width:240px;max-height:280px;overflow:auto;z-index:20;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:1px}
 .pop button{background:none;border:0;color:var(--text);text-align:left;cursor:pointer;padding:7px 10px;font:inherit;font-size:13px;border-radius:6px}
 .pop button:hover{background:var(--panel2)}
@@ -142,13 +144,13 @@ h2{font-weight:600;letter-spacing:-.02em}
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
       <div class="bar">
         <input type="search" id="q" placeholder="Search logs">
-        <label class="chk"><input type="checkbox" id="rx"> regex</label>
-        <select id="lvl"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="info">info</option><option value="debug">debug</option></select>
-        <select id="strm"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
-        <button class="b" id="replicas">All replicas ▾</button>
-        <button class="b on" id="follow">Follow</button>
-        <button class="b" id="pause">Pause</button>
-        <button class="b" id="older">Load older</button>
+        <select id="smode" title="Search mode"><option value="">text</option><option value="rx">regex</option><option value="sql">SQL</option></select>
+        <select id="lvl" class="hide-sql"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="info">info</option><option value="debug">debug</option></select>
+        <select id="strm" class="hide-sql"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
+        <button class="b hide-sql" id="replicas">All replicas ▾</button>
+        <button class="b on hide-sql" id="follow">Follow</button>
+        <button class="b hide-sql" id="pause">Pause</button>
+        <button class="b hide-sql" id="older">Load older</button>
         <span class="chip" id="cnt"></span>
         <div class="pop" id="repPop" style="display:none"></div>
       </div>
@@ -331,12 +333,22 @@ function makeVList(scroller){
 }
 
 /* ---------- log panes ---------- */
+const sqlOn=()=>$('#smode').value==='sql';
+function applyMode(){
+  const on=sqlOn();
+  document.body.classList.toggle('sql',on);
+  $('#repPop').style.display='none';
+  $('#q').placeholder=on?"SELECT ts,container,level,line FROM logs WHERE level='error' LIMIT 100":'Search logs';
+  $('#q').title=on?'One SELECT over tables: logs, metrics, containers, snapshots':'';
+}
+$('#smode').addEventListener('change',applyMode);
+applyMode();
 function params(extra,container){
   const p=new URLSearchParams();
   if(S.app)p.set('app',S.app);
   if(container)p.set('container',container);
   if($('#q').value)p.set('q',$('#q').value);
-  if($('#rx').checked)p.set('regex','1');
+  if($('#smode').value==='rx')p.set('regex','1');
   if($('#lvl').value)p.set('level',$('#lvl').value);
   if($('#strm').value)p.set('stream',$('#strm').value);
   for(const k in extra)p.set(k,extra[k]);
@@ -351,6 +363,7 @@ function stopStreams(){
 function restartLogs(){
   stopStreams();
   S.panes=[];
+  if(sqlOn()){runSQL();return;}
   if(!S.app)return;
   const sel=[...S.sel];
   if(sel.length>=2){
@@ -365,6 +378,54 @@ function restartLogs(){
   }
   for(const p of S.panes)startPane(p);
   updateCnt();
+}
+/* SQL mode: one ad-hoc SELECT rendered into a single pane, no live stream. */
+async function runSQL(){
+  $('#panes').style.display='none';$('#panes').replaceChildren();
+  const logs=$('#logs');logs.style.display='';logs.replaceChildren();
+  const pane=createPane(logs,null,false);
+  S.panes=[pane];
+  const sql=$('#q').value.trim();
+  updateCnt();
+  if(!sql){pane.vl.reset([]);return;}
+  const msg=(level,text)=>({id:1,ts:0,container:'',stream:'',level,line:text});
+  pane.vl.reset([msg('','running…')]);
+  try{
+    const d=await api('/api/sql?query='+encodeURIComponent(sql)+'&limit=5000');
+    if(S.panes[0]!==pane)return;
+    pane.vl.reset(sqlRows(d));
+    if(d.truncated)pane.vl.append([msg('warn','…truncated at 5000 rows — add a LIMIT or narrow the WHERE clause')],false);
+    updateCnt();
+    $('#conn').className='chip live';
+  }catch(e){
+    if(S.panes[0]!==pane)return;
+    pane.vl.reset([msg('error','SQL error: '+(e.message||e))]);
+    updateCnt();
+  }
+}
+const fmtVal=v=>{
+  if(v==null)return 'NULL';
+  if(typeof v==='number')return Number.isInteger(v)?String(v):v.toFixed(3);
+  const s=String(v);
+  return s.length>600?s.slice(0,600)+'…':s; // keep blobs (logs_json, inspect) displayable
+};
+function sqlRows(d){
+  const cols=d.columns.map(c=>c.toLowerCase()),ix=n=>cols.indexOf(n);
+  const iTs=ix('ts'),iLine=ix('line'),iCont=ix('container'),iApp=ix('app'),iLvl=ix('level'),iStr=ix('stream');
+  const skip=new Set([iTs,iCont,iApp,iLvl,iStr,ix('id')].filter(i=>i>=0));
+  return (d.rows||[]).map((v,k)=>{
+    let ts=0;
+    if(iTs>=0&&v[iTs]!=null){
+      const n=Number(v[iTs]);
+      // logs.ts is nanoseconds, metrics/snapshots.ts are milliseconds, accept seconds too
+      if(Number.isFinite(n))ts=n>1e17?Math.round(n/1e6):n>1e11?Math.round(n):n>1e9?n*1000:0;
+    }
+    let line;
+    if(iLine>=0&&v[iLine]!=null)line=String(v[iLine]);
+    else line=v.map((x,i)=>skip.has(i)?null:d.columns[i]+'='+fmtVal(x)).filter(x=>x!==null).join('  ');
+    const cont=iCont>=0&&v[iCont]?String(v[iCont]):(iApp>=0&&v[iApp]?String(v[iApp]):'');
+    return {id:k+1,ts,container:cont,level:iLvl>=0&&v[iLvl]?String(v[iLvl]):'',stream:iStr>=0&&v[iStr]?String(v[iStr]):'',line};
+  });
 }
 function createPane(host,container,split){
   const pane={name:container,el:host,host,split,scroller:null,vl:null,es:null,loaded:false,pending:[],maxId:0};
@@ -427,7 +488,7 @@ function flushPending(pane){
 }
 function updateCnt(){
   let n=0;for(const p of S.panes)n+=p.vl.rows.length;
-  $('#cnt').textContent=n+' lines';
+  $('#cnt').textContent=n+(sqlOn()?' rows':' lines');
 }
 $('#follow').onclick=()=>{S.follow=!S.follow;$('#follow').classList.toggle('on',S.follow);if(S.follow)for(const p of S.panes)p.vl.toBottom();};
 $('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.paused);$('#pause').textContent=S.paused?'Resume':'Pause';if(!S.paused)for(const p of S.panes)flushPending(p);};
@@ -442,20 +503,20 @@ async function loadOlder(pane){
   }catch(e){}
 }
 let deb;const redo=()=>{clearTimeout(deb);deb=setTimeout(restartLogs,300);};
-['#q','#rx','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',redo));
+['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',redo));
 
 /* ---------- row rendering ---------- */
 function highlight(el,text){
   const q=$('#q').value;
-  if(!q||$('#rx').checked){el.textContent=text;return;}
+  if(!q||$('#smode').value!==''){el.textContent=text;return;}
   const lo=text.toLowerCase(),ql=q.toLowerCase();let i=0,j;
   while((j=lo.indexOf(ql,i))>=0){el.append(text.slice(i,j));const m=document.createElement('mark');m.textContent=text.slice(j,j+q.length);el.append(m);i=j+q.length;}
   el.append(text.slice(i));
 }
 function lineEl(r){
   const d=document.createElement('div');d.className='ln '+(r.level||'')+(r.stream==='e'?' e':'');
-  const t=document.createElement('span');t.className='t';t.textContent=fmtTime(r.ts);
-  const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||'';
+  const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
+  const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||r.container||'';
   const x=document.createElement('span');x.className='x';x.title=r.line;highlight(x,r.line);
   d.append(t,c,x);return d;
 }

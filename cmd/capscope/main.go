@@ -21,11 +21,36 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck") {
+		os.Exit(healthcheck())
+	}
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: levelFromEnv()}))
 	if err := run(log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
+}
+
+// healthcheck probes our own /healthz without a shell in the image (scratch).
+func healthcheck() int {
+	addr := os.Getenv("LISTEN")
+	if addr == "" {
+		addr = ":8080"
+	}
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	}
+	addr = strings.Replace(addr, "0.0.0.0", "127.0.0.1", 1)
+	c := http.Client{Timeout: 3 * time.Second}
+	r, err := c.Get("http://" + addr + "/healthz")
+	if err != nil {
+		return 1
+	}
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
 
 func run(log *slog.Logger) error {

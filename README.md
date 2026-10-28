@@ -1,5 +1,7 @@
 # CapScope
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A small, self-hosted container log and stats viewer for CapRover (and any Docker host), in the spirit of Dozzle, with two things Dozzle does not do by design:
 
 1. **Logs and metrics are stored in SQLite**, so you can search history after a redeploy removed the container.
@@ -16,7 +18,7 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 | Live log tail (SSE) | Yes — virtual-scrolled, 100k lines in memory | Yes |
 | Log storage | SQLite, retention + size cap (`7d` / `1 GB` default) | **None by design** — live view only, no offline search |
 | Search history after redeploy/restart | **Yes** — FTS5 token/prefix index with `LIKE` fallback + regex | No (by design; regex over the live buffer only) |
-| SQL queries over logs | No | Yes — embedded SQL engine |
+| SQL queries over logs | Yes — single validated `SELECT` (or `WITH … SELECT`) over `logs`, `metrics`, `containers`, `snapshots` | Yes — embedded SQL engine |
 | Split screen | Yes — up to 4 replicas side by side | Yes |
 | CPU / memory charts | Yes — plus persisted history in SQLite | Yes — live stats with historical visualizations |
 | Crash / OOM snapshots | **Yes** — exit code, OOM flag, uptime, restarts, memory trend, last N log lines, plain-language summary, Markdown export | No |
@@ -28,7 +30,7 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 | Log download | Crash snapshot Markdown export | Yes — download logs |
 | Themes | Auto / dark / light | Dark mode |
 | Frontend stack | Single embedded HTML file, no build step, no JS deps | Vue SPA (Bun + Vite) |
-| Image size | One Go binary + cgo SQLite (image not yet built/published) | ~7 MB compressed, built `FROM scratch` |
+| Image size | Single static musl binary on `FROM scratch` — no OS layer, no shell (a few MB compressed) | ~7 MB compressed, built `FROM scratch` |
 | Analytics | None | Google Analytics (opt-out via `--no-analytics`) |
 | Maturity | Early — single maintainer, not yet run on a real CapRover swarm | 8+ years, hundreds of containers tested, Docker-sponsored |
 
@@ -41,7 +43,7 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 | Area | Features |
 |---|---|
 | Live view | Per-app sidebar (CapRover `srv-captain--` names are unwrapped), virtual-scrolled live log tail over SSE (100k lines in memory), pause, follow, load older, split view for comparing up to 4 replicas side by side |
-| Search | FTS5 token/prefix search over persisted logs with substring fallback, or regex; filter by level, stream (stdout/stderr) and replica |
+| Search | FTS5 token/prefix search over persisted logs with substring fallback, regex, or **SQL** (`SELECT` over `logs`, `metrics`, `containers`, `snapshots` via `/api/sql`); filter by level, stream (stdout/stderr) and replica |
 | History | Logs and CPU/memory samples persisted in SQLite with age and size retention |
 | Crash snapshots | Exit code, OOM flag, restart count, uptime, last N log lines, last N metric samples, rule-based summary, Markdown export |
 | Safety | Basic auth required by default, secret redaction before storage, read-only Docker access possible via socket proxy |
@@ -127,14 +129,14 @@ docs/               PRD, architecture, CapRover guide, API reference
 - **Single node.** On a multi-node Swarm you only see containers on the node CapScope runs on. A per-node agent is on the roadmap.
 - **Crashes while CapScope is down are not captured.** It follows Docker events live. After a restart it resumes logs from the last stored timestamp but does not reconstruct earlier deaths.
 - **Log driver.** The Docker logs API only works for the `json-file`, `local` and `journald` drivers. CapRover uses `json-file` by default.
-- **Search.** Plain-text search uses an FTS5 index (token and prefix matching) with a `LIKE` fallback for mid-word substrings. Regex search scans up to the newest 200,000 matching candidates and is not indexed.
+- **Search.** Plain-text search uses an FTS5 index (token and prefix matching) with a `LIKE` fallback for mid-word substrings. Regex search scans up to the newest 200,000 matching candidates and is not indexed. SQL mode accepts one read statement per call (5 s deadline, 5000-row cap) — see docs/API.md.
 - **Level detection and redaction are heuristics**, not guarantees. Do not rely on redaction as your only protection for secrets in logs.
 - **Docker socket access is root equivalent.** Use auth, HTTPS, and ideally a socket proxy. See docs/CAPROVER.md.
 
 ## What was verified
 
-Unit tests cover log stream decoding, stats math, redaction, level detection, SQLite queries (including FTS5 search and its LIKE fallback), retention and size cap, the HTTP API and SSE. An end-to-end test runs the collector against a fake Docker daemon that emits an OOM and a die event and checks the saved snapshot. The earlier UI was exercised in headless Chromium against seeded data; the virtual-scroll/split-pane/theme rewrite has not yet been re-verified in a browser. It has **not** yet been run against a real Docker daemon or a CapRover Swarm, and the Dockerfile has not been built, so expect to shake out small issues on first deploy.
+Unit tests cover log stream decoding, stats math, redaction, level detection, SQLite queries (including FTS5 search and its LIKE fallback), read-only SQL validation (writes and stacked statements rejected, table unharmed) and the `/api/sql` endpoint, retention and size cap, the HTTP API and SSE. An end-to-end test runs the collector against a fake Docker daemon that emits an OOM and a die event and checks the saved snapshot. The earlier UI was exercised in headless Chromium against seeded data; the virtual-scroll/split-pane/theme/SQL rewrite has not yet been re-verified in a browser. It has **not** yet been run against a real Docker daemon or a CapRover Swarm, and the static-scratch Docker image has not yet been built, so expect to shake out small issues on first deploy.
 
 ## License
 
-Choose one before publishing. MIT is a reasonable default.
+[MIT](LICENSE).

@@ -49,6 +49,35 @@ Row shape:
 
 `GET /api/logs/stream` is a Server-Sent Events stream of new rows matching the same filters (except paging and time params). Each `data:` line is one row. A `dropped` event reports how many rows this client lost to back-pressure. Comment lines (`: ping`) keep the connection alive.
 
+## SQL queries
+
+`GET /api/sql?query=<sql>[&limit=5000]` runs one ad-hoc read statement against the stored tables.
+
+| Param | Meaning |
+|---|---|
+| `query` | A single `SELECT` (or `WITH … SELECT`) statement |
+| `limit` | Default 1000, max 5000. `truncated` is `true` when more rows matched |
+
+```json
+{"columns":["level","n"],"rows":[["error",3],["info",41]],"truncated":false,"ms":1}
+```
+
+Rules, enforced in this order:
+
+1. The statement must start with `SELECT` or `WITH`, contain no stacked statements (`;`), and carry no write/DDL keywords outside string literals and comments (`WITH … DELETE` is rejected). Violations return 400.
+2. The read connection pool opens with `_query_only=1`, so any write that slipped through would still fail at SQLite level.
+3. A 5-second deadline and the row cap keep heavy scans from pinning the pool.
+
+Tables available: `logs`, `metrics`, `containers`, `snapshots` (and `logs_fts` for `MATCH` joins). Column notes: `logs.ts` is **unix nanoseconds**; `metrics.ts` and `snapshots.ts` are **unix milliseconds**; `logs.stream` is `o`/`e`.
+
+```sql
+SELECT app, level, count(*) AS n FROM logs
+WHERE ts > (unixepoch('now') - 3600) * 1000000000
+GROUP BY app, level HAVING n > 5 ORDER BY n DESC
+```
+
+The UI exposes this as the `SQL` option in the search-mode select.
+
 ## Metrics
 
 `GET /api/metrics?app=shop&range=1h[&container=<id prefix>]` returns bucketed points (about 300 per range, minimum bucket 5 s). For an app, CPU and memory are summed across replicas. `net_rx` and `net_tx` are cumulative counters.
