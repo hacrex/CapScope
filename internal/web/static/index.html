@@ -508,7 +508,10 @@ async function startPane(pane){
     else paneAppend(pane,[r],true);
   };
   my.onerror=()=>{$('#conn').className='chip bad';};
-  my.onopen=()=>{$('#conn').className='chip live';};
+  my.onopen=()=>{$('#conn').className='chip live';$('#conn').textContent='live';};
+  // Server emits "event: dropped" (cumulative count) on its 15s ping when the
+  // hub had to discard lines for this subscriber under write pressure.
+  my.addEventListener('dropped',e=>{const n=e.data|0;if(n){$('#conn').textContent='live ('+n+' dropped)';$('#conn').title=n+' live line(s) dropped by the SSE buffer (write pressure). Persisted logs and CSV export are unaffected.';}});
   try{
     const d=await api('/api/logs?'+params({limit:500},pane.name));
     if(pane.es!==my)return;

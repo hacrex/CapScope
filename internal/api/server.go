@@ -225,6 +225,9 @@ func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"ts", "ts_ms", "container_id", "container", "app", "stream", "level", "line"})
 	const exportCap = 200_000 // matches the documented export ceiling (docs/API.md)
+	// Page at the store's maximum: parseLogQuery defaults limit to 500, which
+	// would make paging needlessly slow (and, on the FTS path, fragile).
+	q.Limit = 5000
 	written := 0
 	lastID := int64(0) // highest id already written; rows are always ascending
 	for written < exportCap && r.Context().Err() == nil {
@@ -232,8 +235,7 @@ func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(rows) == 0 {
 			break
 		}
-		// The store clamps Limit internally (<=0 or >5000 becomes 500); mirror
-		// it so a full page is not mistaken for exhaustion.
+		// Mirror the store's clamp so a full page is not mistaken for exhaustion.
 		pageSize := q.Limit
 		if pageSize <= 0 || pageSize > 5000 {
 			pageSize = 500
