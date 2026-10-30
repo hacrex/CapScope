@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CapScope — Persistent Container Logs & Crash Snapshots</title>
+  <meta name="description" content="Self-hosted container observability. Persistent logs, crash snapshots, and CPU/memory history in one binary. No external database. For homelabbers, self-hosters, and DevOps engineers.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><rect width='16' height='16' rx='4' fill='%2300ff41'/><path d='M4.5 5.5L7 8L4.5 10.5' stroke='%23000' stroke-width='1.5' stroke-linecap='round' fill='none'/></svg>">
+
+  <style>
+    /* ===== Neubrutalism Design Tokens ===== */
+    :root {
+      --nb-bg: #0a0a0a;
+      --nb-panel: #141414;
+      --nb-border: #000000;
+      --nb-shadow: 6px 6px 0px #000000;
+      --nb-shadow-hover: 3px 3px 0px #000000;
+      --nb-accent: #00ff41;
+      --nb-accent-hover: #00cc33;
+      --nb-orange: #ff6b00;
+      --nb-purple: #8b00ff;
+      --nb-text: #ededed;
+      --nb-muted: #8f8f8f;
+      --nb-err: #ff3131;
+      --nb-warn: #ffcc00;
+      --mono: ui-monospace, SFMono-Regular, "Geist Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--nb-bg);
+      color: var(--nb-text);
+      font-family: var(--sans);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ===== Typography ===== */
+    h1, h2, h3 { font-family: var(--sans); font-weight: 900; letter-spacing: -0.02em; line-height: 1.1; }
+    h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); }
+    h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 1rem; }
+    h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); margin-bottom: 0.75rem; }
+    p { color: var(--nb-text); opacity: 0.9; }
+    .muted { color: var(--nb-muted); }
+    .mono { font-family: var(--mono); }
+
+    /* ===== Neubrutalism Utilities ===== */
+    .nb-card {
+      background: var(--nb-panel);
+      border: 4px solid var(--nb-border);
+      border-radius: 8px;
+      box-shadow: var(--nb-shadow);
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .nb-card:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: var(--nb-shadow-hover);
+    }
+    .nb-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--nb-orange);
+      color: #000;
+      border: 4px solid var(--nb-border);
+      border-radius: 8px;
+      padding: 16px 32px;
+      font-size: 1.125rem;
+      font-weight: 900;
+      font-family: var(--sans);
+      box-shadow: var(--nb-shadow);
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s;
+    }
+    .nb-btn:hover {
+      background: #ff8533;
+      transform: translate(-2px, -2px);
+      box-shadow: var(--nb-shadow-hover);
+    }
+    .nb-btn:active {
+      transform: translate(0, 0);
+      box-shadow: none;
+    }
+    .nb-btn.secondary {
+      background: var(--nb-panel);
+      color: var(--nb-text);
+      border-color: var(--nb-border);
+    }
+    .nb-btn.secondary:hover {
+      background: var(--nb-bg);
+      color: var(--nb-text);
+    }
+    .nb-btn.github {
+      background: var(--nb-bg);
+      color: var(--nb-text);
+      border-color: var(--nb-border);
+    }
+    .nb-btn.github:hover {
+      background: var(--nb-panel);
+    }
+
+    .nb-input, .nb-select {
+      background: var(--nb-panel);
+      border: 4px solid var(--nb-border);
+      color: var(--nb-text);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 1rem;
+      font-family: var(--sans);
+      box-shadow: var(--nb-shadow);
+      width: 100%;
+    }
+    .nb-input:focus, .nb-select:focus {
+      outline: none;
+      border-color: var(--nb-accent);
+    }
+
+    .section { padding: clamp(3rem, 8vw, 6rem) 1.5rem; }
+    .section-bg { background: var(--nb-panel); }
+    .container { max-width: 1000px; margin: 0 auto; }
+
+    .grid { display: grid; gap: 1.5rem; }
+    .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+    /* ===== Navbar ===== */
+    nav {
+      position: sticky;
+      top: 0;
+      background: var(--nb-bg);
+      border-bottom: 4px solid var(--nb-border);
+      z-index: 50;
+    }
+    .nav-inner {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      font-weight: 900;
+      font-size: 1.25rem;
+      color: var(--nb-text);
+      border: 4px solid var(--nb-border);
+      padding: 6px 14px;
+      border-radius: 8px;
+      box-shadow: var(--nb-shadow);
+      background: var(--nb-panel);
+    }
+    .logo svg { width: 28px; height: 28px; }
+    .nav-links { display: flex; gap: 1rem; align-items: center; }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--nb-text);
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 8px 16px;
+      border: 4px solid transparent;
+      border-radius: 8px;
+      transition: all 0.1s;
+    }
+    .nav-links a:hover {
+      border-color: var(--nb-border);
+      background: var(--nb-panel);
+      box-shadow: var(--nb-shadow-hover);
+    }
+
+    /* ===== Hero ===== */
+    .hero { padding: 4rem 1.5rem 6rem; text-align: center; }
+    .hero .badge {
+      display: inline-block;
+      background: var(--nb-accent);
+      color: #000;
+      border: 4px solid var(--nb-border);
+      border-radius: 999px;
+      padding: 6px 16px;
+      font-weight: 900;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      box-shadow: var(--nb-shadow);
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 { margin-bottom: 1.25rem; }
+    .hero p.sub {
+      font-size: clamp(1.125rem, 2vw, 1.5rem);
+      max-width: 640px;
+      margin: 0 auto 2.5rem;
+      opacity: 0.95;
+    }
+    .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .hero-visual {
+      margin-top: 3rem;
+      border: 4px solid var(--nb-border);
+      border-radius: 12px;
+      box-shadow: var(--nb-shadow);
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* ===== Features ===== */
+    .feature-card {
+      padding: 1.75rem;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .feature-icon {
+      width: 48px; height: 48px;
+      background: var(--nb-bg);
+      border: 4px solid var(--nb-border);
+      border-radius: 8px;
+      box-shadow: var(--nb-shadow);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .feature-card h4 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    .feature-card p { font-size: 0.95rem; opacity: 0.85; }
+
+    /* ===== How it works ===== */
+    .step {
+      border: 4px solid var(--nb-border);
+      border-radius: 12px;
+      padding: 2rem;
+      background: var(--nb-panel);
+      box-shadow: var(--nb-shadow);
+      position: relative;
+    }
+    .step-number {
+      position: absolute; top: -16px; left: 24px;
+      background: var(--nb-accent);
+      color: #000;
+      border: 4px solid var(--nb-border);
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.1rem;
+      box-shadow: var(--nb-shadow);
+    }
+    .step h4 { margin-bottom: 0.5rem; }
+
+    /* ===== GitHub / Repo ===== */
+    .repo-card {
+      background: linear-gradient(135deg, var(--nb-panel) 0%, #1a1a2e 100%);
+      border: 4px solid var(--nb-border);
+      border-radius: 12px;
+      padding: 3rem 2rem;
+      box-shadow: var(--nb-shadow);
+      text-align: center;
+      margin-top: 2rem;
+    }
+    .repo-card h3 { color: var(--nb-accent); margin-bottom: 0.5rem; }
+    .repo-stats { display: flex; justify-content: center; gap: 2rem; margin: 1.5rem 0; opacity: 0.8; font-family: var(--mono); }
+    .repo-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    /* ===== Tech stack ===== */
+    .tech-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--nb-bg);
+      border: 4px solid var(--nb-border);
+      color: var(--nb-text);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      box-shadow: var(--nb-shadow);
+      margin: 0.5rem;
+    }
+
+    /* ===== Footer ===== */
+    footer {
+      border-top: 4px solid var(--nb-border);
+      padding: 3rem 1.5rem 2rem;
+      background: var(--nb-bg);
+      text-align: center;
+    }
+    footer p { opacity: 0.6; font-size: 0.9rem; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .grid-cols-2, .grid-cols-3, .grid-cols-4 { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .hero-actions { flex-direction: column; align-items: stretch; }
+      .nb-btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="4" fill="#00ff41"/><path d="M4.5 5.5L7 8L4.5 10.5" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M8.5 10.5H11.5" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+        CapScope
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <span class="badge">Self-hosted • Halloween Launch 🎃</span>
+      <h1>Container logs that survive redeploys.</h1>
+      <p class="sub">CapScope is self-hosted container observability in one binary. Persistent logs, crash snapshots, CPU/memory history, and an access-log dashboard — no Prometheus stack, no external database.</p>
+      <div class="hero-actions">
+        <a href="#how-it-works" class="nb-btn">Get Started</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn secondary">Star on GitHub →</a>
+      </div>
+      <div class="hero-visual" style="height: 320px; display:flex; align-items:center; justify-content:center; color:#333; font-family:var(--mono); font-size:0.9rem;">
+        <div style="text-align:center;">
+          <div style="font-size:3rem; margin-bottom:1rem;">📦</div>
+          <div style="border:4px solid #000; background:#141414; padding:1rem; border-radius:8px; box-shadow:6px 6px 0px #000; max-width:260px; margin:0 auto;">
+            <div style="color:#00ff41; font-weight:bold;">● capscope</div>
+            <div style="margin-top:6px; font-size:0.85rem;">2026-10-31T03:12:00Z</div>
+            <div style="color:#ff3131; margin-top:4px;">ERROR: Out of memory</div>
+            <div style="margin-top:4px; color:#8f8f8f;">Snapshot saved — OOM kill, exit 137</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="section section-bg">
+    <div class="container">
+      <h2 style="text-align:center; margin-bottom:1rem;">Everything you need after a container dies</h2>
+      <p class="muted" style="text-align:center; margin-bottom:3rem; max-width:600px; margin-left:auto; margin-right:auto;">Live tails are great. History is better. Crash forensics are best.</p>
+      <div class="grid grid-cols-3">
+        <div class="feature-card nb-card">
+          <div class="feature-icon">💾</div>
+          <h4>Persistent Logs</h4>
+          <p>Logs stored in SQLite with FTS5 search. Search history long after a redeploy removes the container.</p>
+        </div>
+        <div class="feature-card nb-card">
+          <div class="feature-icon">💥</div>
+          <h4>Crash Snapshots</h4>
+          <p>Auto-saved on OOM or non-zero exit. Exit code, memory trend, last log lines, plain-language summary.</p>
+        </div>
+        <div class="feature-card nb-card">
+          <div class="feature-icon">📊</div>
+          <h4>Metrics History</h4>
+          <p>CPU and memory samples persisted for 15 minutes to 7 days, per app or replica.</p>
+        </div>
+        <div class="feature-card nb-card">
+          <div class="feature-icon">🔁</div>
+          <h4>Restart-Loop Detection</h4>
+          <p>Flags containers dying in a loop with a ↻ badge. Know when an app is crash-looping.</p>
+        </div>
+        <div class="feature-card nb-card">
+          <div class="feature-icon">🌐</div>
+          <h4>Access Log Dashboard</h4>
+          <p>GoAccess-style panels from your reverse proxy: status codes, top paths, client IPs, CSV export.</p>
+        </div>
+        <div class="feature-card nb-card">
+          <div class="feature-icon">🚀</div>
+          <h4>Deploy Markers</h4>
+          <p>Correlate crashes and metric spikes with the release that preceded them.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how-it-works" class="section">
+    <div class="container">
+      <h2 style="text-align:center; margin-bottom:1rem;">One binary. One volume.</h2>
+      <div class="grid grid-cols-3" style="margin-top:2rem;">
+        <div class="step nb-card">
+          <div class="step-number">1</div>
+          <h4>Run it</h4>
+          <p class="muted">One Docker container with <code class="mono">/var/run/docker.sock</code> mounted and a <code class="mono">/data</code> volume.</p>
+        </div>
+        <div class="step nb-card">
+          <div class="step-number">2</div>
+          <h4>Watch it</h4>
+          <p class="muted">CapScope follows logs and stats for every container, redacting secrets before storage.</p>
+        </div>
+        <div class="step nb-card">
+          <div class="step-number">3</div>
+          <h4>Sleep better</h4>
+          <p class="muted">When a container dies at 3 AM, open the Crashes tab and see exactly what happened.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick start -->
+  <section class="section section-bg" style="padding-top:2rem;">
+    <div class="container">
+      <div class="nb-card" style="padding:2.5rem;">
+        <h3 style="margin-bottom:1rem;">Quick start</h3>
+        <pre class="mono" style="background:#000; border:4px solid #000; border-radius:8px; padding:1rem; overflow:auto; font-size:0.85rem; line-height:1.4; margin-bottom:1.5rem; box-shadow: var(--nb-shadow);">docker run -d --name capscope \
+  -p 8080:8080 \
+  -e AUTH_USER=admin \
+  -e AUTH_PASS=change-me \
+  -v capscope-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  ghcr.io/hacrex/capscope:latest</pre>
+        <div class="repo-actions">
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github">View on GitHub</a>
+          <a href="https://github.com/hacrex/CapScope/blob/main/README.md" target="_blank" rel="noopener" class="nb-btn secondary">Read Docs</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Repo card / GitHub -->
+  <section class="section" style="padding-top:1rem;">
+    <div class="container">
+      <div class="repo-card nb-card">
+        <h3>Star the repo</h3>
+        <p class="muted" style="margin-bottom:1rem;">Help CapScope reach more homelabbers and self-hosters.</p>
+        <div class="repo-stats">
+          <span>GitHub: <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" style="color:#00ff41; text-decoration:underline;">hacrex/CapScope</a></span>
+        </div>
+        <div class="repo-actions">
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github">⭐ Star on GitHub</a>
+          <a href="https://github.com/hacrex/CapScope/fork" target="_blank" rel="noopener" class="nb-btn secondary">Fork</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2026 CapScope • MIT License • Built for homelab brewers, self-hosters, and DevOps engineers</p>
+    <p class="muted" style="margin-top:0.5rem; font-size:0.8rem;">Not affiliated with CapRover, Dozzle, or Docker Inc.</p>
+  </footer>
+
+  <script>
+    // Simple smooth scroll + active nav highlight (minimal JS, no deps)
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+</body>
+</html>
