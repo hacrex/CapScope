@@ -2,6 +2,8 @@
 
 CapScope ships everything a PaaS needs: a plain `Dockerfile` (builds on any build system), `EXPOSE 8080`, a `VOLUME /data`, a built-in `HEALTHCHECK`, and an unauthenticated `GET /healthz` endpoint for HTTP-based health checks.
 
+Want one ordered checklist covering every platform? See **[STEP-BY-STEP.md](STEP-BY-STEP.md)**.
+
 | Platform | Guide | What it needs on top |
 |---|---|---|
 | CapRover | [docs/CAPROVER.md](../docs/CAPROVER.md) | nothing, `captain-definition` is in the repo |
@@ -9,6 +11,7 @@ CapScope ships everything a PaaS needs: a plain `Dockerfile` (builds on any buil
 | Dokploy | [DOKPLOY.md](DOKPLOY.md) | compose service, Swarm single-node caveat |
 | Dokku | [DOKKU.md](DOKKU.md) | `git push` + `storage:mount` overrides |
 | Portainer / plain Docker / others | [OTHERS.md](OTHERS.md) | paste the compose stack |
+| Podman | [OTHERS.md](OTHERS.md#podman) | same image; mount the podman.sock API socket instead of docker.sock |
 
 Common to all platforms:
 

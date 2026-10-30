@@ -149,6 +149,9 @@ func parseLogQuery(r *http.Request) (store.LogQuery, error) {
 	q.AfterID, _ = strconv.ParseInt(v.Get("after_id"), 10, 64)
 	q.BeforeID, _ = strconv.ParseInt(v.Get("before_id"), 10, 64)
 	q.Limit, _ = strconv.Atoi(v.Get("limit"))
+	if q.Limit <= 0 || q.Limit > 5000 {
+		q.Limit = 500 // mirror store.QueryLogs so paging math is exact here too
+	}
 	return q, nil
 }
 
@@ -221,22 +224,49 @@ func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
 	csvHeader(w, "capscope-logs.csv")
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"ts", "ts_ms", "container_id", "container", "app", "stream", "level", "line"})
-	for r.Context().Err() == nil {
+	const exportCap = 200_000 // matches the documented export ceiling (docs/API.md)
+	// Page at the store's maximum: parseLogQuery defaults limit to 500, which
+	// would make paging needlessly slow (and, on the FTS path, fragile).
+	q.Limit = 5000
+	written := 0
+	lastID := int64(0) // highest id already written; rows are always ascending
+	for written < exportCap && r.Context().Err() == nil {
 		rows, err := s.st.QueryLogs(r.Context(), q)
 		if err != nil || len(rows) == 0 {
 			break
 		}
-		next := rows[len(rows)-1].ID
-		for _, l := range rows {
+		// Mirror the store's clamp so a full page is not mistaken for exhaustion.
+		pageSize := q.Limit
+		if pageSize <= 0 || pageSize > 5000 {
+			pageSize = 500
+		}
+		// Skip rows already emitted. This matters on the FTS fast path, which
+		// re-runs its own query and may return an overlapping newest-first
+		// page regardless of AfterID.
+		start := 0
+		for start < len(rows) && rows[start].ID <= lastID {
+			start++
+		}
+		fresh := rows[start:]
+		if len(fresh) == 0 {
+			break // no forward progress: everything returned was already written
+		}
+		for _, l := range fresh {
+			if written == exportCap {
+				break
+			}
 			_ = cw.Write([]string{
 				time.Unix(0, l.TS).UTC().Format(time.RFC3339Nano), itoa64(l.TSMs),
 				l.ContainerID, l.Container, l.App, streamName(l.Stream), l.Level, l.Line,
 			})
+			written++
+			lastID = l.ID
 		}
-		if len(rows) < 5000 {
-			break
+		if len(fresh) < pageSize {
+			break // partial page: result set exhausted (or regex scan cap hit)
 		}
-		q.AfterID = next
+		// Force subsequent pages strictly ascending from the last written id.
+		q.AfterID = lastID
 	}
 	cw.Flush()
 }

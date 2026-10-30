@@ -161,15 +161,25 @@ func TestAccessAPIAndExports(t *testing.T) {
 		t.Errorf("access csv: %q", s)
 	}
 	// log export: CSV of the logs table, with CSV quoting
-	_ = st.InsertLogs([]store.LogRow{
-		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `something "bad", happened`},
-	})
+	var many []store.LogRow
+	for i := 0; i < 600; i++ {
+		many = append(many, store.LogRow{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `something "bad", happened`})
+	}
+	_ = st.InsertLogs(append(many, store.LogRow{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `last row`}))
 	r = get(t, srv.URL+"/api/logs/export?app=web", true)
 	b, _ = io.ReadAll(r.Body)
 	s = string(b)
 	// CSV doubles embedded quotes, so the cell reads: something ""bad"", happened
 	if !strings.Contains(s, "stderr") || !strings.Contains(s, `something ""bad"", happened`) {
 		t.Errorf("logs csv: %q", s)
+	}
+	// paging must reach past the 500-row query default (regression: old code
+	// compared page size against a hardcoded 5000 and stopped after one page)
+	if n := strings.Count(s, "\n"); n < 601 {
+		t.Errorf("logs export truncated at first page: %d lines", n-1)
+	}
+	if !strings.Contains(s, "last row") {
+		t.Errorf("logs export missing final row")
 	}
 }
 
