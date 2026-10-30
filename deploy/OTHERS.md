@@ -46,6 +46,13 @@ Swarm caveat: CapScope only sees containers on the node its task is scheduled on
 5. Reverse proxy pointing at port `8080`, HTTPS mandatory (Basic auth credentials travel in clear text on HTTP). Health path: `/healthz`.
 6. One instance only. Never run two CapScope containers against the same `/data` volume.
 
+## Podman
+
+Podman's `docker` alias is a drop-in CLI for the compose and `docker run` commands above, so building and running the image works unchanged (`podman-compose` or the `podman docker-compose` shim for the stack). Two things differ from Docker:
+
+1. **Socket path.** The Podman-compatible API socket is `/run/podman/podman.sock` (system service; rootful) or `/run/user/$UID/podman/podman.sock` (rootless quadlet/user service), not `/var/run/docker.sock`. Mount whichever applies, e.g. `-v /run/podman/podman.sock:/var/run/docker.sock`, or skip the mount and set `DOCKER_HOST=unix:///run/podman/podman.sock` (the Go client honours `DOCKER_HOST`).
+2. **Rootless caveats.** Under rootless Podman, CapScope sees only that user's containers, and stats/events endpoints depend on the Podman Docker-compatible API emulation level — if the sidebar populates but live tail or crash snapshots stay silent, check `podman system service` is running and consider the rootful socket. The scratch image itself runs fine under Podman (static binary, no daemon deps).
+
 ## Not supported
 
 - **Kubernetes**: CapScope talks to the Docker Engine API (containers, logs, stats, events), not the kubelet. Run it as a Docker container on a Docker node instead.

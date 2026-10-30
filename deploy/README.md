@@ -9,6 +9,7 @@ CapScope ships everything a PaaS needs: a plain `Dockerfile` (builds on any buil
 | Dokploy | [DOKPLOY.md](DOKPLOY.md) | compose service, Swarm single-node caveat |
 | Dokku | [DOKKU.md](DOKKU.md) | `git push` + `storage:mount` overrides |
 | Portainer / plain Docker / others | [OTHERS.md](OTHERS.md) | paste the compose stack |
+| Podman | [OTHERS.md](OTHERS.md#podman) | same image; mount the podman.sock API socket instead of docker.sock |
 
 Common to all platforms:
 

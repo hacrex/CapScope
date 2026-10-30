@@ -25,7 +25,7 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 | Secret redaction before storage | Yes (JWT, bearer, AWS keys, PEM, URL creds, `password=`/`token=`) | No (nothing is stored) |
 | Authentication | Basic auth, refuses to start without a password | Multi-user file auth + forward-proxy auth (Authelia etc.) |
 | Multi-host | Single node (per-node agent on roadmap) | **Yes** — agent mode |
-| Orchestration | Single Docker Engine | **Yes** — Docker Swarm, Kubernetes, Podman, Colima |
+| Orchestration | Single Docker Engine (Docker API v1.24+; also reachable over TCP via a socket proxy) | **Yes** — Docker Swarm, Kubernetes, Podman, Colima |
 | Container list | Per-app sidebar, CapRover `srv-captain--` names unwrapped | Fuzzy container search, multi-host tree, app icons |
 | Log download | Crash snapshot Markdown export | Yes — download logs |
 | Themes | Auto / dark / light | Dark mode |
@@ -75,7 +75,7 @@ docker run -d --name capscope -p 8080:8080 \
 
 CapRover: see [docs/CAPROVER.md](docs/CAPROVER.md).
 
-Other platforms: see [deploy/README.md](deploy/README.md) for Coolify, Dokploy, Dokku, Portainer and any generic Docker host.
+Other platforms: see [deploy/README.md](deploy/README.md) for Coolify, Dokploy, Dokku, Portainer, Podman and any generic Docker host.
 
 ## Configuration
 
