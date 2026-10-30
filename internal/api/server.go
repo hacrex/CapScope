@@ -372,17 +372,26 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
-	sn, err := s.st.GetSnapshot(r.Context(), id)
+	sn, err := s.snapshotEnriched(r.Context(), id)
 	if err != nil {
 		fail(w, 404, err)
 		return
 	}
-	// V9: attach the newest deploy before the crash, so the view answers
-	// "did a deploy just before this crash?". Best effort.
-	if d, derr := s.st.DeployBefore(r.Context(), sn.App, sn.TS); derr == nil && d.ID != 0 {
+	writeJSON(w, sn)
+}
+
+// snapshotEnriched loads a snapshot and attaches the newest deploy before the
+// crash (V9), so both the JSON view and the markdown export answer
+// "did a deploy just before this crash?". The lookup is best effort.
+func (s *Server) snapshotEnriched(ctx context.Context, id int64) (store.Snapshot, error) {
+	sn, err := s.st.GetSnapshot(ctx, id)
+	if err != nil {
+		return sn, err
+	}
+	if d, derr := s.st.DeployBefore(ctx, sn.App, sn.TS); derr == nil && d.ID != 0 {
 		sn.Deploy = &d
 	}
-	writeJSON(w, sn)
+	return sn, nil
 }
 
 func (s *Server) snapshotExport(w http.ResponseWriter, r *http.Request) {
@@ -391,7 +400,7 @@ func (s *Server) snapshotExport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
-	sn, err := s.st.GetSnapshot(r.Context(), id)
+	sn, err := s.snapshotEnriched(r.Context(), id)
 	if err != nil {
 		fail(w, 404, err)
 		return

@@ -972,8 +972,11 @@ func (s *Store) UsedBytes(ctx context.Context) (int64, error) {
 	return (pages - free) * size, nil
 }
 
-// EnforceSize drops the oldest logs, then metrics, then parsed access rows
-// until live data fits under maxBytes.
+// EnforceSize drops the oldest rows — logs first, then metrics, access,
+// snapshots, alerts and deploys — until live data fits under maxBytes. The
+// low-frequency tables are included so crash/alert/deploy data cannot pin
+// the database above the configured cap once the high-volume tables are
+// already empty.
 func (s *Store) EnforceSize(ctx context.Context, maxBytes int64) (int64, error) {
 	var deleted int64
 	for i := 0; i < 50 && ctx.Err() == nil; i++ {
@@ -982,7 +985,7 @@ func (s *Store) EnforceSize(ctx context.Context, maxBytes int64) (int64, error) 
 			return deleted, err
 		}
 		trimmed := false
-		for _, table := range []string{"logs", "metrics", "access"} {
+		for _, table := range []string{"logs", "metrics", "access", "snapshots", "alerts", "deploys"} {
 			var n int64
 			if err := s.r.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&n); err != nil {
 				return deleted, err

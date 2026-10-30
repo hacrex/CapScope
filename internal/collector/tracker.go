@@ -15,7 +15,8 @@ import (
 type tracker struct {
 	id, name, app, image, replica string
 	tty                           bool
-	created                       time.Time
+	created                       time.Time // when CapScope started tracking this incarnation
+	started                       time.Time // the container's real start time per Docker (falls back to created)
 	cancel                        context.CancelFunc
 	logDone                       chan struct{} // closed when the log follower has finished
 	accessOnly                    bool          // excluded container kept only for access-log parsing
@@ -29,6 +30,16 @@ type tracker struct {
 	exited  bool
 	maxLogs int
 	maxMets int
+}
+
+// parseStartedAt extracts the container's real start time from an inspect's
+// State.StartedAt (RFC3339Nano). Zero/unparseable values fall back to now so
+// callers always get a usable time.
+func parseStartedAt(startedAt string, now time.Time) time.Time {
+	if st, err := time.Parse(time.RFC3339Nano, startedAt); err == nil && !st.IsZero() {
+		return st
+	}
+	return now
 }
 
 func (t *tracker) pushLog(r store.LogRow) {
