@@ -2,6 +2,8 @@
 
 CapScope ships everything a PaaS needs: a plain `Dockerfile` (builds on any build system), `EXPOSE 8080`, a `VOLUME /data`, a built-in `HEALTHCHECK`, and an unauthenticated `GET /healthz` endpoint for HTTP-based health checks.
 
+Want one ordered checklist covering every platform? See **[STEP-BY-STEP.md](STEP-BY-STEP.md)**.
+
 | Platform | Guide | What it needs on top |
 |---|---|---|
 | CapRover | [docs/CAPROVER.md](../docs/CAPROVER.md) | nothing, `captain-definition` is in the repo |
