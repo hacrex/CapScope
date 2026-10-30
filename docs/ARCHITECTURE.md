@@ -48,7 +48,7 @@ CapScope is one Go process with four jobs: watch Docker, store what it sees, ser
 4. `writer` drains the channel, batching up to 1000 rows or 250 ms, inserts them in one transaction, then publishes the committed rows (now with ids) to the hub.
 5. SSE clients receive rows only after commit, so every row they see has a stable id and the UI can reconcile with a history query using `id`.
 
-Back-pressure: if SQLite stalls, the channel fills and followers block on send, which stops reading the Docker stream (Docker buffers on its side). The hub never blocks: slow browsers lose rows and are told via a `dropped` event.
+Back-pressure: if SQLite stalls, the channel fills; once full, further log lines from the Docker streams are dropped (counted and reported by a periodic `log lines dropped (write pressure)` warning) so that one stuck writer cannot freeze every container's stream. The hub never blocks either: slow browsers lose rows and are told via a `dropped` event.
 
 ### 3.2 Metrics
 
@@ -143,7 +143,7 @@ SQLite via `mattn/go-sqlite3` (cgo). WAL mode, `synchronous=NORMAL`, `busy_timeo
 
 Schema versioning uses `PRAGMA user_version` with an ordered list of migrations. `auto_vacuum=INCREMENTAL` is set before the first table is created so retention can return space to the OS.
 
-**Retention** runs 30 seconds after start and then every 10 minutes: delete by age in batches of 5000 rows (short write locks), then enforce `MAX_DB_MB` against live bytes (pages minus free pages) by dropping the oldest 10 percent of logs per round (then metrics), then `incremental_vacuum`. Per-app budgets (`APP_RETENTION`, `APP_MAX_MB`) run between the age prune and the global size cap, so a single noisy app is trimmed against its own retention and byte budget before the whole database is squeezed.
+**Retention** runs 30 seconds after start and then every 10 minutes: delete by age in batches of 5000 rows (short write locks), then enforce `MAX_DB_MB` against live bytes (pages minus free pages) by dropping the oldest 10 percent of logs per round, then metrics, then access, then snapshots, alerts and deploys, then `incremental_vacuum`. Per-app budgets (`APP_RETENTION`, `APP_MAX_MB`) run between the age prune and the global size cap, so a single noisy app is trimmed against its own retention and byte budget before the whole database is squeezed.
 
 **Measured throughput** (sandbox with 2 vCPUs, batches of 1000 rows, WAL, `synchronous=NORMAL`): about 156,000 rows per second inserted. This is a store-level micro benchmark. It does not include Docker stream decoding, redaction or level detection, so treat it as an upper bound, not an end-to-end rate.
 

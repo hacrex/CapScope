@@ -91,7 +91,7 @@ All settings are environment variables.
 | `LOG_RETENTION` | `7d` | Delete logs older than this. Accepts `d`, `h`, `m` |
 | `METRICS_RETENTION` | `7d` | Same for CPU/memory samples |
 | `SNAPSHOT_RETENTION` | `30d` | Same for crash snapshots |
-| `MAX_DB_MB` | `1024` | Cap on live data. Oldest logs, then metrics, are dropped when exceeded |
+| `MAX_DB_MB` | `1024` | Cap on live data. Oldest logs, then metrics, access, snapshots, alerts and deploys are dropped when exceeded |
 | `STATS_INTERVAL` | `10s` | How often a metric sample is stored per container (minimum 1s) |
 | `INITIAL_TAIL` | `200` | Lines to backfill the first time a container is seen |
 | `MAX_LINE_BYTES` | `16384` | Longer lines are truncated |
