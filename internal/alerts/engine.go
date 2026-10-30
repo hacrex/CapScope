@@ -155,6 +155,12 @@ func (e *Engine) evalOne(ctx context.Context, r Rule, app string) (store.Alert, 
 			e.log.Error("alerts: death count failed", "rule", r.Name, "app", app, "err", err)
 			return store.Alert{}, false
 		}
+		// Deliberately strict ">": fire only when deaths EXCEED the limit,
+		// matching the semantics documented in rules.go and the README
+		// ("More than `count` deaths"). The collector's crash-snapshot log
+		// line uses "==" to flag the Nth death itself as a suspected loop;
+		// these are two different features with intentionally different
+		// thresholds (see TestRestartLoopFires / QuietBelowCount).
 		if n > int64(r.Count) {
 			firing, msg = true, fmt.Sprintf("%s: %d restarts in %s (limit %d)", app, n, r.Window.D(), r.Count)
 		}

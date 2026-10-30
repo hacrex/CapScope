@@ -26,10 +26,11 @@ type Manager struct {
 	hub *hub.Hub
 	log *slog.Logger
 
-	lines      chan store.LogRow
-	accessRows chan store.AccessRow
-	accDet     access.Detector
-	accDropped atomic.Int64
+	lines       chan store.LogRow
+	accessRows  chan store.AccessRow
+	accDet      access.Detector
+	accDropped  atomic.Int64
+	lineDropped atomic.Int64 // log rows dropped when the writer channel is full
 
 	mu      sync.Mutex
 	tracked map[string]*tracker
@@ -85,7 +86,13 @@ func (m *Manager) Containers() []ContainerInfo {
 	defer m.mu.Unlock()
 	out := make([]ContainerInfo, 0, len(m.tracked))
 	for _, t := range m.tracked {
-		ci := ContainerInfo{ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image, Started: t.created.UnixMilli()}
+		// Prefer the container's real Docker start time; fall back to when
+		// tracking began (e.g. rebuilt trackers for already-exited containers).
+		startedMS := t.created.UnixMilli()
+		if !t.started.IsZero() && t.started.Before(t.created) {
+			startedMS = t.started.UnixMilli()
+		}
+		ci := ContainerInfo{ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image, Started: startedMS}
 		if p, ok := t.lastMetric(); ok {
 			ci.CPU, ci.Mem, ci.MemLimit, ci.SampleTS = p.CPU, p.Mem, p.MemLimit, p.TS
 		}
@@ -134,7 +141,11 @@ func (m *Manager) reconcile(ctx context.Context) {
 		seen[c.ID] = true
 		m.ensure(ctx, c.ID)
 	}
-	// Drop trackers for containers that vanished without a die event (missed while reconnecting).
+	// Drop trackers for containers that vanished without a die event (missed
+	// while reconnecting). The grace window is measured from when CapScope
+	// started tracking the container (created), not its Docker start time:
+	// a just-discovered long-running container must get time to appear in
+	// subsequent listings before being judged stale.
 	m.mu.Lock()
 	var stale []*tracker
 	for id, t := range m.tracked {
@@ -177,9 +188,11 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 	if !insp.State.Running {
 		return nil, false, nil
 	}
+	now := time.Now()
 	return &tracker{
 		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
-		tty: insp.Config.Tty, created: time.Now(), logDone: make(chan struct{}),
+		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
+		logDone:    make(chan struct{}),
 		accessOnly: m.excluded(name, app),
 		acc:        m.accDet.Stream(app),
 		maxLogs:    m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
@@ -302,9 +315,16 @@ func (m *Manager) handleLine(ctx context.Context, t *tracker, l docker.LogLine) 
 		return // not part of the log history; access rows above are the payload
 	}
 	t.pushLog(row)
+	// Non-blocking send: if the writer is stalled (e.g. SQLite under
+	// pressure), drop the row and count it rather than blocking this
+	// container's log-stream goroutine — with many containers a blocked
+	// handleLine would freeze every stream until ctx cancellation. The
+	// in-memory snapshot ring buffer above still keeps the line for crash
+	// evidence, and drops are reported by the writer ("log lines dropped").
 	select {
 	case m.lines <- row:
-	case <-ctx.Done():
+	default:
+		m.lineDropped.Add(1)
 	}
 }
 
@@ -379,6 +399,9 @@ func (m *Manager) writer(ctx context.Context) {
 	defer tick.Stop()
 	batch := make([]store.LogRow, 0, 1024)
 	flush := func() {
+		if n := m.lineDropped.Swap(0); n > 0 {
+			m.log.Warn("log lines dropped (write pressure)", "dropped", n)
+		}
 		if len(batch) == 0 {
 			return
 		}
@@ -540,7 +563,13 @@ func (m *Manager) handleEvent(ctx context.Context, ev docker.Event) {
 		}
 	case "die":
 		exit, _ := strconv.Atoi(ev.Actor.Attributes["exitCode"])
-		if t := m.get(id); t != nil && ev.TimeNano > 0 && t.created.After(time.Unix(0, ev.TimeNano)) {
+		// Compare against the container's real Docker start time (t.started),
+		// not when CapScope began tracking it: a die event timestamped before
+		// the current incarnation started is a historical death (e.g. replayed
+		// after downtime) and must not disturb the live tracker. With no
+		// parseable StartedAt, t.started equals t.created and behavior is as
+		// before.
+		if t := m.get(id); t != nil && ev.TimeNano > 0 && t.started.After(time.Unix(0, ev.TimeNano)) {
 			// Historical death (replayed after downtime): this container id has
 			// died and been recreated since, and the live tracker belongs to the
 			// new incarnation. Snapshot the old death without disturbing it.
@@ -669,9 +698,11 @@ func (m *Manager) rebuildTracker(ctx context.Context, id string) *tracker {
 	}
 	name := strings.TrimPrefix(insp.Name, "/")
 	app, replica := AppName(name, insp.Config.Labels)
+	now := time.Now()
 	t := &tracker{
 		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
-		tty: insp.Config.Tty, created: time.Now(), logDone: make(chan struct{}), cancel: func() {},
+		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
+		logDone: make(chan struct{}), cancel: func() {},
 		maxLogs: m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
 	}
 	rows, _ := m.st.QueryLogs(ctx, store.LogQuery{Container: id, Limit: m.cfg.SnapshotLogLines})
