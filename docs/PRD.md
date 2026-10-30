@@ -1,6 +1,6 @@
 # CapScope: Product Requirements Document
 
-Status: MVP implemented (v0.1). Owner: Kashvit. Last updated: 2026-10-28.
+Status: MVP implemented (v0.1); access-log pipeline landed (v0.4 scope, C9.1–C9.6); crash catch-up and restart-loop detection landed (v0.5 scope, C8 and X7). Owner: Kashvit. Last updated: 2026-10-30.
 
 ## 1. Summary
 
@@ -59,10 +59,17 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | C3 | Resume after stream drops or restarts without duplicating lines | M | Done |
 | C4 | Group containers into apps; unwrap CapRover `srv-captain--` names and replica ids | M | Done |
 | C5 | Sample CPU, memory, network, block I/O and pids at a configurable interval | M | Done |
-| C6 | Include and exclude filters by regex | M | Done |
+| C6 | Include and exclude filters by regex. Excluded containers are followed *for access logs only* (parsed rows, nothing in `logs`) so `EXCLUDE=^captain-` keeps the access dashboard alive without the log noise | M | Done |
 | C7 | Detect log level from JSON fields and level words | M | Done (heuristic) |
-| C8 | Capture exits that happened while CapScope was down | P1 | Not done |
-| C9 | Nginx access log parsing (status codes, latency, top paths) | P1 | Not done |
+| C8 | Capture exits that happened while CapScope was down | P1 | Done (v0.5: event cursor replayed on startup, gaps up to 24h; final lines read from the container's log file. Containers removed in the meantime cannot be rebuilt) |
+| C9 | Nginx access-log dashboard (GoAccess-derived scope, see below) | P1 | Done in part |
+| C9.1 | CLF "combined"/"common" parser with escaped-quote and extended-field tolerance | P1 | Done |
+| C9.2 | Auto-detection: proxy-named apps parse immediately; others probe and switch on when ~60% of the window parses (`ACCESS_LOG=auto/all/off`) | P1 | Done |
+| C9.3 | Narrow `access` table (ts, app, ip, method, path, status, bytes, referer, ua) with the log retention and lowest priority under the size cap | P1 | Done |
+| C9.4 | Dashboard aggregates via `/api/access`: totals, status-code distribution, top paths/IPs/referrers, hits-and-errors timeline; Access tab in the UI | P1 | Done |
+| C9.5 | Client-IP anonymization before storage (last IPv4 octet / IPv6 /48), `ANON_IPS=false` to disable | P1 | Done |
+| C9.6 | CSV export of parsed rows and of any log range | P1 | Done |
+| C9.7 | Per-request app attribution (routing/host map) and GeoIP country labels | P2 | Not done |
 | C10 | Agent mode for multi-node Swarm | P2 | Not done |
 
 ### 6.2 Storage and retention
@@ -73,9 +80,11 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | S2 | Retention by age per data type | M | Done |
 | S3 | Hard cap on database size; drop oldest logs first | M | Done |
 | S4 | Redact secrets before storage | M | Done (best effort) |
-| S5 | FTS5 full-text index for fast search at scale | P1 | Not done |
-| S6 | Normalize repeated container fields to cut bytes per row | P1 | Not done |
-| S7 | Per-app retention and size budgets | P1 | Not done |
+| S5 | FTS5 full-text index for fast search at scale | P1 | Done (v0.2: token/prefix index with LIKE fallback) |
+| S6 | Normalize repeated container fields to cut bytes per row | P1 | Deferred (see note below) |
+| S7 | Per-app retention and size budgets | P1 | Done (`APP_RETENTION` / `APP_MAX_MB`) |
+
+> **S6 deferral rationale.** Normalizing the repeated `container_id`/`container`/`app` columns out of `logs` would cut roughly 80 bytes per row (~20% of the measured ~400). But it is a breaking, high-risk refactor: it needs a data migration with the DB offline, a rebuild of the FTS5 index, a JOIN on every internal query, and it would break the documented `/api/sql` read surface (users write `SELECT ... FROM logs WHERE app=...` directly). The byte saving is better obtained first via the S7 per-app budgets, which are already done. Revisit S6 only with real-world evidence that row size (not total volume) is the limiting factor, and preserve the `logs` SQL surface with a compatibility view if it is done.
 
 ### 6.3 Viewing
 
@@ -87,9 +96,9 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | V4 | CPU and memory charts from 15 minutes to 7 days, per app or replica | M | Done |
 | V5 | Crash list and detail view with summary, facts, memory trend and last lines | M | Done |
 | V6 | Download a crash as Markdown | M | Done |
-| V7 | Merge several apps into one timeline; search by request id across apps | P1 | Not done |
-| V8 | Pretty-print JSON log lines | P1 | Not done |
-| V9 | Deploy markers on charts and log timeline | P1 | Not done |
+| V7 | Merge several apps into one timeline; search by request id across apps | P1 | Done (All-apps mode in the sidebar: one merged timeline; search runs across every app when it is selected) |
+| V8 | Pretty-print JSON log lines | P1 | Done (click a JSON line: it opens in a pretty-printed overlay) |
+| V9 | Deploy markers on charts and log timeline | P1 | Done (record via `POST /api/deploys` or the "Record deploy" button; markers on CPU/mem charts, inline in the log timeline, and the last deploy is shown on each crash) |
 | V10 | Shareable expiring permalinks to a time range | P2 | Not done |
 
 ### 6.4 Crash snapshots
@@ -102,18 +111,18 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | X4 | Rule-based summary of the likely meaning (137, 139, 143, 126, 127, 1, OOM) | M | Done |
 | X5 | Never store environment variables or labels | M | Done |
 | X6 | Rebuild a snapshot when a container died before it was tracked | M | Done (no metrics) |
-| X7 | Restart-loop detection and counters | P1 | Not done |
+| X7 | Restart-loop detection and counters | P1 | Done (v0.5: deaths counted per container in a configurable window; summary sentence and `↻` badge in the UI) |
 | X8 | Snapshot on health check failure | P2 | Not done |
 
 ### 6.5 Alerts (phase 2)
 
-| ID | Requirement | Pri |
-|---|---|---|
-| A1 | Dead-man alert: no logs from an app for N minutes | P1 |
-| A2 | Restart loop: more than N restarts in M minutes | P1 |
-| A3 | Metric threshold with duration (memory above 85 percent for 5 minutes) | P1 |
-| A4 | Log pattern rule (regex match count in a window) | P1 |
-| A5 | Channels: webhook, Telegram, Slack, Discord | P1 |
+| ID | Requirement | Pri | Status |
+|---|---|---|---|
+| A1 | Dead-man alert: no logs from an app for N minutes | P1 | Done |
+| A2 | Restart loop: more than N restarts in M minutes | P1 | Done |
+| A3 | Metric threshold with duration (memory above 85 percent for 5 minutes) | P1 | Done (cpu, mem bytes, mem_pct) |
+| A4 | Log pattern rule (regex match count in a window) | P1 | Done |
+| A5 | Channels: webhook, Telegram, Slack, Discord | P1 | Done |
 
 ### 6.6 Security and access
 
@@ -162,10 +171,10 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | Phase | Scope |
 |---|---|
 | **v0.1 (this MVP)** | Collection, SQLite history, live view, search, metrics, crash snapshots, auth, redaction, Docker and CapRover packaging |
-| **v0.2** | Alerts (A1 to A5), restart-loop detection (X7), deploy markers (V9), catch-up of exits missed while down (C8) |
-| **v0.3** | FTS5 search (S5), row normalization (S6), per-app budgets (S7), JSON pretty-print (V8), cross-app timeline (V7) |
-| **v0.4** | Nginx access log dashboard (C9), Prometheus `/metrics`, Markdown and JSON export of any log range |
-| **v1.0** | Agent mode for multi-node (C10), per-app permissions and audit (Z4), OIDC (Z5) |
+| **v0.2** | Alerts (A1 to A5), deploy markers (V9); shipped early: FTS5 search (S5), crash catch-up (C8), restart-loop detection (X7) |
+| **v0.3** | Row normalization (S6), per-app budgets (S7); shipped early: JSON pretty-print (V8), all-apps merged timeline (V7) |
+| **v0.4** | GoAccess-style access-log pipeline: parser, auto-detection, access table, dashboard panels (`/api/access` + Access tab), anonymized IPs, CSV exports of logs and parsed requests (C9.1 to C9.6). Still open: Prometheus `/metrics`, self-contained HTML incident export, any-range JSON export |
+| **v1.0** | Agent mode for multi-node (C10), per-app permissions and audit (Z4), OIDC (Z5), access-log app attribution and GeoIP (C9.7) |
 
 ## 11. Acceptance checklist for v0.1
 

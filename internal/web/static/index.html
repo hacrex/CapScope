@@ -96,6 +96,9 @@ body.sql .hide-sql{display:none}
 .ln:hover{background:var(--panel2)}
 .ln .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums;font-size:11px}
 .ln .c{color:var(--muted);flex:none;min-width:14px;text-align:right;font-size:11px}
+.ln.deploy{background:color-mix(in srgb,var(--accent) 8%,transparent);border-left:2px solid var(--accent)}
+.ln.deploy .c{color:var(--accent)}
+.ln.deploy .x{color:var(--accent);font-weight:600}
 .ln .x{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:pre}
 .ln.error .x{color:var(--err)}.ln.warn .x{color:var(--warn)}.ln.debug .x{color:var(--dbg)}
 .ln.e .t{border-left:2px solid var(--err);padding-left:6px;margin-left:-8px}
@@ -113,10 +116,16 @@ tr.row:hover{background:var(--panel2)}
 .k.oom{background:var(--err-bg);color:var(--err)}.k.crash{background:var(--warn-bg);color:var(--warn)}
 .k.killed{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
 .k.clean_exit{background:var(--ok-bg);color:var(--ok)}
+.k.loop{background:var(--warn-bg);color:var(--warn)}
 .empty{color:var(--muted);padding:48px 24px;text-align:center;border:1px dashed var(--line);border-radius:10px;margin:16px}
 .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 20px;margin:10px 0 16px;font-size:13px}
 .kv b{color:var(--muted);font-weight:500}
 pre.logbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;max-height:340px;font:12px/1.6 var(--mono);white-space:pre-wrap;margin:0}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;max-width:min(780px,92vw);max-height:82vh;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.modal pre{margin:0;padding:14px;overflow:auto;font:12px/1.6 var(--mono);white-space:pre-wrap;word-break:break-word}
+.ln.json .x{cursor:pointer}
 .sum{padding:12px 14px;border-left:2px solid var(--warn);background:var(--panel2);border-radius:0 8px 8px 0;font-size:13px;line-height:1.55}
 a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
@@ -139,7 +148,7 @@ h2{font-weight:600;letter-spacing:-.02em}
   <aside><h2>Apps</h2><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
-      <button data-t="logs" class="sel">Logs</button><button data-t="metrics">Metrics</button><button data-t="crashes">Crashes</button>
+      <button data-t="logs" class="sel">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
     </nav>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
       <div class="bar">
@@ -151,6 +160,7 @@ h2{font-weight:600;letter-spacing:-.02em}
         <button class="b on hide-sql" id="follow">Follow</button>
         <button class="b hide-sql" id="pause">Pause</button>
         <button class="b hide-sql" id="older">Load older</button>
+        <a class="chip hide-sql" id="logCSV" href="/api/logs/export" title="Download matching logs as CSV (whole app, all replicas, up to 200k lines)">Download CSV</a>
         <span class="chip" id="cnt"></span>
         <div class="pop" id="repPop" style="display:none"></div>
       </div>
@@ -161,13 +171,32 @@ h2{font-weight:600;letter-spacing:-.02em}
       <div class="bar" style="margin:-16px -16px 16px;border-top:0">
         <select id="range"><option value="15m">15 minutes</option><option value="1h" selected>1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select>
         <select id="mcont"><option value="">whole app</option></select>
+        <button class="b" id="mdeploy" title="Record a deploy marker so it shows on the charts and log timeline">Record deploy</button>
+        <span id="deploys" style="display:none"></span>
       </div>
       <div class="grid">
         <div class="card"><h3>CPU % (sum of cores used)</h3><canvas id="ccpu"></canvas></div>
         <div class="card"><h3>Memory</h3><canvas id="cmem"></canvas></div>
       </div>
     </div>
+    <div id="view-access" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:auto;padding:16px">
+      <div class="bar" style="margin:-16px -16px 16px;border-top:0">
+        <select id="arange"><option value="15m">15 minutes</option><option value="1h" selected>1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select>
+        <a class="chip" id="accCSV" href="/api/access/export?range=1h" title="Download parsed access rows as CSV for the selected range">Download CSV</a>
+      </div>
+      <div class="grid">
+        <div class="card"><h3>Totals</h3>
+          <div class="kv" id="atotals"></div>
+        </div>
+        <div class="card"><h3>Requests and errors over time</h3><canvas id="atl"></canvas></div>
+        <div class="card"><h3>Status codes</h3><table id="acodes"></table></div>
+        <div class="card"><h3>Top paths</h3><table id="apaths"></table></div>
+        <div class="card"><h3>Top client IPs</h3><table id="aips"></table></div>
+        <div class="card"><h3>Top referrers</h3><table id="arefs"></table></div>
+      </div>
+    </div>
     <div id="view-crashes" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
+    <div id="view-alerts" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
   </section>
 </main>
 <script>
@@ -191,11 +220,16 @@ $('#themeBtn').onclick=()=>{
   applyTheme(S.theme);
 };
 
-async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function api(path,init){const r=await fetch(path,Object.assign({cache:'no-store'},init||{}));if(!r.ok)throw new Error(await r.text());return r.json();}
 const fmtTime=ms=>{const d=new Date(ms);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
 const fmtDT=ms=>new Date(ms).toLocaleString();
 const mib=b=>(b/1048576).toFixed(b>1073741824?0:1)+' MiB';
 function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';}
+/* Surface a transient failure on the connection chip; refreshApps restores the real state. */
+let badT;
+function connBad(msg){const c=$('#conn');c.textContent=msg;c.className='chip bad';clearTimeout(badT);badT=setTimeout(refreshApps,4000);}
+/* Keep the Logs-tab CSV download in step with the current filters. */
+function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);}
 
 /* ---------- sidebar ---------- */
 async function refreshApps(){
@@ -206,35 +240,41 @@ async function refreshApps(){
     const names=new Set([...a.apps.map(x=>x.app),...Object.keys(live)]);
     const byName=Object.fromEntries(a.apps.map(x=>[x.app,x]));
     const box=$('#apps');box.innerHTML='';
-    [...names].sort().forEach(n=>{
-      const cs=live[n]||[],h=byName[n]||{};
-      const cpu=cs.reduce((t,x)=>t+x.cpu,0),mem=cs.reduce((t,x)=>t+x.mem,0);
-      const el=document.createElement('div');el.className='app'+(n===S.app?' sel':'');
+    const row=(n,label,cs,cpu,mem,errs,warns)=>{
+      const el=document.createElement('div');el.className='app'+(n===S.app?' sel':'');el.dataset.n=n;
       const nm=document.createElement('div');nm.className='n';
-      const t=document.createElement('span');t.textContent=n;nm.append(t);
+      const t=document.createElement('span');t.textContent=label;nm.append(t);
       const b=document.createElement('span');
-      if(h.errors_1h){const e=document.createElement('span');e.className='badge e';e.textContent=h.errors_1h;e.title='errors in the last hour';b.append(e,' ');}
-      if(h.warns_1h){const w=document.createElement('span');w.className='badge w';w.textContent=h.warns_1h;w.title='warnings in the last hour';b.append(w);}
+      if(errs){const e=document.createElement('span');e.className='badge e';e.textContent=errs;e.title='errors in the last hour';b.append(e,' ');}
+      if(warns){const w=document.createElement('span');w.className='badge w';w.textContent=warns;w.title='warnings in the last hour';b.append(w);}
       nm.append(b);
       const m=document.createElement('div');m.className='m';
       m.textContent=cs.length?`${cs.length} running  ${cpu.toFixed(1)}% cpu  ${mib(mem)}`:'not running';
       el.append(nm,m);el.onclick=()=>selectApp(n);box.append(el);
+    };
+    // "All apps": one merged timeline over every app (V7)
+    row('','All apps',S.conts,
+      S.conts.reduce((t,x)=>t+x.cpu,0),S.conts.reduce((t,x)=>t+x.mem,0),
+      a.apps.reduce((t,x)=>t+(x.errors_1h||0),0),a.apps.reduce((t,x)=>t+(x.warns_1h||0),0));
+    [...names].sort().forEach(n=>{
+      const cs=live[n]||[],h=byName[n]||{};
+      row(n,n,cs,cs.reduce((t,x)=>t+x.cpu,0),cs.reduce((t,x)=>t+x.mem,0),h.errors_1h||0,h.warns_1h||0);
     });
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
-    if(!S.app&&names.size)selectApp([...names].sort()[0]);
+    if(S.app===null&&names.size)selectApp([...names].sort()[0]);
     fillReplicas();fillMetricsContainers();
   }catch(e){$('#conn').textContent='offline';$('#conn').className='chip bad';}
 }
 function fillMetricsContainers(){
   const sel=$('#mcont'),cur=sel.value;
-  sel.innerHTML='<option value="">whole app</option>';
-  S.conts.filter(c=>c.app===S.app).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent='replica '+(c.replica||c.name);sel.append(o);});
+  sel.innerHTML='<option value="">'+(S.app?'whole app':'all apps')+'</option>';
+  appContainers().forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=(S.app?'':c.app+' / ')+'replica '+(c.replica||c.name);sel.append(o);});
   sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
 }
-function selectApp(n){S.app=n;S.sel.clear();document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.querySelector('span').textContent===n));fillReplicas();fillMetricsContainers();show();}
+function selectApp(n){S.app=n;S.sel.clear();document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===n));fillReplicas();fillMetricsContainers();show();}
 
 /* ---------- replica multi-select ---------- */
-function appContainers(){return S.conts.filter(c=>c.app===S.app);}
+function appContainers(){return S.app?S.conts.filter(c=>c.app===S.app):S.conts;}
 function updateReplicaBtn(){
   const n=S.sel.size,btn=$('#replicas');
   if(n===0)btn.textContent='All replicas ▾';
@@ -270,10 +310,14 @@ $('#crashchip').onclick=()=>{S.tab='crashes';document.querySelectorAll('#tabs bu
 function show(){
   $('#view-logs').style.display=S.tab==='logs'?'flex':'none';
   $('#view-metrics').style.display=S.tab==='metrics'?'flex':'none';
+  $('#view-access').style.display=S.tab==='access'?'flex':'none';
   $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
+  $('#view-alerts').style.display=S.tab==='alerts'?'block':'none';
   if(S.tab==='logs')restartLogs();else stopStreams();
   if(S.tab==='metrics')loadMetrics();
+  if(S.tab==='access')loadAccess();
   if(S.tab==='crashes')loadCrashes();
+  if(S.tab==='alerts')loadAlerts();
 }
 
 /* ---------- virtual list ---------- */
@@ -339,7 +383,7 @@ function applyMode(){
   document.body.classList.toggle('sql',on);
   $('#repPop').style.display='none';
   $('#q').placeholder=on?"SELECT ts,container,level,line FROM logs WHERE level='error' LIMIT 100":'Search logs';
-  $('#q').title=on?'One SELECT over tables: logs, metrics, containers, snapshots':'';
+  $('#q').title=on?'One SELECT over tables: logs, metrics, containers, snapshots, access':'';
 }
 $('#smode').addEventListener('change',applyMode);
 applyMode();
@@ -363,8 +407,9 @@ function stopStreams(){
 function restartLogs(){
   stopStreams();
   S.panes=[];
+  syncLogCSV();
   if(sqlOn()){runSQL();return;}
-  if(!S.app)return;
+  if(S.app===null)return;
   const sel=[...S.sel];
   if(sel.length>=2){
     $('#logs').style.display='none';$('#logs').replaceChildren();
@@ -469,7 +514,10 @@ async function startPane(pane){
     if(pane.es!==my)return;
     let maxId=0;for(const r of d.logs)if(r.id>maxId)maxId=r.id;
     pane.maxId=maxId;
-    pane.vl.reset(d.logs);
+    // V9: interleave deploy markers that fall inside the loaded window.
+    const oldest=d.logs.length?d.logs[0].ts:Date.now()-3600e3;
+    const deploys=await loadDeploys(null,oldest);
+    pane.vl.reset(mergeDeploys(d.logs,deploys));
     pane.loaded=true;
     flushPending(pane);
     pane.vl.toBottom();
@@ -477,7 +525,7 @@ async function startPane(pane){
 }
 function paneAppend(pane,rs,pin){
   const fresh=[];
-  for(const r of rs){if(r.id>pane.maxId){pane.maxId=r.id;fresh.push(r);}}
+  for(const r of rs){if(r.d||r.id>pane.maxId){if(!r.d)pane.maxId=r.id;fresh.push(r);}}
   if(fresh.length)pane.vl.append(fresh,pin&&S.follow&&pane.vl.atBottom());
   updateCnt();
 }
@@ -497,10 +545,20 @@ async function loadOlder(pane){
   const rows=pane.vl.rows;
   if(!rows.length)return;
   try{
-    const d=await api('/api/logs?'+params({limit:500,before_id:rows[0].id},pane.name));
-    if(d.logs.length)pane.vl.prepend(d.logs);
+    // rows[0] may be a deploy marker (no id); find the first real log row.
+    let beforeId=0;for(const r of rows){if(!r.d){beforeId=r.id;break;}}
+    if(!beforeId){updateCnt();return;}
+    const oldestMs=rows[0].ts;
+    const d=await api('/api/logs?'+params({limit:500,before_id:beforeId},pane.name));
+    if(d.logs.length){
+      const deploys=await loadDeploys(null,d.logs[0].ts);
+      // keep only markers older than what is already shown
+      const shown=new Set(rows.filter(r=>r.d).map(r=>r.ts));
+      const older=deploys.filter(dp=>dp.ts<oldestMs&&!shown.has(dp.ts));
+      pane.vl.prepend(mergeDeploys(d.logs,older));
+    }
     updateCnt();
-  }catch(e){}
+  }catch(e){connBad('load older failed');console.warn('capscope: load older failed',e);}
 }
 let deb;const redo=()=>{clearTimeout(deb);deb=setTimeout(restartLogs,300);};
 ['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',redo));
@@ -513,16 +571,129 @@ function highlight(el,text){
   while((j=lo.indexOf(ql,i))>=0){el.append(text.slice(i,j));const m=document.createElement('mark');m.textContent=text.slice(j,j+q.length);el.append(m);i=j+q.length;}
   el.append(text.slice(i));
 }
+/* JSON detection: cheap prefix check, then one parse (only for visible rows). */
+function asJSON(line){
+  const s=line.trim();
+  if(s.length<2||s[0]!=='{'||s.length>200000)return null;
+  try{const o=JSON.parse(s);return (o&&typeof o==='object')?o:null;}catch(e){return null;}
+}
+/* V8: pretty-print one JSON log line in an overlay (rows stay single-line). */
+function showJSON(line){
+  const o=asJSON(line);
+  if(!o)return;
+  const w=document.createElement('div');w.className='modal';
+  const box=document.createElement('div');box.className='box';
+  const mh=document.createElement('div');mh.className='mh';
+  const t=document.createElement('span');t.textContent='JSON log line';
+  const x=document.createElement('button');x.className='b';x.textContent='Close';
+  mh.append(t,x);
+  const pre=document.createElement('pre');pre.textContent=JSON.stringify(o,null,2);
+  box.append(mh,pre);w.append(box);
+  const close=()=>{w.remove();document.removeEventListener('keydown',esc);};
+  const esc=e=>{if(e.key==='Escape')close();};
+  x.onclick=close;
+  w.onclick=e=>{if(e.target===w)close();};
+  document.addEventListener('keydown',esc);
+  document.body.append(w);
+  x.focus();
+}
 function lineEl(r){
+  // V9: a deploy marker row rendered inline in the timeline.
+  if(r.d){
+    const m=document.createElement('div');m.className='ln deploy';
+    const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
+    const c=document.createElement('span');c.className='c';c.textContent='▲';
+    const x=document.createElement('span');x.className='x';
+    x.textContent='deploy '+(r.version||'')+(r.note?' — '+r.note:'');
+    x.title=(r.version||'')+(r.note?'\n'+r.note:'')+'\nrecorded '+fmtDT(r.ts);
+    m.append(t,c,x);return m;
+  }
   const d=document.createElement('div');d.className='ln '+(r.level||'')+(r.stream==='e'?' e':'');
   const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
   const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||r.container||'';
   const x=document.createElement('span');x.className='x';x.title=r.line;highlight(x,r.line);
+  if(asJSON(r.line)){
+    d.classList.add('json');
+    x.title='JSON log line — click to pretty-print';
+    x.onclick=()=>showJSON(r.line);
+  }
   d.append(t,c,x);return d;
 }
 
+/* ---------- access dashboard (GoAccess-style) ---------- */
+const fmtNum=n=>(n||0).toLocaleString();
+async function loadAccess(){
+  const range=$('#arange').value;
+  let d;
+  try{d=await api('/api/access?range='+range);}catch(e){connBad('access load failed');console.warn('capscope: access load failed',e);return;}
+  renderTotals($('#atotals'),d.totals||{});
+  drawAccessTimeline($('#atl'),d.timeline||[]);
+  fillCodes($('#acodes'),d.codes||[],(d.totals||{}).requests);
+  fillTop($('#apaths'),d.paths||[]);
+  fillTop($('#aips'),d.ips||[]);
+  fillTop($('#arefs'),d.refs||[]);
+}
+function renderTotals(host,t){
+  const errs=(t.client_err||0)+(t.server_err||0);
+  host.replaceChildren();
+  [['Requests',fmtNum(t.requests)],['4xx errors',fmtNum(t.client_err)],['5xx errors',fmtNum(t.server_err)],['Unique client IPs',fmtNum(t.unique_ips)],['Traffic',mib(t.bytes)]].forEach(([k,v])=>{
+    const a=document.createElement('b');a.textContent=k;const b=document.createElement('span');b.textContent=v;host.append(a,b);
+  });
+  if(!(t.requests||errs)){const e=document.createElement('div');e.style.color='var(--muted)';e.textContent='No access-log rows in this window yet. CapScope switches a container to access-log mode automatically once its stdout looks like web-server logs (or set ACCESS_LOG=all); excluded containers like the reverse proxy are followed only for this.';host.append(e);}
+}
+function fillCodes(host,codes,total){
+  host.replaceChildren();
+  if(!codes.length){host.innerHTML='<tr><td style="color:var(--muted)">no data</td></tr>';return;}
+  const tr=document.createElement('tr');['Code','Requests',''].forEach(h=>{const th=document.createElement('th');th.textContent=h;tr.append(th);});
+  host.append(tr);
+  for(const c of codes){
+    const tr=document.createElement('tr');
+    const n=c.n.toLocaleString();
+    const pct=total?Math.round(100*c.n/total):0;
+    tr.innerHTML='<td>'+c.code+'</td><td style="font-variant-numeric:tabular-nums">'+n+'</td>';
+    const td=document.createElement('td');td.innerHTML='<span class="k '+(c.code>=500?'oom':c.code>=400?'crash':'clean_exit')+'">'+pct+'%</span>';
+    tr.append(td);host.append(tr);
+  }
+}
+function fillTop(host,rows){
+  host.replaceChildren();
+  if(!rows.length){host.innerHTML='<tr><td style="color:var(--muted)">no data</td></tr>';return;}
+  const tr=document.createElement('tr');['Value','Hits','Errors'].forEach(h=>{const th=document.createElement('th');th.textContent=h;tr.append(th);});
+  host.append(tr);
+  for(const r of rows.slice(0,20)){
+    const tr=document.createElement('tr');tr.className='row';
+    const td=document.createElement('td');td.textContent=r.key;td.style.maxWidth='260px';td.title=r.key;
+    const n=document.createElement('td');n.textContent=fmtNum(r.hits);n.style.fontVariantNumeric='tabular-nums';
+    const e=document.createElement('td');
+    if(r.errors){e.textContent=fmtNum(r.errors);e.style.color='var(--err)';}
+    tr.append(td,n,e);host.append(tr);
+  }
+}
+function drawAccessTimeline(canvas,pts){
+  const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
+  canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
+  const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
+  g.clearRect(0,0,w,h);
+  if(!pts.length){g.fillStyle=col('--muted');g.font='13px system-ui';g.fillText('No requests in this range yet',12,24);return;}
+  const L=52,R=8,T=8,B=20,x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1;
+  const max=Math.max(1,...pts.map(p=>Math.max(p.hits,p.errors)))*1.15;
+  const X=t=>L+(t-x0)/(x1-x0||1)*(w-L-R),Y=v=>T+(1-v/max)*(h-T-B);
+  g.strokeStyle=col('--line');g.fillStyle=col('--muted');g.font='11px system-ui';g.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=max*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(String(Math.round(v)),4,y+4);}
+  g.fillText(fmtTime(x0).slice(0,5),L,h-4);const e=fmtTime(x1).slice(0,5);g.fillText(e,w-R-g.measureText(e).width,h-4);
+  const line=(key,color)=>{
+    g.strokeStyle=color;g.lineWidth=1.6;g.beginPath();
+    pts.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  };
+  line('hits',col('--accent'));
+  line('errors',col('--err'));
+}
+function syncAccCSV(){$('#accCSV').href='/api/access/export?range='+$('#arange').value;}
+$('#arange').onchange=()=>{syncAccCSV();loadAccess();};
+syncAccCSV();
+
 /* ---------- metrics ---------- */
-function draw(canvas,pts,key,fmt,limitKey){
+function draw(canvas,pts,key,fmt,limitKey,deploys){
   const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
   canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
   const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
@@ -536,17 +707,88 @@ function draw(canvas,pts,key,fmt,limitKey){
   for(let i=0;i<=4;i++){const v=max*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(fmt(v),4,y+4);}
   g.fillText(fmtTime(x0).slice(0,5),L,h-4);const e=fmtTime(x1).slice(0,5);g.fillText(e,w-R-g.measureText(e).width,h-4);
   if(lim>0){g.strokeStyle=col('--err');g.setLineDash([5,4]);g.beginPath();g.moveTo(L,Y(lim));g.lineTo(w-R,Y(lim));g.stroke();g.setLineDash([]);}
+  // V9: deploy markers — a dashed vertical line with a ▲ flag and version label.
+  if(deploys&&deploys.length){
+    g.save();g.font='10px system-ui';
+    for(const d of deploys){
+      if(d.ts<x0||d.ts>x1)continue;
+      const x=X(d.ts);
+      g.strokeStyle=col('--accent');g.setLineDash([3,3]);g.lineWidth=1;
+      g.beginPath();g.moveTo(x,T);g.lineTo(x,h-B);g.stroke();g.setLineDash([]);
+      g.fillStyle=col('--accent');g.beginPath();g.moveTo(x,T);g.lineTo(x-4,T-0);g.lineTo(x+4,T);g.closePath();g.fill();
+      const lab=d.version||d.app;const tw=g.measureText(lab).width;
+      let lx=x+4;if(lx+tw>w-R)lx=x-4-tw;
+      g.fillText(lab,lx,T+9);
+    }
+    g.restore();
+  }
   g.strokeStyle=col('--accent');g.lineWidth=1.6;g.beginPath();
   pts.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
 }
 async function loadMetrics(){
-  if(!S.app)return;
-  const p=new URLSearchParams({app:S.app,range:$('#range').value});if($('#mcont').value)p.set('container',$('#mcont').value);
+  if(S.app===null)return;
+  const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('range',$('#range').value);if($('#mcont').value)p.set('container',$('#mcont').value);
   const d=await api('/api/metrics?'+p);
-  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%');
-  draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit');
+  const deploys=await loadDeploys($('#range').value);
+  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys);
+  draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit',deploys);
+  renderDeployList(deploys);
 }
 $('#range').onchange=loadMetrics;$('#mcont').onchange=loadMetrics;
+$('#mdeploy').onclick=recordDeploy;
+
+/* ---------- deploy markers (V9) ---------- */
+const RANGE_MS={'15m':15*60e3,'1h':3600e3,'6h':6*3600e3,'24h':24*3600e3,'7d':7*24*3600e3};
+async function loadDeploys(range,sinceMs){
+  const ms=RANGE_MS[range]||3600e3;const since=sinceMs||(Date.now()-ms);
+  const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('since',since);p.set('limit','200');
+  try{const d=await api('/api/deploys?'+p);return (d.deploys||[]).slice().reverse();} // oldest→newest for drawing
+  catch(e){console.warn('capscope: deploys load failed',e);return [];}
+}
+/* Interleave deploy marker rows into ascending-ts log rows by timestamp. */
+function mergeDeploys(rows,deploys){
+  if(!deploys||!deploys.length)return rows;
+  const out=[];let i=0;
+  for(const r of rows){
+    while(i<deploys.length&&deploys[i].ts<=r.ts){out.push(deployRow(deploys[i++]));}
+    out.push(r);
+  }
+  while(i<deploys.length)out.push(deployRow(deploys[i++]));
+  return out;
+}
+function deployRow(d){return {d:1,ts:d.ts,version:d.version,note:d.note,app:d.app};}
+function renderDeployList(deploys){
+  const host=$('#deploys');if(!host)return;
+  host.replaceChildren();
+  if(!deploys.length){host.style.display='none';return;}
+  host.style.display='';
+  const lab=document.createElement('span');lab.className='chip';lab.textContent=deploys.length+' deploy'+(deploys.length>1?'s':'')+' in range';
+  host.append(lab);
+  deploys.slice().reverse().forEach(d=>{ // newest first
+    const c=document.createElement('span');c.className='k clean_exit';c.style.cursor='default';
+    c.textContent=(d.version||d.app)+' · '+ago(d.ts);
+    c.title=(d.version||'')+(d.note?'\n'+d.note:'')+'\n'+fmtDT(d.ts);
+    host.append(c);
+  });
+}
+async function recordDeploy(){
+  if(!S.app){alert('Select an app first (deploy markers are per app).');return;}
+  const version=prompt('Version or label for this deploy of "'+S.app+'":');
+  if(version===null)return;
+  try{
+    const created=await api('/api/deploys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:S.app,version:version.trim()})});
+    if(S.tab==='metrics')loadMetrics();
+    if(S.tab==='logs')insertLiveDeployMarkers(created);
+    if(S.tab==='crashes')loadCrashes();
+  }catch(e){alert('Record failed: '+(e.message||e));}
+}
+/* Append a freshly recorded deploy as a marker row to the visible log pane. */
+function insertLiveDeployMarkers(created){
+  if(!created||!S.panes.length)return;
+  const row=deployRow({ts:created.ts,version:created.version,note:created.note,app:created.app});
+  for(const p of S.panes){if(p.vl)p.vl.append([row],true);}
+  updateCnt();
+}
 
 /* ---------- crashes ---------- */
 async function loadCrashes(){
@@ -562,7 +804,9 @@ async function loadCrashes(){
   d.snapshots.forEach(s=>{
     const tr=document.createElement('tr');tr.className='row';
     const cells=[fmtDT(s.ts)+' ('+ago(s.ts)+')',s.app,null,String(s.exit_code),s.summary];
-    cells.forEach((c,i)=>{const td=document.createElement('td');if(i===2){const k=document.createElement('span');k.className='k '+s.kind;k.textContent=s.kind.replace('_',' ');td.append(k);}else td.textContent=c;tr.append(td);});
+    cells.forEach((c,i)=>{const td=document.createElement('td');if(i===2){const k=document.createElement('span');k.className='k '+s.kind;k.textContent=s.kind.replace('_',' ');td.append(k);
+      if(s.restarts_window>=2){const rp=document.createElement('span');rp.className='k loop';rp.textContent='↻ '+s.restarts_window;rp.title=s.restarts_window+' deaths of this container inside the restart-loop window';rp.style.marginLeft='6px';td.append(rp);}
+    }else td.textContent=c;tr.append(td);});
     tr.onclick=()=>openCrash(s.id);tb.append(tr);
   });
   box.append(tb);
@@ -574,7 +818,15 @@ async function openCrash(id){
   const h=document.createElement('h2');h.textContent=`${s.app}: ${s.kind.replace('_',' ')} (exit ${s.exit_code})`;
   const sum=document.createElement('div');sum.className='sum';sum.textContent=s.summary;
   const kv=document.createElement('div');kv.className='kv';
-  [['Time',fmtDT(s.ts)],['Container',s.container],['Image',s.image],['Uptime',s.uptime_sec+'s'],['Restart count',s.restart_count],['Memory limit',s.mem_limit?mib(s.mem_limit):'none'],['Docker error',s.error||'none']].forEach(([k,v])=>{const a=document.createElement('b'),b=document.createElement('span');a.textContent=k;b.textContent=v;kv.append(a,b);});
+  const cells=[['Time',fmtDT(s.ts)],['Container',s.container],['Image',s.image],['Uptime',s.uptime_sec+'s'],['Restart count',s.restart_count],['Memory limit',s.mem_limit?mib(s.mem_limit):'none'],['Docker error',s.error||'none']];
+  if(s.die_ts)cells.splice(1,0,['Died at',fmtDT(s.die_ts)]);
+  if(s.restarts_window>=2)cells.push(['Deaths in window',s.restarts_window+' — restart loop']);
+  if(s.deploy){
+    const gapMs=s.ts-s.deploy.ts,gap=Math.round(gapMs/60000);
+    const near=gapMs<15*60000; // deploy within 15 min before the crash
+    cells.push(['Last deploy',(s.deploy.version||'')+' · '+fmtDT(s.deploy.ts)+(gap>=0?' ('+gap+'m before crash)':'')+(near?' — ⚠ recent deploy':'')]);
+  }
+  cells.forEach(([k,v])=>{const a=document.createElement('b'),b=document.createElement('span');a.textContent=k;b.textContent=v;kv.append(a,b);});
   const card=document.createElement('div');card.className='card';card.innerHTML='<h3>Memory before death</h3><canvas id="cs"></canvas>';
   const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
   const pre=document.createElement('pre');pre.className='logbox';
@@ -584,12 +836,69 @@ async function openCrash(id){
 }
 async function crashChip(){
   try{const d=await api('/api/snapshots?limit=200');const n=d.snapshots.filter(s=>Date.now()-s.ts<864e5).length;
-    const c=$('#crashchip');c.style.display=n?'':'none';c.textContent=n+' crash'+(n>1?'es':'')+' in 24h';c.className='chip bad';}catch(e){}
+    const c=$('#crashchip');c.style.display=n?'':'none';c.textContent=n+' crash'+(n>1?'es':'')+' in 24h';c.className='chip bad';}catch(e){console.warn('capscope: crash chip refresh failed',e);}
+}
+
+/* ---------- alerts ---------- */
+const ALERT_KIND={deadman:'Dead man',restart_loop:'Restart loop',metric:'Metric',log_pattern:'Log pattern'};
+async function loadAlerts(){
+  const box=$('#view-alerts');box.innerHTML='';
+  let meta={rules:[],channels:[],enabled:false};
+  try{meta=await api('/api/alerts/rules');}catch(e){connBad('alerts meta failed');}
+  const bar=document.createElement('div');bar.className='bar';bar.style.marginBottom='12px';
+  const t=document.createElement('button');t.className='b';t.textContent='Send test alert';
+  t.disabled=!meta.channels.length;
+  t.title=meta.channels.length?'Send a test message to: '+meta.channels.join(', '):'No notification channels configured (set ALERT_WEBHOOK_URL etc.)';
+  t.onclick=async()=>{
+    try{const d=await api('/api/alerts/test',{method:'POST'});
+      alert('Channel results:\n'+Object.entries(d.results).map(([k,v])=>k+': '+v).join('\n'));
+    }catch(e){alert('Test failed: '+(e.message||e));}
+  };
+  bar.append(t);box.append(bar);
+
+  const rc=document.createElement('div');rc.className='card';
+  rc.innerHTML='<h3>Rules</h3>';
+  if(!meta.rules.length){
+    const p=document.createElement('div');p.className='empty';
+    p.textContent=meta.enabled?'No rules loaded. Create a JSON rules file (ALERTS_FILE) with deadman, restart_loop, metric or log_pattern rules.':'Alerting is off: no rules file found.';
+    rc.append(p);
+  }else{
+    const tb=document.createElement('table');tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th></tr>';
+    meta.rules.forEach(r=>{
+      const tr=document.createElement('tr');
+      const cond=r.kind==='deadman'?`no logs for ${r.for}`
+        :r.kind==='restart_loop'?`> ${r.count} deaths in ${r.window}`
+        :r.kind==='metric'?`${r.metric} ${r.op} ${r.value} for ${r.for}`
+        :`"${r.pattern}" ≥ ${r.hits} hits in ${r.window}`;
+      [[r.name],[ALERT_KIND[r.kind]||r.kind],[(r.apps||[]).join(', ')||'all'],[cond],[r.repeat||'']].flat().forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      tb.append(tr);
+    });
+    rc.append(tb);
+  }
+  box.append(rc);
+
+  const ac=document.createElement('div');ac.className='card';ac.style.marginTop='12px';
+  ac.innerHTML='<h3>Recent alerts</h3>';
+  let hist={alerts:[]};
+  try{hist=await api('/api/alerts?limit=100');}catch(e){connBad('alerts history failed');}
+  if(!hist.alerts.length){
+    const p=document.createElement('div');p.className='empty';p.textContent='No alerts have fired yet.';ac.append(p);
+  }else{
+    const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>Rule</th><th>App</th><th>Kind</th><th>Message</th></tr>';
+    hist.alerts.forEach(a=>{
+      const tr=document.createElement('tr');
+      const cells=[fmtDT(a.ts)+' ('+ago(a.ts)+')',a.rule,a.app,ALERT_KIND[a.kind]||a.kind,a.message];
+      cells.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      tb.append(tr);
+    });
+    ac.append(tb);
+  }
+  box.append(ac);
 }
 
 refreshApps().then(()=>crashChip());
 setInterval(refreshApps,10000);setInterval(crashChip,60000);
-addEventListener('resize',()=>{if(S.tab==='metrics')loadMetrics();if(S.tab==='logs')for(const p of S.panes)p.vl.schedule();});
+addEventListener('resize',()=>{if(S.tab==='metrics')loadMetrics();if(S.tab==='access')loadAccess();if(S.tab==='logs')for(const p of S.panes)p.vl.schedule();});
 </script>
 </body>
 </html>

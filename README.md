@@ -18,10 +18,10 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 | Live log tail (SSE) | Yes — virtual-scrolled, 100k lines in memory | Yes |
 | Log storage | SQLite, retention + size cap (`7d` / `1 GB` default) | **None by design** — live view only, no offline search |
 | Search history after redeploy/restart | **Yes** — FTS5 token/prefix index with `LIKE` fallback + regex | No (by design; regex over the live buffer only) |
-| SQL queries over logs | Yes — single validated `SELECT` (or `WITH … SELECT`) over `logs`, `metrics`, `containers`, `snapshots` | Yes — embedded SQL engine |
+| SQL queries over logs | Yes — single validated `SELECT` (or `WITH … SELECT`) over `logs`, `metrics`, `containers`, `snapshots`, `access` | Yes — embedded SQL engine |
 | Split screen | Yes — up to 4 replicas side by side | Yes |
 | CPU / memory charts | Yes — plus persisted history in SQLite | Yes — live stats with historical visualizations |
-| Crash / OOM snapshots | **Yes** — exit code, OOM flag, uptime, restarts, memory trend, last N log lines, plain-language summary, Markdown export | No |
+| Crash / OOM snapshots | **Yes** — exit code, OOM flag, uptime, restarts, memory trend, last N log lines, plain-language summary, Markdown export; restart-loop detection, and deaths missed while CapScope was down are rebuilt on startup | No |
 | Secret redaction before storage | Yes (JWT, bearer, AWS keys, PEM, URL creds, `password=`/`token=`) | No (nothing is stored) |
 | Authentication | Basic auth, refuses to start without a password | Multi-user file auth + forward-proxy auth (Authelia etc.) |
 | Multi-host | Single node (per-node agent on roadmap) | **Yes** — agent mode |
@@ -42,9 +42,10 @@ Dozzle ([dozzle.dev](https://dozzle.dev), `amir20/dozzle`) is the reference for 
 
 | Area | Features |
 |---|---|
-| Live view | Per-app sidebar (CapRover `srv-captain--` names are unwrapped), virtual-scrolled live log tail over SSE (100k lines in memory), pause, follow, load older, split view for comparing up to 4 replicas side by side |
-| Search | FTS5 token/prefix search over persisted logs with substring fallback, regex, or **SQL** (`SELECT` over `logs`, `metrics`, `containers`, `snapshots` via `/api/sql`); filter by level, stream (stdout/stderr) and replica |
+| Live view | Per-app sidebar (CapRover `srv-captain--` names are unwrapped, plus an **All apps** entry merging every timeline), virtual-scrolled live log tail over SSE (100k lines in memory), pause, follow, load older, split view for comparing up to 4 replicas side by side, click a JSON log line to pretty-print it |
+| Search | FTS5 token/prefix search over persisted logs with substring fallback, regex, or **SQL** (`SELECT` over `logs`, `metrics`, `containers`, `snapshots`, `access` via `/api/sql`); filter by level, stream (stdout/stderr) and replica |
 | History | Logs and CPU/memory samples persisted in SQLite with age and size retention |
+| Access dashboard | GoAccess-style panels built on the reverse proxy's access logs: status codes, top paths, client IPs (anonymized by default), referrers, requests/errors timeline, CSV export |
 | Crash snapshots | Exit code, OOM flag, restart count, uptime, last N log lines, last N metric samples, rule-based summary, Markdown export |
 | Safety | Basic auth required by default, secret redaction before storage, read-only Docker access possible via socket proxy |
 
@@ -74,6 +75,8 @@ docker run -d --name capscope -p 8080:8080 \
 
 CapRover: see [docs/CAPROVER.md](docs/CAPROVER.md).
 
+Other platforms: see [deploy/README.md](deploy/README.md) for Coolify, Dokploy, Dokku, Portainer and any generic Docker host.
+
 ## Configuration
 
 All settings are environment variables.
@@ -93,11 +96,47 @@ All settings are environment variables.
 | `INITIAL_TAIL` | `200` | Lines to backfill the first time a container is seen |
 | `MAX_LINE_BYTES` | `16384` | Longer lines are truncated |
 | `REDACT` | `true` | Mask JWTs, bearer tokens, `password=`/`token=` style values, URL credentials, AWS keys, PEM keys |
+| `ACCESS_LOG` | `auto` | Web-server access-log parsing: `auto` (proxy-named apps always on, others probed), `all`, `off`. Parses nginx combined/common (CapRover's `captain-nginx`) |
+| `ANON_IPS` | `true` | Zero the last octet of stored access-log client IPs (IPv6 cut to /48). `false` keeps the original IP |
 | `SNAPSHOT_KINDS` | `crash,oom` | Which stops create a snapshot: `crash`, `oom`, `killed`, `clean_exit` |
 | `SNAPSHOT_LOG_LINES` | `200` | Log lines kept in each snapshot |
 | `SNAPSHOT_METRIC_SAMPLES` | `60` | Metric samples kept in each snapshot (10 minutes at the default interval) |
+| `RESTART_LOOP_COUNT` | `3` | Deaths of one container inside the window that flag a restart loop (minimum 2; the summary says so and the UI shows a `↻` badge) |
+| `RESTART_LOOP_WINDOW` | `5m` | The window counted by `RESTART_LOOP_COUNT` (minimum `1m`) |
 | `INCLUDE` / `EXCLUDE` | none | Regexes matched against container name and app name |
+| `APP_RETENTION` | none | Per-app log retention, tighter than `LOG_RETENTION`: comma-separated `app=duration`, e.g. `web=3d,api=1d`. The global retention is still the upper bound |
+| `APP_MAX_MB` | none | Per-app log-size budget: comma-separated `app=megabytes`, e.g. `web=500,api=200`. The oldest logs of an app over budget are dropped first, before the global `MAX_DB_MB` cap |
+| `ALERTS_FILE` | `/data/alerts.json` | JSON alert-rules file, hot-reloaded (no restart needed). Missing file disables alerting |
+| `ALERTS_INTERVAL` | `1m` | How often alert rules are evaluated (minimum `10s`) |
+| `ALERT_WEBHOOK_URL` | none | Generic JSON webhook: receives `POST {"text": "..."}` |
+| `ALERT_TELEGRAM_TOKEN` / `ALERT_TELEGRAM_CHAT_ID` | none | Telegram Bot API (must be set together) |
+| `ALERT_SLACK_URL` | none | Slack incoming-webhook URL |
+| `ALERT_DISCORD_URL` | none | Discord webhook URL |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+
+## Alert rules
+
+Alerts are driven by a JSON file (`ALERTS_FILE`), edited in place and picked up on the next evaluation tick. Each rule has a `name`, a `kind`, and an optional `apps` list (empty means every app). `repeat` (default `30m`) is the silence between two notifications of the same rule and app.
+
+```json
+{
+  "rules": [
+    { "name": "api-silent", "kind": "deadman", "apps": ["api"], "for": "5m" },
+    { "name": "api-looping", "kind": "restart_loop", "apps": ["api"], "count": 3, "window": "10m" },
+    { "name": "api-mem", "kind": "metric", "apps": ["api"], "metric": "mem_pct", "op": "gt", "value": 85, "for": "5m" },
+    { "name": "api-5xx", "kind": "log_pattern", "apps": ["api"], "pattern": "status=5\\d\\d", "hits": 5, "window": "5m" }
+  ]
+}
+```
+
+| Kind | Meaning | Key fields |
+|---|---|---|
+| `deadman` | No logs from the app for `for` (A1) | `for` |
+| `restart_loop` | More than `count` deaths in `window` (A2) | `count`, `window` |
+| `metric` | `metric` past `value` for the whole `for` window (A3). `metric` is `cpu` (%), `mem` (bytes) or `mem_pct` (% of limit); `op` is `gt` or `lt` | `metric`, `op`, `value`, `for` |
+| `log_pattern` | Regex `pattern` matched `hits` or more lines in `window` (A4) | `pattern`, `hits`, `window` |
+
+Channels (A5) are configured with the `ALERT_*` env vars above and receive a one-line message. The **Alerts** tab lists loaded rules and recent firings, and its **Send test alert** button pushes a test message through every configured channel so you can verify a webhook before an incident.
 
 ## Snapshot kinds
 
@@ -113,21 +152,24 @@ All settings are environment variables.
 ```
 cmd/capscope        main: wiring, graceful shutdown
 cmd/seed-demo       fake data generator for `make demo`
+internal/access     web-server access-log parser, auto-detection, IP anonymization
 internal/config     env parsing and validation
 internal/docker     minimal Docker Engine API client (unix and tcp), stream decoding
 internal/collector  container discovery, log and stats followers, events, snapshots, retention loop
 internal/store      SQLite schema, queries, pruning
 internal/hub        live fan-out to SSE clients
 internal/logproc    secret redaction and log level detection
+internal/alerts     alert rules, evaluation engine, notification channels
 internal/api        HTTP API, SSE, auth, Markdown export
 internal/web        embedded single-page UI
+deploy/             platform guides: Coolify, Dokploy, Dokku, Portainer, generic docker-compose
 docs/               PRD, architecture, CapRover guide, API reference
 ```
 
 ## Limits to know about
 
 - **Single node.** On a multi-node Swarm you only see containers on the node CapScope runs on. A per-node agent is on the roadmap.
-- **Crashes while CapScope is down are not captured.** It follows Docker events live. After a restart it resumes logs from the last stored timestamp but does not reconstruct earlier deaths.
+- **Crashes while CapScope is down are caught only if the container still exists.** On startup it replays Docker events from the last processed event (up to 24 hours back, as far as the daemon's event buffer goes) and rebuilds the missing snapshots, reading the final log lines straight from the container's log file. A container that was removed while it was down (`docker run --rm`, swarm task cleanup) leaves nothing to rebuild from, and crashes older than the daemon's event buffer are invisible.
 - **Log driver.** The Docker logs API only works for the `json-file`, `local` and `journald` drivers. CapRover uses `json-file` by default.
 - **Search.** Plain-text search uses an FTS5 index (token and prefix matching) with a `LIKE` fallback for mid-word substrings. Regex search scans up to the newest 200,000 matching candidates and is not indexed. SQL mode accepts one read statement per call (5 s deadline, 5000-row cap) — see docs/API.md.
 - **Level detection and redaction are heuristics**, not guarantees. Do not rely on redaction as your only protection for secrets in logs.
@@ -135,7 +177,7 @@ docs/               PRD, architecture, CapRover guide, API reference
 
 ## What was verified
 
-Unit tests cover log stream decoding, stats math, redaction, level detection, SQLite queries (including FTS5 search and its LIKE fallback), read-only SQL validation (writes and stacked statements rejected, table unharmed) and the `/api/sql` endpoint, retention and size cap, the HTTP API and SSE. An end-to-end test runs the collector against a fake Docker daemon that emits an OOM and a die event and checks the saved snapshot. The earlier UI was exercised in headless Chromium against seeded data; the virtual-scroll/split-pane/theme/SQL rewrite has not yet been re-verified in a browser. It has **not** yet been run against a real Docker daemon or a CapRover Swarm, and the static-scratch Docker image has not yet been built, so expect to shake out small issues on first deploy.
+Unit tests cover log stream decoding, stats math, redaction, level detection, SQLite queries (including FTS5 search and its LIKE fallback), read-only SQL validation (writes and stacked statements rejected, table unharmed) and the `/api/sql` endpoint, retention and size cap (including the parsed `access` table and the per-app retention and byte budgets), access-log parsing and container auto-detection, the `/api/access`, `/api/logs/export` and `/api/access/export` endpoints, alert rule parsing and validation, all four alert kinds (deadman, restart loop, metric threshold with duration, log pattern) including their negative cases (fresh logs, below-count, a cool sample breaking the window, stale data, no-limit `mem_pct`), the silence window, rules-file hot reload, all four channel payload shapes against local HTTP servers, the `/api/alerts`, `/api/alerts/rules` and `/api/alerts/test` endpoints, and deploy recording and lookup (`/api/deploys`, the preceding-deploy attach on a snapshot, and its Markdown export line). End-to-end tests run the collector against fake Docker daemons: one emits an OOM and a die event and checks the saved snapshot, another proves that a death replayed after downtime is rebuilt from Docker's log file, deduplicated when the event arrives twice, and counted into the restart-loop window. A two-container fake proves excluded (access-only) containers feed the access table without leaking into the logs table. The whole suite (`go test -tags fts5 ./...`, cgo build) was run and passes; `go vet` is clean. That run caught two real bugs (the `/api/access` aggregates were missing `FROM access`, and the access timeline query bound its bucket arguments in the wrong order), so treat any feature that has never had a failing test as untested. The earlier UI was exercised in headless Chromium against seeded data; the virtual-scroll/split-pane/theme/SQL rewrite and the new Access, Alerts and deploy-marker features have not yet been re-verified in a browser. The alert channels have only been exercised against local test servers, not real Telegram/Slack/Discord endpoints. It has **not** yet been run against a real Docker daemon or a CapRover Swarm, and the static-scratch Docker image has not yet been built, so expect to shake out small issues on first deploy.
 
 ## License
 

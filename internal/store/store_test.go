@@ -68,7 +68,8 @@ func TestLogsInsertQueryFilters(t *testing.T) {
 func TestFTSSearch(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	now := time.Now()
+	// Anchor in the past: a future-dated row would survive any retention prune.
+	now := time.Now().Add(-time.Minute)
 	rows := []LogRow{
 		row("web", "connected to database primary", "info", now),
 		row("web", "ERROR db down", "error", now.Add(time.Second)),
@@ -206,6 +207,66 @@ func TestPruneAndSizeCap(t *testing.T) {
 	after, _ := s.UsedBytes(ctx)
 	if after >= before {
 		t.Errorf("size cap did not shrink live data: before=%d after=%d", before, after)
+	}
+}
+
+func TestSnapshotCatchUpColumns(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Hour).UnixMilli()
+	for i, dieMs := range []int64{base, base + 60_000, base + 120_000} {
+		if _, err := s.InsertSnapshot(Snapshot{
+			TS: dieMs, DieTS: dieMs, Kind: "crash", ContainerID: "c1", Container: "web.1", App: "web",
+			ExitCode: 1, RestartsWindow: i + 1, Summary: "x",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// dedupe key: same container and death time
+	if ok, err := s.SnapshotExists(ctx, "c1", base+60_000); err != nil || !ok {
+		t.Fatalf("SnapshotExists = %v err=%v, want true", ok, err)
+	}
+	if ok, _ := s.SnapshotExists(ctx, "c1", base+999_000); ok {
+		t.Fatal("SnapshotExists true for a death that was never stored")
+	}
+	if ok, _ := s.SnapshotExists(ctx, "c1", 0); ok {
+		t.Fatal("die_ts 0 (unknown) must never deduplicate")
+	}
+	// restart-loop counting
+	if n, err := s.CountDeathsSince(ctx, "c1", base-1); err != nil || n != 3 {
+		t.Fatalf("CountDeathsSince = %d err=%v, want 3", n, err)
+	}
+	if n, _ := s.CountDeathsSince(ctx, "c1", base+60_000); n != 2 {
+		t.Fatalf("window start must be inclusive: got %d, want 2", n)
+	}
+	if n, _ := s.CountDeathsSince(ctx, "other", base-1); n != 0 {
+		t.Fatalf("another container must not be counted: %d", n)
+	}
+	// the new columns reach both the light list and the detail read
+	list, _ := s.ListSnapshots(ctx, "", 10)
+	if len(list) != 3 || list[0].DieTS != base+120_000 || list[0].RestartsWindow != 3 {
+		t.Fatalf("light rows lost new columns: %+v", list[0])
+	}
+	sn, err := s.GetSnapshot(ctx, list[len(list)-1].ID)
+	if err != nil || sn.DieTS != base || sn.RestartsWindow != 1 {
+		t.Fatalf("detail lost new columns: %+v err=%v", sn, err)
+	}
+}
+
+func TestStateKV(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	if v := s.StateGet(ctx, "event_cursor_ns"); v != 0 {
+		t.Fatalf("unset key = %d, want 0", v)
+	}
+	if err := s.StateSet(ctx, "event_cursor_ns", 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StateSet(ctx, "event_cursor_ns", 43); err != nil {
+		t.Fatal(err)
+	}
+	if v := s.StateGet(ctx, "event_cursor_ns"); v != 43 {
+		t.Fatalf("upsert = %d, want 43", v)
 	}
 }
 

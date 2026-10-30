@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"capscope/internal/access"
 	"capscope/internal/store"
 )
 
@@ -17,6 +18,8 @@ type tracker struct {
 	created                       time.Time
 	cancel                        context.CancelFunc
 	logDone                       chan struct{} // closed when the log follower has finished
+	accessOnly                    bool          // excluded container kept only for access-log parsing
+	acc                           *access.Stream
 
 	mu      sync.Mutex
 	logs    []store.LogRow

@@ -43,4 +43,23 @@ func main() {
 	_, _ = st.InsertSnapshot(store.Snapshot{TS: now.Add(-20 * time.Minute).UnixMilli(), Kind: "oom", ContainerID: "shopc0", Container: "srv-captain--shop.1.old", App: "shop", Image: "shop:1.4", ExitCode: 137, OOMKilled: true, RestartCount: 2, MemLimit: 512 << 20, UptimeSec: 5400,
 		Summary: "Killed by the kernel OOM killer. Peak sampled memory was 490.0 MiB of a 512.0 MiB limit. Raise the memory limit or look for a leak.",
 		Logs:    []store.LogRow{{TSMs: now.UnixMilli(), Stream: "o", Line: "cache grew to 480MB"}, {TSMs: now.UnixMilli(), Stream: "e", Line: "ERROR allocation failed"}}, Metrics: mets})
+
+	// Access-log style rows as if a reverse proxy emitted them: mixed paths,
+	// status codes and client IPs, so the Access tab has data to show.
+	ips := []string{"203.0.113.0", "198.51.100.0", "192.0.2.0"}
+	paths := []string{"/", "/blog", "/api/items", "/api/items/7", "/static/app.js", "/vanity-url", "/wp-login.php"}
+	statuses := []int{200, 200, 200, 200, 201, 301, 304, 404, 403, 500}
+	var acc []store.AccessRow
+	for i := 0; i < 900; i++ {
+		ts := now.Add(-time.Duration(3600-i*4) * time.Second).UnixMilli()
+		stt := statuses[i%len(statuses)]
+		acc = append(acc, store.AccessRow{
+			TS: ts, ContainerID: "nginx1", Container: "captain-nginx", App: "nginx",
+			IP: ips[i%len(ips)], Method: "GET", Path: paths[i%len(paths)],
+			Status: stt, Bytes: int64(200 + i%50*37), Referer: "", UA: "Mozilla/5.0",
+		})
+	}
+	if err := st.InsertAccess(acc); err != nil {
+		panic(err)
+	}
 }

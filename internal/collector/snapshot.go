@@ -28,9 +28,46 @@ func classify(exit int, oom bool, signal string) string {
 	}
 }
 
+// restartLoop is the death context of one snapshot: how many times this
+// container died inside the configured window (count includes this death).
+// A count below threshold, or a zero threshold, means no loop was detected.
+type restartLoop struct {
+	count, threshold int
+	window           time.Duration
+}
+
+func ordinal(n int) string {
+	suf := "th"
+	if r := n % 100; r < 11 || r > 13 {
+		switch n % 10 {
+		case 1:
+			suf = "st"
+		case 2:
+			suf = "nd"
+		case 3:
+			suf = "rd"
+		}
+	}
+	return fmt.Sprintf("%d%s", n, suf)
+}
+
+func humanDur(d time.Duration) string {
+	if h := int(d.Hours()); h > 0 {
+		if h == 1 {
+			return "hour"
+		}
+		return fmt.Sprintf("%d hours", h)
+	}
+	m := int(d.Minutes())
+	if m == 1 {
+		return "minute"
+	}
+	return fmt.Sprintf("%d minutes", m)
+}
+
 // summarize produces a short rule-based explanation. It states what the data
 // shows and the usual meaning of the exit code, not a diagnosis.
-func summarize(kind string, exit int, peakMem, memLimit int64, errCount int, lastErr string) string {
+func summarize(kind string, exit int, peakMem, memLimit int64, errCount int, lastErr string, loop restartLoop) string {
 	var s string
 	switch {
 	case kind == "oom":
@@ -58,6 +95,9 @@ func summarize(kind string, exit int, peakMem, memLimit int64, errCount int, las
 	}
 	if kind == "killed" {
 		s += " A stop signal was sent first, so this was likely a deploy, restart or manual stop."
+	}
+	if loop.threshold > 0 && loop.count >= loop.threshold {
+		s += fmt.Sprintf(" This is the %s death within %s, so the container is likely restart-looping.", ordinal(loop.count), humanDur(loop.window))
 	}
 	if errCount > 0 {
 		s += fmt.Sprintf(" %d error-level lines in the last captured logs.", errCount)
@@ -99,8 +139,10 @@ type inspectSummary struct {
 }
 
 // buildSnapshot assembles the evidence for one container death. insp may be
-// zero-valued when Docker no longer knows the container.
-func buildSnapshot(t *tracker, exit int, insp docker.Inspect, haveInspect bool, kind string) store.Snapshot {
+// zero-valued when Docker no longer knows the container. dieMs is the death
+// time from the Docker event (0 when unknown); a snapshot rebuilt after the
+// fact keeps that time instead of the time it was assembled.
+func buildSnapshot(t *tracker, exit int, insp docker.Inspect, haveInspect bool, kind string, dieMs int64, loop restartLoop) store.Snapshot {
 	logs := t.recentLogs()
 	mets := t.recentMetrics()
 
@@ -120,16 +162,21 @@ func buildSnapshot(t *tracker, exit int, insp docker.Inspect, haveInspect bool, 
 	}
 
 	sn := store.Snapshot{
-		TS:          time.Now().UnixMilli(),
-		Kind:        kind,
-		ContainerID: t.id,
-		Container:   t.name,
-		App:         t.app,
-		Image:       t.image,
-		ExitCode:    exit,
-		OOMKilled:   kind == "oom",
-		Logs:        logs,
-		Metrics:     mets,
+		TS:             time.Now().UnixMilli(),
+		DieTS:          dieMs,
+		Kind:           kind,
+		ContainerID:    t.id,
+		Container:      t.name,
+		App:            t.app,
+		Image:          t.image,
+		ExitCode:       exit,
+		OOMKilled:      kind == "oom",
+		RestartsWindow: loop.count,
+		Logs:           logs,
+		Metrics:        mets,
+	}
+	if dieMs > 0 {
+		sn.TS = dieMs // caught-up deaths keep their real time
 	}
 	if haveInspect {
 		sn.Error = insp.State.Error
@@ -151,6 +198,6 @@ func buildSnapshot(t *tracker, exit int, insp docker.Inspect, haveInspect bool, 
 	if sn.MemLimit == 0 && len(mets) > 0 {
 		sn.MemLimit = mets[len(mets)-1].MemLimit
 	}
-	sn.Summary = summarize(kind, exit, peak, sn.MemLimit, errCount, lastErr)
+	sn.Summary = summarize(kind, exit, peak, sn.MemLimit, errCount, lastErr, loop)
 	return sn
 }

@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"capscope/internal/alerts"
 	"capscope/internal/collector"
 	"capscope/internal/config"
 	"capscope/internal/hub"
@@ -28,10 +30,18 @@ type Server struct {
 	mgr *collector.Manager
 	hub *hub.Hub
 	log *slog.Logger
+	eng *alerts.Engine // nil when alerting is disabled
 }
 
-func New(cfg config.Config, st *store.Store, mgr *collector.Manager, h *hub.Hub, log *slog.Logger) *Server {
-	return &Server{cfg: cfg, st: st, mgr: mgr, hub: h, log: log}
+// WithAlerts attaches the alert engine so /api/alerts works.
+func WithAlerts(e *alerts.Engine) func(*Server) { return func(s *Server) { s.eng = e } }
+
+func New(cfg config.Config, st *store.Store, mgr *collector.Manager, h *hub.Hub, log *slog.Logger, opts ...func(*Server)) *Server {
+	s := &Server{cfg: cfg, st: st, mgr: mgr, hub: h, log: log}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -40,12 +50,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/containers", s.containers)
 	mux.HandleFunc("GET /api/apps", s.apps)
 	mux.HandleFunc("GET /api/logs", s.logs)
+	mux.HandleFunc("GET /api/logs/export", s.logsExport)
 	mux.HandleFunc("GET /api/logs/stream", s.logStream)
+	mux.HandleFunc("GET /api/access", s.access)
+	mux.HandleFunc("GET /api/access/export", s.accessExport)
 	mux.HandleFunc("GET /api/sql", s.sql)
 	mux.HandleFunc("GET /api/metrics", s.metrics)
 	mux.HandleFunc("GET /api/snapshots", s.snapshots)
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
 	mux.HandleFunc("GET /api/snapshots/{id}/export", s.snapshotExport)
+	mux.HandleFunc("GET /api/alerts", s.alertsList)
+	mux.HandleFunc("GET /api/alerts/rules", s.alertsRules)
+	mux.HandleFunc("POST /api/alerts/test", s.alertsTest)
+	mux.HandleFunc("GET /api/deploys", s.deploysList)
+	mux.HandleFunc("POST /api/deploys", s.deploysCreate)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	return s.auth(mux)
@@ -160,6 +178,78 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"logs": rows})
 }
 
+// access serves the GoAccess-style dashboard aggregates for one window:
+// totals, status-code distribution, top paths/IPs/referrers and a timeline.
+func (s *Server) access(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	rng := time.Hour
+	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
+		rng = d
+	}
+	bucket := rng.Milliseconds() / 300
+	if bucket < 30000 {
+		bucket = 30000
+	}
+	topN := 20
+	if n, err := strconv.Atoi(v.Get("top")); err == nil && n > 0 && n <= 100 {
+		topN = n
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	agg, err := s.st.QueryAccess(ctx, v.Get("app"), time.Now().Add(-rng).UnixMilli(), 0, bucket, topN)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, agg)
+}
+
+// csvHeader writes the download fields common to both CSV exports.
+func csvHeader(w http.ResponseWriter, name string) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+}
+
+// logsExport streams the log table as CSV, paginating by id so exports can
+// reach beyond the normal 5000-row API cap (200k lines at most).
+func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
+	q, err := parseLogQuery(r)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	csvHeader(w, "capscope-logs.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"ts", "ts_ms", "container_id", "container", "app", "stream", "level", "line"})
+	for r.Context().Err() == nil {
+		rows, err := s.st.QueryLogs(r.Context(), q)
+		if err != nil || len(rows) == 0 {
+			break
+		}
+		next := rows[len(rows)-1].ID
+		for _, l := range rows {
+			_ = cw.Write([]string{
+				time.Unix(0, l.TS).UTC().Format(time.RFC3339Nano), itoa64(l.TSMs),
+				l.ContainerID, l.Container, l.App, streamName(l.Stream), l.Level, l.Line,
+			})
+		}
+		if len(rows) < 5000 {
+			break
+		}
+		q.AfterID = next
+	}
+	cw.Flush()
+}
+
+func streamName(s string) string {
+	if s == "e" {
+		return "stderr"
+	}
+	return "stdout"
+}
+
+func itoa64(v int64) string { return strconv.FormatInt(v, 10) }
+
 // sql runs one read-only ad-hoc statement over the stored tables. Validation
 // and the row cap live in store.QuerySQL; a 5s deadline keeps a heavy scan
 // from pinning the read pool.
@@ -179,7 +269,32 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, res)
 }
 
-// logStream pushes new rows as Server-Sent Events. Rows arrive after they are committed, so each has an id.
+// accessExport downloads the raw parsed access rows as CSV.
+func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	rng := 24 * time.Hour
+	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
+		rng = d
+	}
+	limit, _ := strconv.ParseInt(v.Get("limit"), 10, 64)
+	rows, err := s.st.QueryAccessRows(r.Context(), v.Get("app"), time.Now().Add(-rng).UnixMilli(), 0, limit)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	csvHeader(w, "capscope-access.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"ts", "ts_ms", "container", "app", "ip", "method", "path", "status", "bytes", "referer", "user_agent"})
+	for _, x := range rows {
+		_ = cw.Write([]string{
+			time.UnixMilli(x.TS).UTC().Format(time.RFC3339), itoa64(x.TS),
+			x.Container, x.App, x.IP, x.Method, x.Path, strconv.Itoa(x.Status),
+			itoa64(x.Bytes), x.Referer, x.UA,
+		})
+	}
+	cw.Flush()
+}
+
 func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 	q, err := parseLogQuery(r)
 	if err != nil {
@@ -262,6 +377,11 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
+	// V9: attach the newest deploy before the crash, so the view answers
+	// "did a deploy just before this crash?". Best effort.
+	if d, derr := s.st.DeployBefore(r.Context(), sn.App, sn.TS); derr == nil && d.ID != 0 {
+		sn.Deploy = &d
+	}
 	writeJSON(w, sn)
 }
 
@@ -288,11 +408,18 @@ func SnapshotMarkdown(sn store.Snapshot) string {
 	fmt.Fprintf(&b, "# Crash report: %s\n\n", sn.App)
 	fmt.Fprintf(&b, "- Time: %s\n- Kind: %s\n- Container: %s\n- Image: %s\n- Exit code: %d\n- OOM killed: %v\n- Restart count: %d\n- Uptime before death: %ds\n",
 		t, sn.Kind, sn.Container, sn.Image, sn.ExitCode, sn.OOMKilled, sn.RestartCount, sn.UptimeSec)
+	if sn.RestartsWindow >= 2 {
+		fmt.Fprintf(&b, "- Deaths in restart window: %d\n", sn.RestartsWindow)
+	}
 	if sn.MemLimit > 0 {
 		fmt.Fprintf(&b, "- Memory limit: %d bytes\n", sn.MemLimit)
 	}
 	if sn.Error != "" {
 		fmt.Fprintf(&b, "- Docker error: %s\n", sn.Error)
+	}
+	if sn.Deploy != nil {
+		gap := sn.TS - sn.Deploy.TS
+		fmt.Fprintf(&b, "- Last deploy: %s at %s (%dm before crash)\n", sn.Deploy.Version, time.UnixMilli(sn.Deploy.TS).UTC().Format(time.RFC3339), gap/60000)
 	}
 	fmt.Fprintf(&b, "\n## Summary\n\n%s\n", sn.Summary)
 	if len(sn.Metrics) > 0 {

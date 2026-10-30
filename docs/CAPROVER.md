@@ -14,7 +14,9 @@
 | `AUTH_USER` | your username |
 | `AUTH_PASS` | a long random password |
 | `MAX_DB_MB` | size cap for live data, for example `2048` |
-| `EXCLUDE` | optional, for example `^captain-` to hide CapRover's own services |
+| `EXCLUDE` | optional, for example `^captain-` to hide CapRover's own services. Excluded containers are still followed *for access logs only*: `captain-nginx` keeps feeding the Access dashboard (parsed requests, no raw log rows) |
+
+The **Access tab** shows GoAccess-style panels built from `captain-nginx`'s access logs: status codes, top paths, client IPs (anonymized — last octet zeroed — unless `ANON_IPS=false`), referrers and a requests/errors timeline. Set `ACCESS_LOG=off` if you do not want it.
 
 **Container HTTP Port**: `8080`.
 

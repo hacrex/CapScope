@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"capscope/internal/alerts"
 	"capscope/internal/api"
 	"capscope/internal/collector"
 	"capscope/internal/config"
@@ -91,9 +92,15 @@ func run(log *slog.Logger) error {
 	done := make(chan struct{})
 	go func() { mgr.Run(ctx); close(done) }()
 
+	// Alerts (A1 to A5): an engine over the store, fed by a hot-reloaded JSON
+	// rules file and a set of notification channels from the environment.
+	chans := alerts.BuildChannels(cfg.AlertWebhookURL, cfg.AlertTelegramTok, cfg.AlertTelegramChat, cfg.AlertSlackURL, cfg.AlertDiscordURL)
+	eng := alerts.New(st, cfg.AlertsFile, cfg.AlertsInterval, chans, log)
+	go eng.Run(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           api.New(cfg, st, mgr, h, log).Handler(),
+		Handler:           api.New(cfg, st, mgr, h, log, api.WithAlerts(eng)).Handler(),
 		ReadHeaderTimeout: 10 * time.Second, // no WriteTimeout: SSE streams are long-lived
 	}
 	ln, err := net.Listen("tcp", cfg.Listen)

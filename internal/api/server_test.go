@@ -126,6 +126,63 @@ func TestSQLAPI(t *testing.T) {
 	}
 }
 
+func TestAccessAPIAndExports(t *testing.T) {
+	srv, st, _ := setup(t)
+	now := time.Now()
+	rows := []store.AccessRow{
+		{TS: now.UnixMilli() - 2000, Container: "captain-nginx", App: "nginx", IP: "203.0.113.0", Method: "GET", Path: "/api/items", Status: 200, Bytes: 120, Referer: "https://r.io", UA: "curl"},
+		{TS: now.UnixMilli() - 1000, Container: "captain-nginx", App: "nginx", IP: "203.0.113.0", Method: "GET", Path: "/api/items", Status: 502, Bytes: 40},
+	}
+	if err := st.InsertAccess(rows); err != nil {
+		t.Fatal(err)
+	}
+	var agg struct {
+		Totals struct {
+			Requests int64
+			Bytes    int64
+		}
+		Paths []store.AccessTop
+	}
+	resp := get(t, srv.URL+"/api/access?range=1h", true)
+	if err := json.NewDecoder(resp.Body).Decode(&agg); err != nil {
+		t.Fatal(err)
+	}
+	if agg.Totals.Requests != 2 || agg.Totals.Bytes != 160 {
+		t.Errorf("totals: %+v", agg.Totals)
+	}
+	if len(agg.Paths) != 1 || agg.Paths[0].Key != "/api/items" || agg.Paths[0].Errors != 1 {
+		t.Errorf("paths: %+v", agg.Paths)
+	}
+	// CSV export contains the parsed rows
+	r := get(t, srv.URL+"/api/access/export?range=1h", true)
+	b, _ := io.ReadAll(r.Body)
+	s := string(b)
+	if !strings.Contains(r.Header.Get("Content-Disposition"), "capscope-access.csv") || !strings.Contains(s, "/api/items,200") || !strings.Contains(s, "user_agent") {
+		t.Errorf("access csv: %q", s)
+	}
+	// log export: CSV of the logs table, with CSV quoting
+	_ = st.InsertLogs([]store.LogRow{
+		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `something "bad", happened`},
+	})
+	r = get(t, srv.URL+"/api/logs/export?app=web", true)
+	b, _ = io.ReadAll(r.Body)
+	s = string(b)
+	// CSV doubles embedded quotes, so the cell reads: something ""bad"", happened
+	if !strings.Contains(s, "stderr") || !strings.Contains(s, `something ""bad"", happened`) {
+		t.Errorf("logs csv: %q", s)
+	}
+}
+
+func TestAccessExportsRequireAuth(t *testing.T) {
+	srv, _, _ := setup(t)
+	if r := get(t, srv.URL+"/api/access", false); r.StatusCode != 401 {
+		t.Errorf("access should require auth, got %d", r.StatusCode)
+	}
+	if r := get(t, srv.URL+"/api/logs/export", false); r.StatusCode != 401 {
+		t.Errorf("logs export should require auth, got %d", r.StatusCode)
+	}
+}
+
 func TestSSEDeliversPublishedRows(t *testing.T) {
 	srv, _, h := setup(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
