@@ -15,7 +15,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="theme-toggle" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
@@ -56,35 +56,44 @@
 
             <div class="callout callout-info" id="auth">
               <strong>Authentication</strong>
-              <p style="margin:0.25rem 0 0;">Use the <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header on every request. Example:</p>
-              <pre><code class="language-bash">curl -u admin:change-me http://localhost:8080/api/containers</code></pre>
+              <p style="margin:0.25rem 0 0;">Use the <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header on every request.</p>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <div class="code-block-header">
+                  <span>curl</span>
+                </div>
+                <pre><code class="language-bash">curl -u admin:change-me http://localhost:8080/api/containers</code></pre>
+              </div>
             </div>
 
             <h2 id="health">Health</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/healthz</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/healthz</span>
               <p>Returns <code>ok</code>. No authentication required.</p>
             </div>
 
             <h2 id="containers">Containers &amp; apps</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/containers</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/containers</span>
               <p>Returns running containers being followed.</p>
-              <pre><code class="language-json">{"containers":[{"id":"...","name":"srv-captain--shop.1.x","app":"shop","replica":"1","image":"shop:1.4","started":1793158700000,"cpu":12.5,"mem":104857600,"mem_limit":536870912,"sample_ts":1793158700000}]}</code></pre>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-json">{"containers":[{"id":"...","name":"srv-captain--shop.1.x","app":"shop","replica":"1","image":"shop:1.4","started":1793158700000,"cpu":12.5,"mem":104857600,"mem_limit":536870912,"sample_ts":1793158700000}]}</code></pre>
+              </div>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/apps</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/apps</span>
               <p>Returns apps known from history with a one-hour error and warning count.</p>
-              <pre><code class="language-json">{"apps":[{"app":"shop","containers":1,"last_seen":1793158700437,"errors_1h":8,"warns_1h":14}]}</code></pre>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-json">{"apps":[{"app":"shop","containers":1,"last_seen":1793158700437,"errors_1h":8,"warns_1h":14}]}</code></pre>
+              </div>
             </div>
 
             <h2 id="logs">Logs</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/logs</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/logs</span>
               <p>Returns log rows oldest first.</p>
               <table style="font-size:0.9rem;margin-top:1rem;">
                 <thead><tr><th style="width:25%">Param</th><th>Description</th></tr></thead>
@@ -101,93 +110,101 @@
               </table>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/logs/stream</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/logs/stream</span>
               <p>Server-Sent Events stream of new log rows matching the same filters.</p>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/logs/export</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/logs/export</span>
               <p>Streams matching rows as CSV (<code>capscope-logs.csv</code>), up to 200,000 lines.</p>
             </div>
 
             <h2 id="access">Access logs</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/access?range=1h</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/access?range=1h</span>
               <p>Returns aggregated access-log dashboard data: totals, status codes, top paths/IPs/referrers, hits-and-errors timeline.</p>
-              <pre><code class="language-json">{"totals":{"requests":900,"client_err":41,"server_err":9,"unique_ips":3,"bytes":88401},"codes":[{"code":200,"n":600}],"paths":[{"key":"/api/items","hits":212,"bytes":9901,"errors":3}],"timeline":[{"ts":1793157492000,"hits":30,"errors":1,"bytes":2955}]}</code></pre>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-json">{"totals":{"requests":900,"client_err":41,"server_err":9,"unique_ips":3,"bytes":88401},"codes":[{"code":200,"n":600}],"paths":[{"key":"/api/items","hits":212,"bytes":9901,"errors":3}],"timeline":[{"ts":1793157492000,"hits":30,"errors":1,"bytes":2955}]}</code></pre>
+              </div>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/access/export</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/access/export</span>
               <p>Streams raw parsed rows as CSV (<code>capscope-access.csv</code>).</p>
             </div>
 
             <h2 id="metrics">Metrics</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/metrics?app=shop&amp;range=1h</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/metrics?app=shop&amp;range=1h</span>
               <p>Returns bucketed CPU/memory points. For an app, values are summed across replicas.</p>
-              <pre><code class="language-json">{"bucket_ms":12000,"points":[{"ts":1793157492000,"cpu":10,"mem":104857600,"mem_limit":536870912}]}</code></pre>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-json">{"bucket_ms":12000,"points":[{"ts":1793157492000,"cpu":10,"mem":104857600,"mem_limit":536870912}]}</code></pre>
+              </div>
             </div>
 
             <h2 id="snapshots">Crash snapshots</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/snapshots?app=shop&amp;limit=100</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/snapshots?app=shop&amp;limit=100</span>
               <p>Returns light snapshot rows (no logs/metrics), newest first.</p>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/snapshots/{id}</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/snapshots/{id}</span>
               <p>Returns the full snapshot: metadata, summary, logs, metrics, and trimmed inspect object.</p>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/snapshots/{id}/export</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/snapshots/{id}/export</span>
               <p>Returns a Markdown crash report for incident handoff.</p>
             </div>
 
             <h2 id="sql">SQL queries</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/sql?query=</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/sql?query=</span>
               <p>Runs one ad-hoc read statement (<code>SELECT</code> or <code>WITH … SELECT</code>) against stored tables.</p>
-              <pre><code class="language-sql">SELECT app, level, count(*) AS n
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-sql">SELECT app, level, count(*) AS n
 FROM logs
 WHERE ts > (unixepoch('now') - 3600) * 1000000000
 GROUP BY app, level
 ORDER BY n DESC</code></pre>
+              </div>
             </div>
 
             <h2 id="alerts">Alerts</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/alerts</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/alerts</span>
               <p>Returns alert firing history, newest first.</p>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/alerts/rules</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/alerts/rules</span>
               <p>Returns armed alert configuration.</p>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">POST</div>
-              <div class="endpoint-path">/api/alerts/test</div>
+              <span class="endpoint-method method-post">POST</span>
+              <span class="endpoint-path">/api/alerts/test</span>
               <p>Sends a test message through every configured channel.</p>
             </div>
 
             <h2 id="deploys">Deploys</h2>
             <div class="endpoint-card">
-              <div class="endpoint-method">POST</div>
-              <div class="endpoint-path">/api/deploys</div>
+              <span class="endpoint-method method-post">POST</span>
+              <span class="endpoint-path">/api/deploys</span>
               <p>Records a deploy marker. Body: <code>{app, version, note?, ts?}</code>.</p>
-              <pre><code class="language-json">{"app":"shop","version":"v1.4","note":"hotfix"}</code></pre>
+              <div class="code-block" style="margin-top:0.75rem;">
+                <pre><code class="language-json">{"app":"shop","version":"v1.4","note":"hotfix"}</code></pre>
+              </div>
             </div>
             <div class="endpoint-card">
-              <div class="endpoint-method">GET</div>
-              <div class="endpoint-path">/api/deploys</div>
+              <span class="endpoint-method method-get">GET</span>
+              <span class="endpoint-path">/api/deploys</span>
               <p>Returns deploy markers newest first.</p>
             </div>
 
@@ -203,7 +220,7 @@ ORDER BY n DESC</code></pre>
         <div class="footer-col">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
             <div class="brand-mark" style="width:24px;height:24px;">
-              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
             </div>
             <div style="font-weight:700;font-size:1.1rem;">CapScope</div>
           </div>

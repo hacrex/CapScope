@@ -15,7 +15,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="theme-toggle" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
@@ -59,21 +59,45 @@
             </ol>
 
             <h2 id="compose">Plain Docker Compose</h2>
-            <pre><code class="language-bash">cd deploy
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">cd deploy
 docker compose up -d --build
-# then open http://&lt;host&gt;:8080</code></pre>
+# then open http://<host>:8080</code></pre>
+            </div>
             <p class="muted small"><code>AUTH_PASS</code> defaults to <code>change-me</code> in the compose file — change it before exposing the port.</p>
 
             <h2 id="docker-run">Plain docker run</h2>
-            <pre><code class="language-bash">docker run -d --name capscope -p 8080:8080 \
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">docker run -d --name capscope -p 8080:8080 \
   -e AUTH_PASS='a long random password' \
   -v capscope-data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --restart unless-stopped \
   capscope</code></pre>
+            </div>
 
             <h2 id="swarm">Swarm / docker stack deploy</h2>
-            <pre><code class="language-bash">docker stack deploy -c deploy/docker-compose.yml capscope</code></pre>
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">docker stack deploy -c deploy/docker-compose.yml capscope</code></pre>
+            </div>
             <p class="muted small">Swarm caveat: CapScope only sees containers on the node its task is scheduled on (it reads the host socket). Pin it to the node with the most containers via placement constraints if you run several nodes.</p>
 
             <h2 id="podman">Podman</h2>
@@ -113,7 +137,7 @@ docker compose up -d --build
         <div class="footer-col">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
             <div class="brand-mark" style="width:24px;height:24px;">
-              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
             </div>
             <div style="font-weight:700;font-size:1.1rem;">CapScope</div>
           </div>

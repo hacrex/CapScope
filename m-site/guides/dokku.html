@@ -15,7 +15,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="theme-toggle" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
@@ -51,30 +51,78 @@
             <p class="muted">Dokku builds the repo's <code>Dockerfile</code> on <code>git push</code>, no buildpack needed. The <code>CHECKS</code> file at the repo root makes Dokku wait for <code>/healthz</code> before routing traffic.</p>
 
             <h2 id="create-app">1. Create the app</h2>
-            <pre><code class="language-bash">dokku apps:create capscope</code></pre>
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">dokku apps:create capscope</code></pre>
+            </div>
             <p>Persistent storage (the SQLite database survives redeploys):</p>
-            <pre><code class="language-bash">dokku storage:ensure-directory capscope --chown-on-add
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">dokku storage:ensure-directory capscope --chown-on-add
 dokku storage:mount capscope /var/lib/dokku/data/storage/capscope:/data</code></pre>
+            </div>
             <p>Docker socket access:</p>
-            <pre><code class="language-bash">dokku storage:mount capscope /var/run/docker.sock:/var/run/docker.sock</code></pre>
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">dokku storage:mount capscope /var/run/docker.sock:/var/run/docker.sock</code></pre>
+            </div>
             <p class="muted small">The <code>storage:mount</code> commands apply on the next deploy.</p>
 
             <h2 id="configure">2. Configure it</h2>
-            <pre><code class="language-bash">dokku config:set capscope AUTH_USER=admin AUTH_PASS='a long random password'
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">dokku config:set capscope AUTH_USER=admin AUTH_PASS='a long random password'
 dokku config:set capscope MAX_DB_MB=2048           # optional size cap
 dokku config:set capscope EXCLUDE='^nginx|traefik'  # optional, hide Dokku's own proxy containers</code></pre>
+            </div>
             <p class="muted small">Worth excluding: the per-app <code>nginx</code> sidecars Dokku adds and the <code>traefik</code>/<code>caddy</code> ingress containers — they are noisy.</p>
 
             <h2 id="deploy">3. Deploy</h2>
-            <pre><code class="language-bash">git remote add dokku dokku@&lt;your-dokku-host&gt;:capscope
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">git remote add dokku dokku@&lt;your-dokku-host&gt;:capscope
 git push dokku main</code></pre>
+            </div>
             <p class="muted small">The first build downloads Go modules, so the Dokku host needs outbound internet during the build.</p>
 
             <h2 id="https">HTTPS</h2>
             <p>Assign a domain and run the letsencrypt plugin:</p>
-            <pre><code class="language-bash">dokku domains:set capscope capscope.example.com
+            <div class="code-block">
+              <div class="code-block-header">
+                <span>bash</span>
+                <div class="code-block-actions">
+                  <button title="Copy">Copy</button>
+                </div>
+              </div>
+              <pre><code class="language-bash">dokku domains:set capscope capscope.example.com
 dokku letsencrypt:set --global email you@example.com
 dokku letsencrypt capscope</code></pre>
+            </div>
             <div class="callout callout-warn">
               <strong>Do not expose CapScope on plain HTTP</strong>
               <p style="margin:0.25rem 0 0;">— Basic auth credentials would travel in clear text.</p>
@@ -110,7 +158,7 @@ dokku letsencrypt capscope</code></pre>
         <div class="footer-col">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
             <div class="brand-mark" style="width:24px;height:24px;">
-              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
             </div>
             <div style="font-weight:700;font-size:1.1rem;">CapScope</div>
           </div>
