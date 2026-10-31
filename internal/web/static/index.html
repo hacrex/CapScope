@@ -282,6 +282,26 @@ async function api(path,init){
 const fmtTime=ms=>{const d=new Date(ms);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
 const fmtDT=ms=>new Date(ms).toLocaleString();
 const mib=b=>(b/1048576).toFixed(b>1073741824?0:1)+' MiB';
+const appIcon=image=>{
+  const i=(image||'').toLowerCase();
+  if(i.includes('nginx'))return'🟢';
+  if(i.includes('apache')||i.includes('httpd'))return'🟠';
+  if(i.includes('postgres'))return'🟣';
+  if(i.includes('mysql')||i.includes('mariadb'))return'🔵';
+  if(i.includes('redis'))return'🔴';
+  if(i.includes('mongo'))return'🟢';
+  if(i.includes('rabbitmq'))return'🟣';
+  if(i.includes('kafka'))return'🟠';
+  if(i.includes('elasticsearch')||i.includes('opensearch'))return'🟡';
+  if(i.includes('prometheus'))return'🟢';
+  if(i.includes('grafana'))return'🟠';
+  if(i.includes('docker')||i.includes('portainer'))return'🐳';
+  if(i.includes('node'))return'🟢';
+  if(i.includes('python'))return'🟡';
+  if(i.includes('golang')||i.includes('go:'))return'🔵';
+  if(i.includes('java')||i.includes('tomcat'))return'☕';
+  return'📦';
+};
 function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';}
 /* Surface a transient failure on the connection chip; refreshApps restores the real state. */
 let badT;
@@ -320,7 +340,8 @@ async function refreshApps(){
     const row=(n,label,cs,cpu,mem,errs,warns,crashes)=>{
       const el=document.createElement('div');el.className='app'+(n===S.app?' sel':'');el.dataset.n=n;
       const nm=document.createElement('div');nm.className='n';
-      const t=document.createElement('span');t.textContent=label;nm.append(t);
+      const icon=cs[0]?.image?appIcon(cs[0].image):'📦';
+      const t=document.createElement('span');t.textContent=icon+' '+label;nm.append(t);
       const b=document.createElement('span');
       if(crashes){const d=document.createElement('span');d.className='badge e';d.textContent=crashes+' crash'+(crashes>1?'es':'');d.title='crash snapshots in the last 24h';b.append(d,' ');}
       if(errs){const e=document.createElement('span');e.className='badge e';e.textContent=errs;e.title='errors in the last hour';b.append(e,' ');}
@@ -599,7 +620,7 @@ function createPane(host,container,split){
     const el=document.createElement('div');el.className='pane';
     const ph=document.createElement('div');ph.className='ph';
     const c=S.conts.find(x=>x.name===container);
-    const lab=document.createElement('span');lab.textContent='replica '+(c?(c.replica||c.name):container);
+    const lab=document.createElement('span');lab.textContent=(c?.image?appIcon(c.image):'📦')+' replica '+(c?(c.replica||c.name):container);
     const bx=document.createElement('button');bx.className='bx';bx.textContent='✕';bx.title='Remove pane';
     bx.onclick=()=>{S.sel.delete(container);updateReplicaBtn();fillReplicas();restartLogs();};
     const pf=document.createElement('button');pf.className='bx';pf.textContent='⏸';pf.title='Pause this pane';pf.style.display=split?'':'none';
