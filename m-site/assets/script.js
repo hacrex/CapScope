@@ -4,6 +4,24 @@
 (function () {
   "use strict";
 
+  // ---- Theme toggle ----
+  const themeToggle = document.querySelector(".theme-toggle");
+  const htmlEl = document.documentElement;
+  const savedTheme = localStorage.getItem("theme") || "light";
+
+  htmlEl.setAttribute("data-theme", savedTheme);
+  if (themeToggle) {
+    themeToggle.innerHTML = savedTheme === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+
+    themeToggle.addEventListener("click", function () {
+      const isDark = htmlEl.getAttribute("data-theme") === "dark";
+      const newTheme = isDark ? "light" : "dark";
+      htmlEl.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      themeToggle.innerHTML = newTheme === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+    });
+  }
+
   // ---- Mobile menu toggle ----
   const mobileBtn = document.querySelector(".mobile-menu-btn");
   const navMenu = document.querySelector(".nav-menu");
