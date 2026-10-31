@@ -164,6 +164,9 @@ h2{font-weight:600;letter-spacing:-.02em}
 .login-field{margin-bottom:14px}
 .login-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
 .login-error{color:var(--err);font-size:12px;margin-top:8px;min-height:16px}
+.product-footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 16px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.product-footer .footer-name{font-weight:600;color:var(--text)}
+.product-footer .footer-tagline{font-size:11px;max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -354,9 +357,6 @@ async function refreshApps(){
       el.append(nm,m);el.onclick=()=>selectApp(n);box.append(el);
     };
     // "All apps": one merged timeline over every app (V7)
-    row('','All apps',S.conts,
-      S.conts.reduce((t,x)=>t+x.cpu,0),S.conts.reduce((t,x)=>t+x.mem,0),
-      a.apps.reduce((t,x)=>t+(x.errors_1h||0),0),a.apps.reduce((t,x)=>t+(x.warns_1h||0),0));
     const appList=[...names].map(n=>{const h=byName[n]||{};return{name:n,errs:h.errors_1h||0,warns:h.warns_1h||0,crashes:S.appCrashes.get(n)||0,cs:live[n]||[]};});
     appList.sort((x,y)=>(y.crashes-x.crashes)||(y.errs-x.errs)||(x.name<y.name?-1:x.name>y.name?1:0));
     row('','All apps',S.conts,
@@ -398,7 +398,7 @@ function updateContainerStat(){
   if(S.selCont){
     const cpuPct=S.selCont.cpu.toFixed(1);
     const memPct=S.selCont.mem_limit>0?(S.selCont.mem/S.selCont.mem_limit*100).toFixed(0):0;
-    chip.textContent=`${S.selCont.name} · ${cpuPct}% cpu · ${memPct}% mem`;
+    chip.innerHTML=`${S.selCont.name} · <span style="color:var(--ok)">${cpuPct}%</span> <span style="color:var(--muted)">cpu</span> · <span style="color:#3b82f6">${memPct}%</span> <span style="color:var(--muted)">mem</span>`;
     chip.style.display='';
   }else{
     chip.style.display='none';
@@ -1232,5 +1232,11 @@ addEventListener('DOMContentLoaded',()=>{
     </form>
   </div>
 </div>
+  <footer class="product-footer">
+    <div class="container">
+      <span class="footer-name">CapScope</span>
+      <span class="footer-tagline">Persistent container logs, crash snapshots and metrics — one binary, one volume, no external database.</span>
+    </div>
+  </footer>
 </body>
 </html>
