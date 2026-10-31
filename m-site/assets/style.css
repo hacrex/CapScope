@@ -8,7 +8,9 @@
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  --accent: #4f8cff;
+  --accent: #f89c1c;
+  --accent-text: #f89c1c;
+  --accent-ink: #160f04;
   --ok: #34d399;
   --warn: #fbbf24;
   --err: #f87171;
@@ -60,6 +62,8 @@ html[data-theme="light"] {
   --shadow: 0 24px 50px -24px rgba(16, 24, 40, 0.3);
   --header-bg: rgba(255, 255, 255, 0.82);
   --code-bg: #0c0f16;
+
+  --accent-text: #b45309;
 }
 
 /* ---------- Base ---------- */
@@ -131,7 +135,7 @@ h4 {
 }
 
 ::selection {
-  background: rgba(79, 140, 255, 0.35);
+  background: rgba(248, 156, 28, 0.32);
 }
 
 :focus-visible {
@@ -197,11 +201,8 @@ kbd {
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: 18px;
-}
-html[data-theme="light"] .kicker {
-  color: #0b6fd6;
 }
 
 .muted {
@@ -214,7 +215,7 @@ html[data-theme="light"] .kicker {
   font-family: var(--font-mono);
 }
 .text-grad {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ---------- Buttons ---------- */
@@ -247,11 +248,13 @@ html[data-theme="light"] .kicker {
 }
 
 .btn-primary {
-  background: var(--text);
-  color: var(--bg);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
 }
 .btn-primary:hover {
-  box-shadow: 0 14px 30px -18px rgba(0, 0, 0, 0.85);
+  background: color-mix(in srgb, var(--accent) 84%, #ffffff);
+  box-shadow: 0 14px 30px -18px rgba(248, 156, 28, 0.85);
 }
 
 .btn-outline {
@@ -343,9 +346,9 @@ html[data-theme="light"] .kicker {
   place-items: center;
   border-radius: 9px;
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-ink);
   box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(22, 15, 4, 0.25);
 }
 .brand-mark svg {
   width: 17px;
@@ -424,7 +427,7 @@ html[data-theme="light"] .theme-toggle .icon-moon {
   position: absolute;
   inset: -40% -10% auto;
   height: 720px;
-  background: radial-gradient(56% 50% at 50% 36%, rgba(79, 140, 255, 0.16) 0%, rgba(79, 140, 255, 0) 72%);
+  background: radial-gradient(56% 50% at 50% 36%, rgba(248, 156, 28, 0.15) 0%, rgba(248, 156, 28, 0) 72%);
   pointer-events: none;
   z-index: 0;
 }
@@ -523,7 +526,7 @@ html[data-theme="light"] .hero::before {
 .hero-meta svg {
   width: 14px;
   height: 14px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Hero visual: terminal + snapshot card */
@@ -770,9 +773,9 @@ html[data-theme="light"] .hero::before {
   display: grid;
   place-items: center;
   border-radius: 11px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--accent-text);
   margin-bottom: 16px;
 }
 .icon-box svg {
@@ -783,7 +786,7 @@ html[data-theme="light"] .hero::before {
 .icon-box.violet {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .icon-box.ok {
   background: color-mix(in srgb, var(--ok) 14%, transparent);
@@ -806,7 +809,10 @@ html[data-theme="light"] .hero::before {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 28px;
-  align-items: start;
+  align-items: stretch;
+}
+.panel > .ticklist {
+  height: 100%;
 }
 .panel {
   background: var(--surface);
@@ -989,7 +995,7 @@ html[data-theme="light"] .hero::before {
   height: 17px;
 }
 .platform:hover .p-arrow {
-  color: var(--accent);
+  color: var(--accent-text);
   transform: translateX(4px);
 }
 
@@ -1019,7 +1025,7 @@ html[data-theme="light"] .hero::before {
   font-family: var(--font-mono);
   font-size: 0.88rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .step::after {
   content: "";
@@ -1069,7 +1075,7 @@ html[data-theme="light"] .hero::before {
   background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 }
 .callout.info svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .callout.warn {
   border-color: color-mix(in srgb, var(--warn) 42%, var(--border));
@@ -1163,13 +1169,9 @@ html[data-theme="light"] .hero::before {
   color: var(--text);
 }
 .sidebar a.active {
-  color: var(--accent);
+  color: var(--accent-text);
   border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-html[data-theme="light"] .sidebar a.active {
-  color: #0b6fd6;
-  border-left-color: #0b6fd6;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .breadcrumbs {
@@ -1182,7 +1184,7 @@ html[data-theme="light"] .sidebar a.active {
   margin-bottom: 14px;
 }
 .breadcrumbs a:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .breadcrumbs svg {
   width: 13px;
@@ -1223,16 +1225,13 @@ html[data-theme="light"] .sidebar a.active {
   margin-bottom: 7px;
 }
 .doc-content li::marker {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .doc-content a:not(.btn):not(.card):not(.platform) {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-html[data-theme="light"] .doc-content a:not(.btn):not(.card):not(.platform) {
-  color: #0b6fd6;
+  text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 .doc-content hr {
   border: none;
@@ -1278,10 +1277,7 @@ td code {
   white-space: nowrap;
 }
 td:first-child code {
-  color: var(--accent);
-}
-html[data-theme="light"] td:first-child code {
-  color: #0b6fd6;
+  color: var(--accent-text);
 }
 
 .endpoint {
@@ -1392,7 +1388,7 @@ a.card .card-top svg {
   transition: transform 0.16s var(--ease), color 0.16s var(--ease);
 }
 a.card:hover .card-top svg {
-  color: var(--accent);
+  color: var(--accent-text);
   transform: translateX(4px);
 }
 
@@ -1424,7 +1420,7 @@ a.card:hover .card-top svg {
 }
 .footer-wordmark a:hover {
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .footer-grid {
@@ -1440,6 +1436,12 @@ a.card:hover .card-top svg {
   font-size: 0.9rem;
   color: var(--muted);
   max-width: 300px;
+}
+.footer-brand p b {
+  display: block;
+  color: var(--text);
+  font-weight: 650;
+  margin-bottom: 4px;
 }
 .footer-social {
   display: flex;
@@ -1468,7 +1470,7 @@ a.card:hover .card-top svg {
   transition: color 0.14s var(--ease);
 }
 .footer-col a:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .footer-bottom {

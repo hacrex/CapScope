@@ -2,11 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script>
+    /* The 404 page is served for ANY missing URL, so it can be reached at any
+       depth and behind any base path (Vercel at /, GitHub Pages at /CapScope/).
+       Work out the site root here and expose it as <base>, so every relative
+       asset and link below resolves no matter where this page was served from. */
+    (function () {
+      var p = location.pathname;
+      var root = "/";
+      var i = p.indexOf("/docs/");
+      if (i < 0) i = p.indexOf("/guides/");
+      if (i >= 0) {
+        root = p.slice(0, i + 1);              // "/" or "/CapScope/"
+      } else if (/\.github\.io$/i.test(location.hostname)) {
+        var segs = p.split("/").filter(Boolean);
+        // /<repo>/<page> -> base is /<repo>/. A single segment on github.io is a
+        // user-site root, not a project sub-path, so leave it at "/".
+        root = segs.length >= 2 ? "/" + segs[0] + "/" : "/";
+      }
+      var base = document.createElement("base");
+      base.setAttribute("href", root);
+      document.head.appendChild(base);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>404 — CapScope</title>
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#08090c">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>
     (function () {
       try {
@@ -21,15 +44,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="assets/style.css">
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
-  <script src="/assets/script.js" defer></script>
+  <script src="assets/script.js" defer></script>
 </head>
 <body>
 
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="/" aria-label="CapScope home">
+      <a class="brand" href="index.html" aria-label="CapScope home">
         <span class="brand-mark">
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
         </span>
@@ -37,10 +60,10 @@
       </a>
 
       <nav class="nav-links" id="nav-links">
-        <a href="/#features">Features</a>
-        <a href="/docs/">Docs</a>
-        <a href="/guides/">Guides</a>
-        <a href="/docs/api.html">API</a>
+        <a href="index.html#features">Features</a>
+        <a href="docs/index.html">Docs</a>
+        <a href="guides/index.html">Guides</a>
+        <a href="docs/api.html">API</a>
         <span class="nav-sep" aria-hidden="true"></span>
         <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
           <i data-lucide="github"></i>
@@ -67,12 +90,12 @@
           <h1>This page was<br><span class="text-grad">redeployed away</span>.</h1>
           <p class="sub">The URL you asked for doesn't exist — much like the logs of a container with no volume. Pick a path below and we'll get you back to a running service.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/">Back to home <i data-lucide="arrow-right"></i></a>
-            <a class="btn btn-outline btn-lg" href="/docs/"><i data-lucide="book-open"></i> Documentation</a>
+            <a class="btn btn-primary btn-lg" href="index.html">Back to home <i data-lucide="arrow-right"></i></a>
+            <a class="btn btn-outline btn-lg" href="docs/index.html"><i data-lucide="book-open"></i> Documentation</a>
           </div>
           <div class="hero-meta">
-            <span><i data-lucide="search"></i> <a href="/docs/api.html">API reference</a></span>
-            <span><i data-lucide="container"></i> <a href="/guides/">Deployment guides</a></span>
+            <span><i data-lucide="search"></i> <a href="docs/api.html">API reference</a></span>
+            <span><i data-lucide="container"></i> <a href="guides/index.html">Deployment guides</a></span>
             <span><i data-lucide="github"></i> <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a></span>
           </div>
         </div>
@@ -81,13 +104,13 @@
   </main>
 
   <footer class="site-footer">
-    <div class="footer-wordmark"><a href="/" aria-label="CapScope">CapScope</a></div>
+    <div class="footer-wordmark"><a href="index.html" aria-label="CapScope">CapScope</a></div>
     <div class="container">
       <div class="footer-bottom">
         <p style="margin:0;">© 2026 CapScope · MIT License</p>
         <div class="fb-right">
           <span class="mono">404 · not found</span>
-          <a href="/">Home</a>
+          <a href="index.html">Home</a>
           <a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Report a broken link</a>
         </div>
       </div>
