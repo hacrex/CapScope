@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.6
+
 ### UI/UX
 - Single `All apps` row in sidebar (was duplicated)
 - Header container stat: CPU% in green, memory% in blue
@@ -32,10 +34,10 @@
 ### Deploy / Build
 - Dockerfile: `golang:1.26-alpine` to match `go.mod` (`go 1.26.0`)
 - CapRover deploy tarball excludes test files, demo assets, and build output
+- Root-level `docker-compose.yml` for instant `docker compose up`
+- GitHub issue templates, SECURITY.md, CONTRIBUTING.md, CODEOWNERS added
 
-## v0.6
-
-### Features
+### Core Features
 - Crash snapshots with OOM detection, exit codes, restarts, uptime, plain-language summary
 - Crash snapshots survive redeploys (persisted in SQLite)
 - Per-container CPU/memory metrics charts (15m to 7 days)
@@ -45,13 +47,13 @@
 - Alerts: dead-man, restart loop, metric threshold, log pattern
 - Alert channels: webhook, Telegram, Slack, Discord
 - Secret redaction before storage (JWTs, bearer tokens, passwords, AWS keys, PEM)
-- Basic auth required by default
+- Basic auth required by default; refuses to start without a password
 - FTS5 full-text search, regex mode, raw SQL queries
 - CSV export up to 200,000 lines
 - Split-view up to 4 replicas side by side
+- Multi-architecture Docker build (`scratch` image, no shell)
 
-## Earlier
+## v0.1 — MVP
 
-### v0.1 — MVP
 - Collection, SQLite history, live view, search, metrics, crash snapshots, auth, redaction
 - Docker and CapRover packaging (`captain-definition`)
