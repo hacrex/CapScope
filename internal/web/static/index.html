@@ -219,6 +219,12 @@ h2{font-weight:600;letter-spacing:-.02em}
     <div id="view-access" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:auto;padding:16px">
       <div class="bar" style="margin:-16px -16px 16px;border-top:0">
         <select id="arange"><option value="15m">15 minutes</option><option value="1h" selected>1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select>
+        <div class="range-wrap" style="display:flex;align-items:center;gap:6px;margin-left:10px;">
+          <button class="b range-chip" id="aall" data-status="">all</button>
+          <button class="b range-chip" id="a2xx" data-status="2xx">2xx</button>
+          <button class="b range-chip" id="a4xx" data-status="4xx">4xx</button>
+          <button class="b range-chip" id="a5xx" data-status="5xx">5xx</button>
+        </div>
         <a class="chip" id="accCSV" href="/api/access/export?range=1h" title="Download parsed access rows as CSV for the selected range">Download CSV</a>
       </div>
       <div class="grid">
@@ -240,7 +246,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -660,9 +666,11 @@ function updateCnt(){
 $('#follow').onclick=()=>{S.follow=!S.follow;$('#follow').classList.toggle('on',S.follow);if(S.follow)for(const p of S.panes)p.vl.toBottom();};
 $('#wrap').onclick=()=>{S.wrapLines=!S.wrapLines;$('#wrap').classList.toggle('on',S.wrapLines);document.documentElement.classList.toggle('wrap',S.wrapLines);};
 $('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.paused);$('#pause').textContent=S.paused?'Resume':'Pause';if(!S.paused)for(const p of S.panes)flushPending(p);};
-function setRangeChip(){document.querySelectorAll('.range-chip').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
-setRangeChip();
-document.querySelectorAll('.range-chip').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();restartLogs();});
+function setRangeChip(){document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
+function setStatusChip(){document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.classList.toggle('on',b.dataset.status===S.accStatus));}
+setRangeChip();setStatusChip();
+document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();restartLogs();});
+document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.onclick=()=>{S.accStatus=b.dataset.status;setStatusChip();loadAccess();});
 $('#jsonBtn').onclick=()=>{S.jsonPretty=!S.jsonPretty;$('#jsonBtn').classList.toggle('on',S.jsonPretty);restartLogs();};
 $('#older').onclick=()=>{for(const p of S.panes)loadOlder(p);};
 async function loadOlder(pane){
@@ -783,9 +791,9 @@ function selToggle(r,e){
 /* ---------- access dashboard (GoAccess-style) ---------- */
 const fmtNum=n=>(n||0).toLocaleString();
 async function loadAccess(){
-  const range=$('#arange').value;
-  let d;
-  try{d=await api('/api/access?range='+range);}catch(e){connBad('access load failed');console.warn('capscope: access load failed',e);return;}
+  const range=$('#arange').value;let d;
+  try{d=await api('/api/access?range='+range+(S.accStatus?'&status='+S.accStatus:''));}catch(e){connBad('access load failed');console.warn('capscope: access load failed',e);return;}
+  $('#accCSV').href='/api/access/export?range='+range+(S.accStatus?'&status='+S.accStatus:'');
   renderTotals($('#atotals'),d.totals||{});
   drawAccessTimeline($('#atl'),d.timeline||[]);
   fillCodes($('#acodes'),d.codes||[],(d.totals||{}).requests);
