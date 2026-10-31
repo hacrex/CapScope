@@ -2,9 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26-00add8.svg)](https://golang.org/)
-[![Docker Image](https://img.shields.io/badge/docker-capscope-2496ed?logo=docker)](https://hub.docker.com/r/hacrex/capscope)
-[![Go Reference](https://pkg.go.dev/badge/github.com/hacrex/CapScope.svg)](https://pkg.go.dev/github.com/hacrex/CapScope)
-[![Website](https://img.shields.io/badge/web-capscope.live-f89c1c)](https://capscope.live)
+[![GitHub stars](https://img.shields.io/github/stars/hacrex/CapScope?style=social)](https://github.com/hacrex/CapScope)
+[![GitHub last commit](https://img.shields.io/github/last-commit/hacrex/CapScope)](https://github.com/hacrex/CapScope/commits/main)
 
 > **Persistent container logs, crash snapshots, and metrics in one self-hosted binary.**  
 > Built for self-hosters, homelab brewers, and DevOps engineers who run Docker on one server and need to know *what happened before it died.*

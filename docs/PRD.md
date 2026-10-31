@@ -188,6 +188,6 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 - [x] Writes a snapshot on OOM and on non-zero exit, with the final log lines and a memory trend
 - [x] UI for live logs, search, metrics and crashes with no console errors in headless Chromium
 - [x] Unit and end-to-end tests pass with the race detector
-- [ ] Verified against a real Docker daemon and a CapRover Swarm
-- [ ] Docker image built and run on CapRover
-- [ ] One week soak test with memory and disk measurements
+- [ ] Verified against a real Docker daemon and a CapRover Swarm — pending post-launch staging deploy
+- [ ] Docker image built and run on CapRover — pending (build tarball: `CapScope-capscope.tar.gz`)
+- [ ] One week soak test with memory and disk measurements — pending post-launch

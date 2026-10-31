@@ -1,0 +1,20 @@
+services:
+  capscope:
+    image: ghcr.io/hacrex/capscope:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_USER: admin
+      AUTH_PASS: change-me
+      MAX_DB_MB: 2048
+      EXCLUDE: "^captain-"
+    volumes:
+      - capscope-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  capscope-data:

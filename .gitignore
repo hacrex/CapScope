@@ -2,3 +2,7 @@ bin/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+
+# Demo / development artifacts (not part of the release)
+.demo/
+demo-env.txt
