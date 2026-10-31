@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.24-alpine AS build
+FROM golang:1.26-alpine AS build
 # modernc.org/sqlite is pure Go; no C compiler needed. ca-certificates for
 # HTTPS outbound from the scratch image.
 RUN apk add --no-cache ca-certificates
