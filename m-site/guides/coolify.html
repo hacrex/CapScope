@@ -85,7 +85,7 @@
             <h2 id="docker-access">4. Docker access</h2>
             <p>CapScope needs to reach the Docker Engine API of the host. Two options:</p>
             <ul>
-              <li><strong>Socket proxy (recommended).</strong> Deploy the <code>tecnativa/docker-socket-proxy</code> snippet from <code>deploy/docker-compose.yml</code> on the same network (or "Docker Compose" resource), with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>. Add to CapScope: <code>DOCKER_HOST=tcp://&lt;service-name-of-proxy&gt;:2375</code>.</li>
+              <li><strong>Socket proxy (recommended).</strong> Deploy the <code>tecnativa/docker-socket-proxy</code> snippet from <code>deploy/docker-compose.yml</code> on the same network, with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>. Add to CapScope: <code>DOCKER_HOST=tcp://&lt;service-name-of-proxy&gt;:2375</code>.</li>
               <li><strong>Socket mount.</strong> In the resource's run-time config, bind <code>/var/run/docker.sock</code> from the host. This gives the container root-equivalent access to the host — only use it on single-user hosts.</li>
             </ul>
 

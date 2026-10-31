@@ -53,7 +53,7 @@
             <ol>
               <li>Project → <strong>Create Service</strong> → <strong>Docker Compose</strong>. Point it at this repository and set the compose path to <code>deploy/docker-compose.yml</code>.</li>
               <li>The compose file builds from the repo root (<code>build: ..</code>), so the first deploy compiles the Go binary; the Dokploy server needs outbound internet during the build.</li>
-              <li>Alternatively use a <strong>Dockerfile</strong> service (quick, no compose) and add the volume mounts listed below in the service's <strong>Advanced / Volumes</strong> section.</li>
+              <li>Alternatively use a <strong>Dockerfile</strong> service and add the volume mounts in <strong>Advanced / Volumes</strong>.</li>
             </ol>
 
             <h2 id="env">2. Environment variables</h2>
@@ -84,7 +84,7 @@
 
             <h2 id="notes">Notes and caveats</h2>
             <ul>
-              <li><strong>Single node only.</strong> Dokploy runs on Docker Swarm. CapScope reads the host's Docker socket, so in a multi-node Swarm it only sees containers on the node its task is scheduled on. Pin it to the manager/swarm node (or wherever your workloads run) if you have more than one node.</li>
+              <li><strong>Single node only.</strong> Dokploy runs on Docker Swarm. CapScope reads the host's Docker socket, so in a multi-node Swarm it only sees containers on the node its task is scheduled on. Pin it to the manager/swarm node if you have more than one node.</li>
               <li><strong>One replica.</strong> Never scale the capscope service beyond 1 — instances would write the same SQLite file.</li>
               <li><strong>Storage:</strong> the compose file already declares a named volume <code>capscope-data</code> mounted at <code>/data</code>. Keep it; the SQLite database lives there.</li>
               <li>The container runs as <code>root</code> on purpose (<code>docker.sock</code> needs it). Use the socket-proxy variant from <code>docker-compose.yml</code> to drop the socket mount.</li>

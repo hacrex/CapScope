@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architecture — CapScope</title>
-  <meta name="description" content="CapScope architecture: how the collector, hub, store, and API work together with SQLite storage.">
+  <meta name="description" content="CapScope architecture: collector, hub, store, and API components with SQLite storage.">
   <meta name="theme-color" content="#ffffff">
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -35,7 +35,7 @@
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">In this section</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Sections</h4>
             <nav class="doc-nav">
               <a href="#overview">Overview</a>
               <a href="#components">Components</a>
@@ -47,16 +47,16 @@
 
           <div class="doc-content">
             <h1>Architecture</h1>
-            <p class="muted">CapScope is a single Go binary with no frontend build step — the UI is an embedded HTML file. It runs as one container next to the containers it watches.</p>
+            <p class="muted">CapScope is a single Go binary with no frontend build step. The UI is an embedded HTML file. It runs as one container next to the containers it watches.</p>
 
             <div class="card" style="margin-bottom:2rem;">
               <div class="card-body">
-                <pre style="background:var(--bg-panel);border:none;"><code style="color:#8b5cf6;">Docker Engine</code> <span style="color:#64748b;">→</span> <code style="color:#f89c1c;">CapScope (one Go binary)</code> <span style="color:#64748b;">→</span> <code style="color:#15803d;">SQLite (one file)</code>
+                <pre style="background:var(--bg-panel);border:none;"><code style="color:#8b5cf6;">Docker Engine</code> <span style="color:#64748b;">→</span> <code style="color:#f89c1c;">CapScope</code> <span style="color:#64748b;">→</span> <code style="color:#15803d;">SQLite</code>
     │
-    ├─ <span style="color:#b45309;">collector:</span> follows logs + stats per container
-    ├─ <span style="color:#0ea5e9;">hub:</span> SSE fan-out to the browser
-    ├─ <span style="color:#15803d;">store:</span> WAL mode, batched inserts, retention
-    └─ <span style="color:#dc2626;">api:</span> REST + SSE + embedded single-page UI</pre>
+    ├─ collector: follows logs + stats per container
+    ├─ hub: SSE fan-out to the browser
+    ├─ store: WAL mode, batched inserts, retention
+    └─ api: REST + SSE + embedded UI</pre>
               </div>
             </div>
 
@@ -74,13 +74,13 @@
               <div class="card">
                 <div class="card-body">
                   <h4 style="color:#0ea5e9;margin-bottom:0.75rem;">Hub</h4>
-                  <p class="small muted">SSE fan-out to the browser. The live log view uses Server-Sent Events so the UI streams new log lines as they arrive, with pause/follow and load-older support.</p>
+                  <p class="small muted">Server-Sent Events fan-out to the browser. The live log view uses SSE so the UI streams new log lines as they arrive, with pause/follow and load-older support.</p>
                 </div>
               </div>
               <div class="card">
                 <div class="card-body">
                   <h4 style="color:#15803d;margin-bottom:0.75rem;">Store</h4>
-                  <p class="small muted">SQLite in WAL mode with <code>synchronous=NORMAL</code> and batched inserts (~156k rows/sec measured upper bound). Enforces age and size retention, dropping oldest logs first when the <code>MAX_DB_MB</code> cap is reached.</p>
+                  <p class="small muted">SQLite in WAL mode with <code>synchronous=NORMAL</code> and batched inserts. Enforces age and size retention, dropping oldest logs first when the <code>MAX_DB_MB</code> cap is reached.</p>
                 </div>
               </div>
               <div class="card">

@@ -35,8 +35,9 @@
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">API sections</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Endpoints</h4>
             <nav class="doc-nav">
+              <a href="#auth">Authentication</a>
               <a href="#health">Health</a>
               <a href="#containers">Containers &amp; apps</a>
               <a href="#logs">Logs</a>
@@ -51,183 +52,143 @@
 
           <div class="doc-content">
             <h1>HTTP API</h1>
-            <p class="muted">All endpoints except <code>/healthz</code> require Basic auth when <code>AUTH_PASS</code> is set. Responses are JSON unless noted. Timestamps named <code>ts</code> are Unix milliseconds.</p>
-            <p class="muted small">Base URL: <code>http://&lt;host&gt;:8080</code></p>
+            <p class="muted">Base URL: <code>http://&lt;host&gt;:8080</code>. All endpoints except <code>/healthz</code> require Basic auth when <code>AUTH_PASS</code> is set.</p>
 
-            <div class="callout callout-info">
+            <div class="callout callout-info" id="auth">
               <strong>Authentication</strong>
-              <p style="margin:0.25rem 0 0;">Use the <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header on every request.</p>
+              <p style="margin:0.25rem 0 0;">Use the <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header on every request. Example:</p>
+              <pre><code class="language-bash">curl -u admin:change-me http://localhost:8080/api/containers</code></pre>
             </div>
 
             <h2 id="health">Health</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/healthz</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns <code>ok</code>.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/healthz</div>
+              <p>Returns <code>ok</code>. No authentication required.</p>
             </div>
 
             <h2 id="containers">Containers &amp; apps</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/containers</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns running containers being followed.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/containers</div>
+              <p>Returns running containers being followed.</p>
               <pre><code class="language-json">{"containers":[{"id":"...","name":"srv-captain--shop.1.x","app":"shop","replica":"1","image":"shop:1.4","started":1793158700000,"cpu":12.5,"mem":104857600,"mem_limit":536870912,"sample_ts":1793158700000}]}</code></pre>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/apps</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns apps known from history with a one-hour error and warning count.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/apps</div>
+              <p>Returns apps known from history with a one-hour error and warning count.</p>
               <pre><code class="language-json">{"apps":[{"app":"shop","containers":1,"last_seen":1793158700437,"errors_1h":8,"warns_1h":14}]}</code></pre>
             </div>
 
             <h2 id="logs">Logs</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/logs</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns rows oldest first.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/logs</div>
+              <p>Returns log rows oldest first.</p>
               <table style="font-size:0.9rem;margin-top:1rem;">
-                <thead><tr><th style="width:30%">Param</th><th>Meaning</th></tr></thead>
+                <thead><tr><th style="width:25%">Param</th><th>Description</th></tr></thead>
                 <tbody>
-                  <tr><td><code>app</code></td><td>App name</td></tr>
-                  <tr><td><code>container</code></td><td>Container name or id prefix</td></tr>
-                  <tr><td><code>q</code></td><td>Search text. Case-insensitive. Uses an FTS5 token/prefix index as a fast path; falls back to a <code>LIKE</code> substring match.</td></tr>
+                  <tr><td><code>app</code></td><td>Filter by app name.</td></tr>
+                  <tr><td><code>container</code></td><td>Filter by container name or id prefix.</td></tr>
+                  <tr><td><code>q</code></td><td>Search text (case-insensitive, FTS5 prefix index).</td></tr>
                   <tr><td><code>regex</code></td><td><code>1</code> treats <code>q</code> as a case-insensitive regular expression.</td></tr>
-                  <tr><td><code>level</code></td><td>Comma list of <code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code></td></tr>
-                  <tr><td><code>stream</code></td><td><code>stdout</code> or <code>stderr</code></td></tr>
-                  <tr><td><code>since</code></td><td>Relative (<code>15m</code>, <code>2h</code>, <code>1d</code>) or epoch milliseconds</td></tr>
-                  <tr><td><code>until</code></td><td>Epoch milliseconds</td></tr>
-                  <tr><td><code>limit</code></td><td>Default 500, max 5000</td></tr>
+                  <tr><td><code>level</code></td><td>Comma list: <code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code>.</td></tr>
+                  <tr><td><code>stream</code></td><td><code>stdout</code> or <code>stderr</code>.</td></tr>
+                  <tr><td><code>since</code></td><td>Relative (<code>15m</code>, <code>2h</code>, <code>1d</code>) or epoch ms.</td></tr>
+                  <tr><td><code>limit</code></td><td>Default 500, max 5000.</td></tr>
                 </tbody>
               </table>
-              <p class="small muted" style="margin-top:1rem;">Row shape: <code>{id, ts, container_id, container, app, stream, level, line}</code>. <code>stream</code> is <code>o</code> for stdout and <code>e</code> for stderr.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/logs/stream</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Server-Sent Events stream of new rows matching the same filters.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/logs/stream</div>
+              <p>Server-Sent Events stream of new log rows matching the same filters.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/logs/export</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Streams matching rows as CSV (<code>capscope-logs.csv</code>), up to 200,000 lines.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/logs/export</div>
+              <p>Streams matching rows as CSV (<code>capscope-logs.csv</code>), up to 200,000 lines.</p>
             </div>
 
             <h2 id="access">Access logs</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/access?range=1h</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns aggregated dashboard data: totals, status-code distribution, top paths/IPs/referrers, hits-and-errors timeline.</p>
-              <pre><code class="language-json">{"since_ms":...,"until_ms":0,"bucket_ms":12000,"totals":{"requests":900,"client_err":41,"server_err":9,"unique_ips":3,"bytes":88401},"codes":[{"code":200,"n":600}],"paths":[{"key":"/api/items","hits":212,"bytes":9901,"errors":3}],"ips":[{"key":"203.0.113.0","hits":400,"bytes":41000,"errors":2}],"refs":[{"key":"https://google.com/","hits":12,"errors":0}],"timeline":[{"ts":1793157492000,"hits":30,"errors":1,"bytes":2955}]}</code></pre>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/access?range=1h</div>
+              <p>Returns aggregated access-log dashboard data: totals, status codes, top paths/IPs/referrers, hits-and-errors timeline.</p>
+              <pre><code class="language-json">{"totals":{"requests":900,"client_err":41,"server_err":9,"unique_ips":3,"bytes":88401},"codes":[{"code":200,"n":600}],"paths":[{"key":"/api/items","hits":212,"bytes":9901,"errors":3}],"timeline":[{"ts":1793157492000,"hits":30,"errors":1,"bytes":2955}]}</code></pre>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/access/export</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Streams raw parsed rows as CSV (<code>capscope-access.csv</code>). Default range 24 h, 100,000 rows max.</p>
-            </div>
-
-            <h2 id="sql">SQL queries</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/sql?query=</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Runs one ad-hoc read statement against the stored tables. <code>SELECT</code> or <code>WITH … SELECT</code> only.</p>
-              <pre><code class="language-sql">SELECT app, level, count(*) AS n
-FROM logs
-WHERE ts > (unixepoch('now') - 3600) * 1000000000
-GROUP BY app, level HAVING n > 5
-ORDER BY n DESC</code></pre>
-              <p class="small muted" style="margin-top:0.75rem;">Tables: <code>logs</code>, <code>metrics</code>, <code>containers</code>, <code>snapshots</code> (and <code>logs_fts</code> for <code>MATCH</code> joins).</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/access/export</div>
+              <p>Streams raw parsed rows as CSV (<code>capscope-access.csv</code>).</p>
             </div>
 
             <h2 id="metrics">Metrics</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/metrics?app=shop&amp;range=1h</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns bucketed points (about 300 per range, minimum bucket 5 s). For an app, CPU and memory are summed across replicas.</p>
-              <pre><code class="language-json">{"bucket_ms":12000,"points":[{"ts":1793157492000,"cpu":10,"mem":104857600,"mem_limit":536870912,"net_rx":0,"net_tx":0,"blk_r":0,"blk_w":0,"pids":0}]}</code></pre>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/metrics?app=shop&amp;range=1h</div>
+              <p>Returns bucketed CPU/memory points. For an app, values are summed across replicas.</p>
+              <pre><code class="language-json">{"bucket_ms":12000,"points":[{"ts":1793157492000,"cpu":10,"mem":104857600,"mem_limit":536870912}]}</code></pre>
             </div>
 
             <h2 id="snapshots">Crash snapshots</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots?app=shop&amp;limit=100</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns light rows (no logs or metrics), newest first.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/snapshots?app=shop&amp;limit=100</div>
+              <p>Returns light snapshot rows (no logs/metrics), newest first.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots/{id}</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the full snapshot: metadata, <code>summary</code>, <code>logs</code>, <code>metrics</code> and a trimmed <code>inspect</code> object.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/snapshots/{id}</div>
+              <p>Returns the full snapshot: metadata, summary, logs, metrics, and trimmed inspect object.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots/{id}/export</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns a Markdown crash report suitable for pasting into an incident channel.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/snapshots/{id}/export</div>
+              <p>Returns a Markdown crash report for incident handoff.</p>
             </div>
-            <p class="small muted">Snapshot <code>kind</code> is one of <code>oom</code>, <code>crash</code>, <code>killed</code>, <code>clean_exit</code>.</p>
+
+            <h2 id="sql">SQL queries</h2>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/sql?query=</div>
+              <p>Runs one ad-hoc read statement (<code>SELECT</code> or <code>WITH … SELECT</code>) against stored tables.</p>
+              <pre><code class="language-sql">SELECT app, level, count(*) AS n
+FROM logs
+WHERE ts > (unixepoch('now') - 3600) * 1000000000
+GROUP BY app, level
+ORDER BY n DESC</code></pre>
+            </div>
 
             <h2 id="alerts">Alerts</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/alerts?app=shop&amp;limit=100</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the firing history, newest first.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/alerts</div>
+              <p>Returns alert firing history, newest first.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/alerts/rules</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the armed configuration without secrets.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/alerts/rules</div>
+              <p>Returns armed alert configuration.</p>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">POST</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/alerts/test</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Sends a test message through every configured channel.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">POST</div>
+              <div class="endpoint-path">/api/alerts/test</div>
+              <p>Sends a test message through every configured channel.</p>
             </div>
 
             <h2 id="deploys">Deploys</h2>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">POST</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/deploys</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Records a deploy marker. Body: <code>{app, version, note?, ts?}</code>. <code>app</code> is required.</p>
-              <pre><code class="language-json">{"id":1,"ts":1793158700000,"app":"shop","version":"v1.4","note":"hotfix"}</code></pre>
+            <div class="endpoint-card">
+              <div class="endpoint-method">POST</div>
+              <div class="endpoint-path">/api/deploys</div>
+              <p>Records a deploy marker. Body: <code>{app, version, note?, ts?}</code>.</p>
+              <pre><code class="language-json">{"app":"shop","version":"v1.4","note":"hotfix"}</code></pre>
             </div>
-            <div class="card" style="padding:1rem;margin-bottom:1rem;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
-                <span class="small muted" style="font-family:var(--font-mono)">/api/deploys?app=shop</span>
-              </div>
-              <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns markers newest first.</p>
+            <div class="endpoint-card">
+              <div class="endpoint-method">GET</div>
+              <div class="endpoint-path">/api/deploys</div>
+              <p>Returns deploy markers newest first.</p>
             </div>
 
           </div>

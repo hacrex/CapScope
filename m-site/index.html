@@ -34,40 +34,52 @@
     </div>
   </header>
 
-  <!-- Hero -->
   <main>
+    <!-- Hero -->
     <section class="hero">
       <div class="container">
-        <span class="hero-kicker">Self-hosted • Container observability</span>
-        <h1>Containers never truly disappear.</h1>
-        <p class="sub">CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is replaced, its history stays searchable — no Prometheus stack, no external database.</p>
-        <div class="hero-actions">
-          <a href="guides/docker.html" class="btn btn-primary">Quick start</a>
-          <a href="docs/" class="btn btn-outline">Read the docs</a>
-          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="btn btn-ghost btn-icon"><i class="fa-brands fa-github"></i></a>
+        <div style="max-width:700px;margin:0 auto;">
+          <span class="hero-kicker">Self-hosted container observability</span>
+          <h1>Persistent logs and crash snapshots for Docker containers.</h1>
+          <p class="sub">CapScope runs alongside your containers, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is redeployed and disappears, its history stays searchable.</p>
+          <div class="hero-actions" style="justify-content:center;">
+            <a href="guides/docker.html" class="btn btn-primary">Quick start</a>
+            <a href="docs/" class="btn btn-outline">Documentation</a>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- Stats -->
-    <section class="section-sm">
+    <!-- Problem / Solution -->
+    <section class="section">
       <div class="container">
-        <div class="grid grid-cols-4">
-          <div class="card stat-card">
-            <div class="stat-value">1</div>
-            <div class="stat-label">Binary, one volume</div>
+        <div class="grid grid-cols-2" style="align-items:start;gap:3rem;">
+          <div>
+            <h2 style="font-size:1.75rem;margin-bottom:1rem;">The problem</h2>
+            <p class="muted" style="margin-bottom:1.5rem;">When a Docker container is replaced on redeploy, its stdout, stderr, and stats are gone. Live-only viewers like Dozzle show the present, but can't answer "what happened before it died?"</p>
+            <div class="callout callout-err" style="margin-bottom:1.5rem;">
+              <strong>Lost on redeploy:</strong> Logs, memory trends, exit codes, and crash context disappear with the container.
+            </div>
+            <div class="callout callout-warn" style="margin-bottom:1.5rem;">
+              <strong>Heavy stack:</strong> Prometheus + Grafana + Loki is overkill for a single server or homelab.
+            </div>
           </div>
-          <div class="card stat-card">
-            <div class="stat-value">SQLite</div>
-            <div class="stat-label">Persistent, searchable history</div>
-          </div>
-          <div class="card stat-card">
-            <div class="stat-value">Auto</div>
-            <div class="stat-label">Crash snapshots on OOM / non-zero exit</div>
-          </div>
-          <div class="card stat-card">
-            <div class="stat-value">GoAccess</div>
-            <div class="stat-label">Style access-log dashboard</div>
+          <div>
+            <h2 style="font-size:1.75rem;margin-bottom:1rem;">CapScope</h2>
+            <div style="display:flex;flex-direction:column;gap:1rem;">
+              <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                <div style="color:var(--accent);font-size:1.25rem;">⬤</div>
+                <div><strong>Persistent history.</strong> Logs and metrics stored in SQLite with retention policies.</div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                <div style="color:var(--accent);font-size:1.25rem;">⬤</div>
+                <div><strong>Crash snapshots.</strong> Auto-captured on OOM or non-zero exit with exit code, memory trend, and last log lines.</div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                <div style="color:var(--accent);font-size:1.25rem;">⬤</div>
+                <div><strong>One binary.</strong> Single container, single volume, no external database.</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -76,85 +88,40 @@
     <!-- Features -->
     <section class="section">
       <div class="container">
-        <div class="section-head">
-          <h2>Everything you need after a container dies</h2>
-          <p>Live tails are great. History is better. Crash forensics are best.</p>
+        <div class="section-head text-center">
+          <h2>Features</h2>
+          <p>Everything you need to debug container failures.</p>
         </div>
         <div class="grid grid-cols-3">
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-box"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-box"></i></div>
             <h4>Persistent logs</h4>
             <p>Logs stored in SQLite with full-text search. Search history long after a redeploy removes the container.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-bomb"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-bomb"></i></div>
             <h4>Crash snapshots</h4>
-            <p>Auto-saved on OOM or non-zero exit with exit code, memory trend, last lines, and a plain-language summary.</p>
+            <p>Auto-saved on OOM or non-zero exit with exit code, memory trend, last lines, and a rule-based summary.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-chart-line"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-chart-line"></i></div>
             <h4>Metrics history</h4>
             <p>CPU and memory samples persisted per app or replica, from 15 minutes to 7 days.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-redo"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-redo"></i></div>
             <h4>Restart-loop detection</h4>
             <p>Flags containers dying in a loop so you know when an app is crash-looping.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-globe"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-globe"></i></div>
             <h4>Access-log dashboard</h4>
             <p>GoAccess-style panels from your reverse proxy: status codes, top paths, client IPs, CSV export.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon">
-              <i class="fa-solid fa-rocket"></i>
-            </div>
+            <div class="feature-icon"><i class="fa-solid fa-rocket"></i></div>
             <h4>Deploy markers</h4>
             <p>Correlate crashes and metric spikes with the release that preceded them.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- How it works -->
-    <section class="section">
-      <div class="container">
-        <div class="section-head text-center">
-          <h2>One binary. One volume.</h2>
-          <p>Run CapScope next to the containers you already watch.</p>
-        </div>
-        <div class="grid grid-cols-3" style="margin-top:2rem;">
-          <div class="step">
-            <div class="step-number">1</div>
-            <div>
-              <h4>Run it</h4>
-              <p>One Docker container with <code>/var/run/docker.sock</code> mounted and a <code>/data</code> volume for SQLite.</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-number">2</div>
-            <div>
-              <h4>Watch it</h4>
-              <p>CapScope follows logs and stats for every container, redacting secrets before storage.</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-number">3</div>
-            <div>
-              <h4>Sleep better</h4>
-              <p>When a container dies at 3 AM, open the Crashes tab and see exactly what happened.</p>
-            </div>
           </div>
         </div>
       </div>
@@ -165,20 +132,21 @@
       <div class="container">
         <div class="card" style="padding:2rem;max-width:720px;margin:0 auto;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
-            <div class="badge badge-neutral">Terminal</div>
+            <div class="badge badge-neutral">Docker</div>
           </div>
           <h3 style="margin-bottom:1rem;">Quick start</h3>
           <pre><code class="language-bash">docker run -d --name capscope \
   -p 8080:8080 \
   -e AUTH_USER=admin \
-  -e AUTH_PASS=change-me \
+  -e AUTH_PASS='change-me' \
   -v capscope-data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --restart unless-stopped \
   ghcr.io/hacrex/capscope:latest</code></pre>
+          <p class="muted small" style="margin-top:1rem;">Open <code>http://localhost:8080</code> and log in. <code>AUTH_PASS</code> is required — the server refuses to start without it.</p>
           <div style="display:flex;gap:1rem;margin-top:1.5rem;">
-            <a href="guides/docker.html" class="btn btn-primary">View Docker guide →</a>
-            <a href="docs/" class="btn btn-outline">Read full documentation →</a>
+            <a href="guides/docker.html" class="btn btn-primary">Full Docker guide →</a>
+            <a href="docs/" class="btn btn-outline">Documentation →</a>
           </div>
         </div>
       </div>
@@ -188,8 +156,8 @@
     <section class="section">
       <div class="container">
         <div class="section-head text-center">
-          <h2>Deploy anywhere you run Docker</h2>
-          <p>Step-by-step guides for your platform.</p>
+          <h2>Deployment guides</h2>
+          <p>Step-by-step instructions for your platform.</p>
         </div>
         <div class="platforms">
           <a href="guides/docker.html" class="platform-chip"><i class="fa-solid fa-box"></i> Docker Compose</a>

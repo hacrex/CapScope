@@ -87,14 +87,14 @@ dokku letsencrypt capscope</code></pre>
             <h2 id="socket-proxy">Socket proxy (recommended)</h2>
             <p>Mounting <code>docker.sock</code> is root equivalent on the host. To limit what CapScope can do:</p>
             <ol>
-              <li>Run the <code>tecnativa/docker-socket-proxy</code> container with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>, no public port, on the same Docker network as CapScope (see <code>docker-compose.yml</code> for the equivalent snippet).</li>
+              <li>Run the <code>tecnativa/docker-socket-proxy</code> container with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>, no public port, on the same Docker network as CapScope.</li>
               <li>Remove the socket mount and instead: <code>dokku config:set capscope DOCKER_HOST=tcp://&lt;proxy-container-name&gt;:2375</code>.</li>
               <li>Re-deploy.</li>
             </ol>
 
             <h2 id="notes">Notes</h2>
             <ul>
-              <li><strong>Ports:</strong> The <code>Dockerfile</code> exposes <code>8080</code>, and Dokku maps the first exposed port to the app's proxy automatically, so no <code>ports:set</code> is needed. If you skip the web proxy, map it explicitly: <code>dokku ports:set capscope http:80:8080</code>.</li>
+              <li><strong>Ports:</strong> The <code>Dockerfile</code> exposes <code>8080</code>, and Dokku maps the first exposed port to the app's proxy automatically. If you skip the web proxy, map it explicitly: <code>dokku ports:set capscope http:80:8080</code>.</li>
               <li><strong>Live tail (SSE):</strong> CapScope sends <code>X-Accel-Buffering: no</code>, and Dokku's default Nginx proxy respects it. If the live view stalls behind another reverse proxy, disable response buffering for <code>/api/logs/stream</code>.</li>
               <li>The container runs as <code>root</code> on purpose (<code>docker.sock</code> needs it).</li>
             </ul>
