@@ -251,7 +251,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -594,7 +594,7 @@ function jumpLiveWatch(){
   $('#jumpLive').classList.toggle('show',!atBottom);
 }
 function createPane(host,container,split){
-  const pane={name:container,el:host,host,split,scroller:null,vl:null,es:null,loaded:false,pending:[],maxId:0};
+  const pane={name:container,el:host,host,split,scroller:null,vl:null,es:null,loaded:false,pending:[],maxId:0,follow:true,paused:false};
   if(split){
     const el=document.createElement('div');el.className='pane';
     const ph=document.createElement('div');ph.className='ph';
@@ -602,7 +602,11 @@ function createPane(host,container,split){
     const lab=document.createElement('span');lab.textContent='replica '+(c?(c.replica||c.name):container);
     const bx=document.createElement('button');bx.className='bx';bx.textContent='✕';bx.title='Remove pane';
     bx.onclick=()=>{S.sel.delete(container);updateReplicaBtn();fillReplicas();restartLogs();};
-    ph.append(lab,bx);el.append(ph);
+    const pf=document.createElement('button');pf.className='bx';pf.textContent='⏸';pf.title='Pause this pane';pf.style.display=split?'':'none';
+    pf.onclick=e=>{e.stopPropagation();pane.paused=!pane.paused;pf.textContent=pane.paused?'▶':'⏸';pf.title=pane.paused?'Resume this pane':'Pause this pane';if(!pane.paused)flushPending(pane);};
+    const fw=document.createElement('button');fw.className='bx';fw.textContent=pane.follow?'👁':'🙈';fw.title='Follow this pane';fw.style.display=split?'':'none';
+    fw.onclick=e=>{e.stopPropagation();pane.follow=!pane.follow;fw.textContent=pane.follow?'👁':'🙈';if(pane.follow)pane.vl.toBottom();};
+    ph.append(lab,fw,pf,bx);el.append(ph);
     const scroller=document.createElement('div');scroller.className='plog';
     el.append(scroller);
     host.append(el);
@@ -614,7 +618,7 @@ function createPane(host,container,split){
   vl.renderRow=lineEl;
   pane.vl=vl;
   const followOff=()=>{
-    if(!vl.atBottom()&&S.follow){S.follow=false;$('#follow').classList.remove('on');}
+    if(!vl.atBottom()&&pane.follow){pane.follow=false;if(fw)fw.textContent='🙈';}
     jumpLiveWatch();
   };
   pane.scroller.addEventListener('scroll',followOff);
@@ -631,7 +635,7 @@ async function startPane(pane){
   const my=pane.es=new EventSource('/api/logs/stream?'+params({},pane.name));
   my.onmessage=e=>{
     const r=JSON.parse(e.data);
-    if(!pane.loaded||S.paused)pane.pending.push(r);
+    if(!pane.loaded||pane.paused)pane.pending.push(r);
     else paneAppend(pane,[r],true);
   };
   my.onerror=()=>{$('#conn').className='chip bad';};
@@ -656,7 +660,7 @@ async function startPane(pane){
 function paneAppend(pane,rs,pin){
   const fresh=[];
   for(const r of rs){if(r.d||r.id>pane.maxId){if(!r.d)pane.maxId=r.id;fresh.push(r);}}
-  if(fresh.length)pane.vl.append(fresh,pin&&S.follow&&pane.vl.atBottom());
+  if(fresh.length)pane.vl.append(fresh,pin&&pane.follow&&pane.vl.atBottom());
   updateCnt();
 }
 function flushPending(pane){
@@ -668,9 +672,9 @@ function updateCnt(){
   let n=0;for(const p of S.panes)n+=p.vl.rows.length;
   $('#cnt').textContent=n+(sqlOn()?' rows':' lines');
 }
-$('#follow').onclick=()=>{S.follow=!S.follow;$('#follow').classList.toggle('on',S.follow);if(S.follow)for(const p of S.panes)p.vl.toBottom();};
+$('#follow').onclick=()=>{const nf=!S.panes.some(p=>p.follow);for(const p of S.panes){p.follow=nf;const fw=p.el.querySelector('.bx:nth-child(2)');if(fw)fw.textContent=nf?'👁':'🙈';if(nf)p.vl.toBottom();}$('#follow').classList.toggle('on',nf);};
 $('#wrap').onclick=()=>{S.wrapLines=!S.wrapLines;$('#wrap').classList.toggle('on',S.wrapLines);document.documentElement.classList.toggle('wrap',S.wrapLines);};
-$('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.paused);$('#pause').textContent=S.paused?'Resume':'Pause';if(!S.paused)for(const p of S.panes)flushPending(p);};
+$('#pause').onclick=()=>{const np=!S.panes.some(p=>p.paused);for(const p of S.panes){p.paused=np;const pf=p.el.querySelector('.bx:nth-child(3)');if(pf)pf.textContent=np?'⏸':'▶';if(!np)flushPending(p);}$('#pause').classList.toggle('on',np);$('#pause').textContent=np?'Pause':'Resume';};
 function setRangeChip(){document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
 function setStatusChip(){document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.classList.toggle('on',b.dataset.status===S.accStatus));}
 setRangeChip();setStatusChip();
