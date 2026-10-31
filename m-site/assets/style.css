@@ -1403,8 +1403,10 @@ a.card:hover .card-top svg {
 .footer-wordmark {
   text-align: center;
   line-height: 0.82;
-  padding: 0 12px;
-  margin-bottom: 46px;
+  /* bottom padding gives the descender of the "p" room so it isn't
+     clipped by .site-footer's overflow: hidden now that this is last */
+  padding: 0 12px 0.12em;
+  margin: 52px 0 0;
   user-select: none;
 }
 .footer-wordmark a {
