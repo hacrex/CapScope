@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy on Coolify — CapScope</title>
+  <meta name="description" content="Step-by-step guide to deploy CapScope on Coolify, a self-hosted PaaS alternative.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="../docs/">Docs</a>
+        <a href="index.html">Guides</a>
+        <a href="coolify.html" class="active">Coolify</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Steps</h4>
+            <nav class="doc-nav">
+              <a href="#create-resource">1. Create the resource</a>
+              <a href="#configure">2. Configure it</a>
+              <a href="#storage">3. Storage</a>
+              <a href="#docker-access">4. Docker access</a>
+              <a href="#notes">Notes</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>Deploying CapScope on Coolify</h1>
+            <p class="muted">Coolify builds the repo's <code>Dockerfile</code> directly, so no extra definition file is needed.</p>
+
+            <h2 id="create-resource">1. Create the resource</h2>
+            <ol>
+              <li>Project → <strong>New Resource</strong> → <strong>Dockerfile</strong>, and point it at this repository.</li>
+              <li>Coolify builds the <code>Dockerfile</code> at the repo root automatically; set "Build context" to <code>.</code> if it asks.</li>
+            </ol>
+
+            <h2 id="configure">2. Configure it</h2>
+            <p><strong>Environment variables</strong></p>
+            <table>
+              <thead><tr><th style="width:25%">Key</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td><code>AUTH_USER</code></td><td><code>admin</code>, or your username</td></tr>
+                <tr><td><code>AUTH_PASS</code></td><td>A long random password</td></tr>
+                <tr><td><code>MAX_DB_MB</code></td><td>Size cap for live data, for example <code>2048</code></td></tr>
+                <tr><td><code>EXCLUDE</code></td><td>Optional; <code>^coolify-</code> hides Coolify's own containers from the sidebar</td></tr>
+              </tbody>
+            </table>
+            <p><strong>Ports:</strong> set the container port to <code>8080</code>. Assign the app a <strong>Domain</strong> and turn on HTTPS. Do not expose it on plain HTTP — Basic auth credentials would travel in clear text.</p>
+            <p><strong>Health check:</strong> URL path <code>/healthz</code> (auth-free by design).</p>
+
+            <h2 id="storage">3. Storage</h2>
+            <p>Add a <strong>Persistent Storage</strong> volume:</p>
+            <table>
+              <thead><tr><th style="width:35%">Path in container</th><th>Label</th></tr></thead>
+              <tbody>
+                <tr><td><code>/data</code></td><td><code>capscope-data</code> (SQLite lives here)</td></tr>
+              </tbody>
+            </table>
+            <div class="callout callout-warn">
+              <strong>Important:</strong>
+              <p style="margin:0.25rem 0 0;">Without it, history, crash snapshots and settings are lost on each redeploy.</p>
+            </div>
+
+            <h2 id="docker-access">4. Docker access</h2>
+            <p>CapScope needs to reach the Docker Engine API of the host. Two options:</p>
+            <ul>
+              <li><strong>Socket proxy (recommended).</strong> Deploy the <code>tecnativa/docker-socket-proxy</code> snippet from <code>deploy/docker-compose.yml</code> on the same network (or "Docker Compose" resource), with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>. Add to CapScope: <code>DOCKER_HOST=tcp://&lt;service-name-of-proxy&gt;:2375</code>.</li>
+              <li><strong>Socket mount.</strong> In the resource's run-time config, bind <code>/var/run/docker.sock</code> from the host. This gives the container root-equivalent access to the host — only use it on single-user hosts.</li>
+            </ul>
+
+            <h2 id="notes">Notes</h2>
+            <ul>
+              <li><strong>Live tail (SSE):</strong> CapScope sends <code>X-Accel-Buffering: no</code>, which Nginx proxies respect. Traefik and Caddy stream it as-is. If the live view stalls, check the proxy in front of the instance for response buffering on <code>/api/logs/stream</code>.</li>
+              <li><strong>Instance count:</strong> one. Never scale Coolify to more than one replica of CapScope — each would write the same SQLite file.</li>
+              <li>The container runs as <code>root</code> on purpose (<code>docker.sock</code> needs it).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy on CapRover — CapScope</title>
+  <meta name="description" content="Step-by-step guide to deploy CapScope on CapRover with persistent data, socket mount, and HTTPS.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="index.html">Docs</a>
+        <a href="caprover.html" class="active">CapRover</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Steps</h4>
+            <nav class="doc-nav">
+              <a href="#create-app">1. Create the app</a>
+              <a href="#configure">2. Configure it</a>
+              <a href="#deploy">3. Deploy the code</a>
+              <a href="#verify">4. Verify</a>
+              <a href="#hardening">Hardening: socket proxy</a>
+              <a href="#capacity">Capacity planning</a>
+              <a href="#troubleshooting">Troubleshooting</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>Deploying CapScope on CapRover</h1>
+            <p class="muted">Native CapRover app deployment with persistent <code>/data</code> and Docker socket mount.</p>
+
+            <h2 id="create-app">1. Create the app</h2>
+            <ol>
+              <li>In the CapRover dashboard: Apps, create a new app named <code>capscope</code>. Do <em>not</em> tick "Has Persistent Data" if you plan to set directories manually below.</li>
+              <li>Open the app, <strong>App Configs</strong>.</li>
+            </ol>
+
+            <h2 id="configure">2. Configure it</h2>
+            <p><strong>Environment variables</strong></p>
+            <table>
+              <thead><tr><th style="width:25%">Key</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td><code>AUTH_USER</code></td><td>Your username</td></tr>
+                <tr><td><code>AUTH_PASS</code></td><td>A long random password</td></tr>
+                <tr><td><code>MAX_DB_MB</code></td><td>Size cap for live data, for example <code>2048</code></td></tr>
+                <tr><td><code>EXCLUDE</code></td><td>Optional, for example <code>^captain-</code> to hide CapRover's own services</td></tr>
+              </tbody>
+            </table>
+            <p class="muted small">Excluded containers are still followed <em>for access logs only</em>: <code>captain-nginx</code> keeps feeding the Access dashboard (parsed requests, no raw log rows).</p>
+            <p><strong>Container HTTP Port:</strong> <code>8080</code></p>
+            <p><strong>Persistent Directories</strong> (needed twice):</p>
+            <table>
+              <thead><tr><th style="width:35%">Path in container</th><th>Label / host path</th></tr></thead>
+              <tbody>
+                <tr><td><code>/data</code></td><td>A named volume such as <code>capscope-data</code> (SQLite lives here)</td></tr>
+                <tr><td><code>/var/run/docker.sock</code></td><td>Host path <code>/var/run/docker.sock</code></td></tr>
+              </tbody>
+            </table>
+            <p><strong>Instance count:</strong> <code>1</code>. Do not scale CapScope out — each instance would write the same data.</p>
+            <p><strong>HTTPS:</strong> Enable HTTPS and "Force HTTPS". Do not expose this app on plain HTTP — Basic auth credentials would travel in clear text.</p>
+            <p><strong>WebSocket Support:</strong> Not needed. The live view uses Server-Sent Events. CapScope sends <code>X-Accel-Buffering: no</code> so CapRover's nginx does not buffer the stream.</p>
+
+            <div class="callout callout-warn">
+              <strong>Socket warning:</strong>
+              <p style="margin:0.25rem 0 0;">Mounting <code>docker.sock</code> into a container is root equivalent on the host. See the socket proxy section below to limit what CapScope can do.</p>
+            </div>
+
+            <h2 id="deploy">3. Deploy the code</h2>
+            <p>From the project folder, using the CapRover CLI:</p>
+            <pre><code class="language-bash">npm i -g caprover
+caprover deploy</code></pre>
+            <p>Pick your server and the <code>capscope</code> app. CapRover reads <code>captain-definition</code>, which points at the <code>Dockerfile</code>. Alternatively zip the project (without <code>.git</code>) and upload it in the app's <strong>Deployment</strong> tab.</p>
+            <p class="muted small">The first build downloads Go modules, so the CapRover host needs outbound internet during the build.</p>
+
+            <h2 id="verify">4. Verify</h2>
+            <ul>
+              <li>Open <code>https://capscope.&lt;your-root-domain&gt;</code> and log in.</li>
+              <li>The header chip should show a container count above zero.</li>
+              <li>Trigger a test crash on a throwaway app — for example run a container that exits with code 1 — and check the Crashes tab.</li>
+            </ul>
+
+            <h2 id="hardening">Hardening: socket proxy (recommended)</h2>
+            <p>Mounting <code>docker.sock</code> is root equivalent on the host. To limit what CapScope can do, run a socket proxy that exposes only read endpoints:</p>
+            <ol>
+              <li>Create an app <code>docker-proxy</code> from the image <code>tecnativa/docker-socket-proxy</code>, bind-mount <code>/var/run/docker.sock</code> read only, and set environment <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>. Do not map any public port. Keep it internal to the CapRover network.</li>
+              <li>On the <code>capscope</code> app, remove the <code>/var/run/docker.sock</code> mount and set <code>DOCKER_HOST=tcp://srv-captain--docker-proxy:2375</code>.</li>
+              <li>In the proxy app, keep <strong>Expose as web app</strong> off.</li>
+            </ol>
+            <p class="muted small"><code>CONTAINERS=1</code> is what allows <code>GET /containers/*</code> (inspect, logs, stats). Verify on your CapRover version that the proxy lets CapScope start, because proxy defaults vary between image versions.</p>
+
+            <h2 id="capacity">Capacity planning</h2>
+            <p>Measured on a sandbox: about <strong>400 bytes of database per stored log line</strong> for 130 byte JSON lines (three indexes included).</p>
+            <pre><code>bytes per day = lines per second × 86400 × 400</code></pre>
+            <table>
+              <thead><tr><th style="width:30%">Lines per second (all apps)</th><th>Per day</th><th>Per 7 days</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>about 35 MB</td><td>about 240 MB</td></tr>
+                <tr><td>10</td><td>about 350 MB</td><td>about 2.4 GB</td></tr>
+                <tr><td>100</td><td>about 3.5 GB</td><td>about 24 GB</td></tr>
+              </tbody>
+            </table>
+            <p class="muted small"><code>MAX_DB_MB</code> wins over <code>LOG_RETENTION</code>: if your volume is high, the oldest logs are dropped early to stay under the cap. Raise the cap, lower the retention, or use <code>EXCLUDE</code> for chatty containers such as <code>captain-nginx</code>.</p>
+            <p class="muted small">Metrics are cheap: one row per container every 10 seconds is about 8,600 rows per container per day.</p>
+
+            <h2 id="troubleshooting">Troubleshooting</h2>
+            <table>
+              <thead><tr><th style="width:35%">Symptom</th><th>Likely cause</th></tr></thead>
+              <tbody>
+                <tr><td>Exits at start: <code>AUTH_PASS is required</code></td><td>Set <code>AUTH_PASS</code>, or <code>ALLOW_NO_AUTH=true</code> for a private test</td></tr>
+                <tr><td>Exits at start: <code>cannot reach Docker</code></td><td>Socket not mounted, or proxy URL wrong</td></tr>
+                <tr><td>App list empty</td><td><code>INCLUDE</code> or <code>EXCLUDE</code> regex filtering everything, or no containers on this node</td></tr>
+                <tr><td>Live view stalls behind a proxy</td><td>A proxy in front of CapRover is buffering SSE. Disable buffering for <code>/api/logs/stream</code></td></tr>
+                <tr><td>Container shows no logs</td><td>Its logging driver does not support reading (<code>docker logs</code> fails for it)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

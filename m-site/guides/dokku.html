@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy on Dokku — CapScope</title>
+  <meta name="description" content="Step-by-step guide to deploy CapScope on Dokku via git push.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="../docs/">Docs</a>
+        <a href="index.html">Guides</a>
+        <a href="dokku.html" class="active">Dokku</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Steps</h4>
+            <nav class="doc-nav">
+              <a href="#create-app">1. Create the app</a>
+              <a href="#configure">2. Configure it</a>
+              <a href="#deploy">3. Deploy</a>
+              <a href="#https">HTTPS</a>
+              <a href="#socket-proxy">Socket proxy (recommended)</a>
+              <a href="#notes">Notes</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>Deploying CapScope on Dokku</h1>
+            <p class="muted">Dokku builds the repo's <code>Dockerfile</code> on <code>git push</code>, no buildpack needed. The <code>CHECKS</code> file at the repo root makes Dokku wait for <code>/healthz</code> before routing traffic.</p>
+
+            <h2 id="create-app">1. Create the app</h2>
+            <pre><code class="language-bash">dokku apps:create capscope</code></pre>
+            <p>Persistent storage (the SQLite database survives redeploys):</p>
+            <pre><code class="language-bash">dokku storage:ensure-directory capscope --chown-on-add
+dokku storage:mount capscope /var/lib/dokku/data/storage/capscope:/data</code></pre>
+            <p>Docker socket access:</p>
+            <pre><code class="language-bash">dokku storage:mount capscope /var/run/docker.sock:/var/run/docker.sock</code></pre>
+            <p class="muted small">The <code>storage:mount</code> commands apply on the next deploy.</p>
+
+            <h2 id="configure">2. Configure it</h2>
+            <pre><code class="language-bash">dokku config:set capscope AUTH_USER=admin AUTH_PASS='a long random password'
+dokku config:set capscope MAX_DB_MB=2048           # optional size cap
+dokku config:set capscope EXCLUDE='^nginx|traefik'  # optional, hide Dokku's own proxy containers</code></pre>
+            <p class="muted small">Worth excluding: the per-app <code>nginx</code> sidecars Dokku adds and the <code>traefik</code>/<code>caddy</code> ingress containers — they are noisy.</p>
+
+            <h2 id="deploy">3. Deploy</h2>
+            <pre><code class="language-bash">git remote add dokku dokku@&lt;your-dokku-host&gt;:capscope
+git push dokku main</code></pre>
+            <p class="muted small">The first build downloads Go modules, so the Dokku host needs outbound internet during the build.</p>
+
+            <h2 id="https">HTTPS</h2>
+            <p>Assign a domain and run the letsencrypt plugin:</p>
+            <pre><code class="language-bash">dokku domains:set capscope capscope.example.com
+dokku letsencrypt:set --global email you@example.com
+dokku letsencrypt capscope</code></pre>
+            <div class="callout callout-warn">
+              <strong>Do not expose CapScope on plain HTTP</strong>
+              <p style="margin:0.25rem 0 0;">— Basic auth credentials would travel in clear text.</p>
+            </div>
+            <div class="callout callout-info">
+              <strong>Scaling:</strong>
+              <p style="margin:0.25rem 0 0;">Keep it at 1 process — do not run <code>dokku ps:scale capscope web=2</code> or higher. Instances would write the same SQLite file.</p>
+            </div>
+
+            <h2 id="socket-proxy">Socket proxy (recommended)</h2>
+            <p>Mounting <code>docker.sock</code> is root equivalent on the host. To limit what CapScope can do:</p>
+            <ol>
+              <li>Run the <code>tecnativa/docker-socket-proxy</code> container with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>, no public port, on the same Docker network as CapScope (see <code>docker-compose.yml</code> for the equivalent snippet).</li>
+              <li>Remove the socket mount and instead: <code>dokku config:set capscope DOCKER_HOST=tcp://&lt;proxy-container-name&gt;:2375</code>.</li>
+              <li>Re-deploy.</li>
+            </ol>
+
+            <h2 id="notes">Notes</h2>
+            <ul>
+              <li><strong>Ports:</strong> The <code>Dockerfile</code> exposes <code>8080</code>, and Dokku maps the first exposed port to the app's proxy automatically, so no <code>ports:set</code> is needed. If you skip the web proxy, map it explicitly: <code>dokku ports:set capscope http:80:8080</code>.</li>
+              <li><strong>Live tail (SSE):</strong> CapScope sends <code>X-Accel-Buffering: no</code>, and Dokku's default Nginx proxy respects it. If the live view stalls behind another reverse proxy, disable response buffering for <code>/api/logs/stream</code>.</li>
+              <li>The container runs as <code>root</code> on purpose (<code>docker.sock</code> needs it).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

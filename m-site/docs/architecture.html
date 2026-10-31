@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — CapScope</title>
+  <meta name="description" content="CapScope architecture: how the collector, hub, store, and API work together with SQLite storage.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="index.html">Docs</a>
+        <a href="api.html">API</a>
+        <a href="architecture.html" class="active">Architecture</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">In this section</h4>
+            <nav class="doc-nav">
+              <a href="#overview">Overview</a>
+              <a href="#components">Components</a>
+              <a href="#data-flow">Data flow</a>
+              <a href="#storage">Storage</a>
+              <a href="#security">Security</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>Architecture</h1>
+            <p class="muted">CapScope is a single Go binary with no frontend build step — the UI is an embedded HTML file. It runs as one container next to the containers it watches.</p>
+
+            <div class="card" style="margin-bottom:2rem;">
+              <div class="card-body">
+                <pre style="background:#0d1117;border:none;"><code style="color:#8b5cf6;">Docker Engine</code> <span style="color:#94a3b8;">→</span> <code style="color:#3b82f6;">CapScope (one Go binary)</code> <span style="color:#94a3b8;">→</span> <code style="color:#22c55e;">SQLite (one file)</code>
+    │
+    ├─ <span style="color:#eab308;">collector:</span> follows logs + stats per container
+    ├─ <span style="color:#06b6d4;">hub:</span> SSE fan-out to the browser
+    ├─ <span style="color:#22c55e;">store:</span> WAL mode, batched inserts, retention
+    └─ <span style="color:#ef4444;">api:</span> REST + SSE + embedded single-page UI</pre>
+              </div>
+            </div>
+
+            <h2 id="overview">Overview</h2>
+            <p>CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is redeployed and disappears, its logs and memory trend are still searchable — unlike live-only log viewers where the evidence dies with the container.</p>
+
+            <h2 id="components">Components</h2>
+            <div class="grid grid-cols-3">
+              <div class="card">
+                <div class="card-body">
+                  <h4 style="color:#3b82f6;margin-bottom:0.75rem;">Collector</h4>
+                  <p class="small muted">Discovers running containers at startup and on Docker <code>start</code>/<code>die</code> events, reconciles every 30s. Follows stdout/stderr per container and samples CPU, memory, network, block I/O, and pids at a configurable interval (default 10s).</p>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-body">
+                  <h4 style="color:#06b6d4;margin-bottom:0.75rem;">Hub</h4>
+                  <p class="small muted">SSE fan-out to the browser. The live log view uses Server-Sent Events so the UI streams new log lines as they arrive, with pause/follow and load-older support.</p>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-body">
+                  <h4 style="color:#22c55e;margin-bottom:0.75rem;">Store</h4>
+                  <p class="small muted">SQLite in WAL mode with <code>synchronous=NORMAL</code> and batched inserts (~156k rows/sec measured upper bound). Enforces age and size retention, dropping oldest logs first when the <code>MAX_DB_MB</code> cap is reached.</p>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-body">
+                  <h4 style="color:#ef4444;margin-bottom:0.75rem;">API</h4>
+                  <p class="small muted">REST endpoints for containers, logs, metrics, crash snapshots, access logs, SQL queries, alerts, and deploys. Basic auth by default; read-only Docker access.</p>
+                </div>
+              </div>
+            </div>
+
+            <h2 id="data-flow">Data flow</h2>
+            <ol style="margin-left:1.5rem;color:var(--text-muted);">
+              <li><strong>Discover</strong> — containers are discovered at startup and reconciled every 30 seconds.</li>
+              <li><strong>Collect</strong> — the collector follows each container's logs and stats, redacting secrets before storage.</li>
+              <li><strong>Persist</strong> — logs, metrics, and metadata are written to SQLite in WAL mode.</li>
+              <li><strong>Snapshot</strong> — on container <code>die</code> (OOM or non-zero exit), a crash snapshot is written with exit code, last log lines, memory trend, and a rule-based summary.</li>
+              <li><strong>Serve</strong> — the API serves the UI and SSE streams; the browser renders logs, charts, and crash details.</li>
+            </ol>
+
+            <h2 id="storage">Storage</h2>
+            <table>
+              <thead>
+                <tr><th style="width:22%">Table</th><th>Stored</th><th>Timestamp unit</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>logs</code></td><td>Log lines with level, stream, app, container</td><td>Unix nanoseconds</td></tr>
+                <tr><td><code>metrics</code></td><td>CPU, memory, network, block I/O, pids samples</td><td>Unix milliseconds</td></tr>
+                <tr><td><code>containers</code></td><td>Container metadata (name, image, app, replica)</td><td>—</td></tr>
+                <tr><td><code>snapshots</code></td><td>Crash snapshots with summary, facts, last lines</td><td>Unix milliseconds</td></tr>
+                <tr><td><code>access</code></td><td>Parsed HTTP access-log rows (optional)</td><td>Unix milliseconds</td></tr>
+                <tr><td><code>logs_fts</code></td><td>FTS5 full-text index over <code>logs</code></td><td>—</td></tr>
+              </tbody>
+            </table>
+            <p class="small muted" style="margin-top:1rem;">Secrets (JWTs, bearer tokens, passwords, keys, etc.) are redacted before storage. Environment variables and labels are never stored.</p>
+
+            <h2 id="security">Security</h2>
+            <ul style="margin-left:1.5rem;color:var(--text-muted);">
+              <li>Basic auth required by default; server refuses to start without a password unless you explicitly opt out (<code>ALLOW_NO_AUTH=true</code>).</li>
+              <li>Read-only use of the Docker API; works through a socket proxy over TCP.</li>
+              <li>Docker socket access is root equivalent — use auth, HTTPS, and preferably a read-only socket proxy in production.</li>
+              <li>Client IPs are anonymized by default in stored access logs (<code>ANON_IPS=false</code> to disable).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

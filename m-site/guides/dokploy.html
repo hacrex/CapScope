@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy on Dokploy — CapScope</title>
+  <meta name="description" content="Step-by-step guide to deploy CapScope on Dokploy using Docker Compose or Dockerfile.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="../docs/">Docs</a>
+        <a href="index.html">Guides</a>
+        <a href="dokploy.html" class="active">Dokploy</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">Steps</h4>
+            <nav class="doc-nav">
+              <a href="#create-service">1. Create the service</a>
+              <a href="#env">2. Environment variables</a>
+              <a href="#domain">3. Domain and TLS</a>
+              <a href="#health">4. Health check</a>
+              <a href="#notes">Notes and caveats</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>Deploying CapScope on Dokploy</h1>
+            <p class="muted">Dokploy deploys from either a Dockerfile or a Docker Compose file. The compose path is recommended because it also wires the Docker socket in one go.</p>
+
+            <h2 id="create-service">1. Create the service</h2>
+            <ol>
+              <li>Project → <strong>Create Service</strong> → <strong>Docker Compose</strong>. Point it at this repository and set the compose path to <code>deploy/docker-compose.yml</code>.</li>
+              <li>The compose file builds from the repo root (<code>build: ..</code>), so the first deploy compiles the Go binary; the Dokploy server needs outbound internet during the build.</li>
+              <li>Alternatively use a <strong>Dockerfile</strong> service (quick, no compose) and add the volume mounts listed below in the service's <strong>Advanced / Volumes</strong> section.</li>
+            </ol>
+
+            <h2 id="env">2. Environment variables</h2>
+            <p>Set in the service's <strong>Environment</strong> tab:</p>
+            <table>
+              <thead><tr><th style="width:25%">Key</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td><code>AUTH_USER</code></td><td><code>admin</code>, or your username</td></tr>
+                <tr><td><code>AUTH_PASS</code></td><td>A long random password</td></tr>
+                <tr><td><code>MAX_DB_MB</code></td><td>Size cap for live data, for example <code>2048</code></td></tr>
+                <tr><td><code>EXCLUDE</code></td><td>Optional; hide Dokploy's own containers, for example <code>^dkp-</code></td></tr>
+              </tbody>
+            </table>
+            <div class="callout callout-warn">
+              <strong>Important:</strong>
+              <p style="margin:0.25rem 0 0;">The compose file defaults <code>AUTH_PASS</code> to <code>change-me</code> — change it before exposing the app.</p>
+            </div>
+
+            <h2 id="domain">3. Domain and TLS</h2>
+            <ol>
+              <li>In the service, add a <strong>Domain</strong> (Dokploy routes it through its Traefik), bind to container port <code>8080</code>.</li>
+              <li>Enable HTTPS / Let's Encrypt. Do not expose the app on plain HTTP — Basic auth credentials would travel in clear text.</li>
+              <li>SSE works behind Traefik as-is; CapScope also sends <code>X-Accel-Buffering: no</code> for Nginx-style proxies.</li>
+            </ol>
+
+            <h2 id="health">4. Health check</h2>
+            <p>In the service settings set the HTTP health check path to <code>/healthz</code> (auth-free by design). The image also carries a Docker <code>HEALTHCHECK</code> with the same probe.</p>
+
+            <h2 id="notes">Notes and caveats</h2>
+            <ul>
+              <li><strong>Single node only.</strong> Dokploy runs on Docker Swarm. CapScope reads the host's Docker socket, so in a multi-node Swarm it only sees containers on the node its task is scheduled on. Pin it to the manager/swarm node (or wherever your workloads run) if you have more than one node.</li>
+              <li><strong>One replica.</strong> Never scale the capscope service beyond 1 — instances would write the same SQLite file.</li>
+              <li><strong>Storage:</strong> the compose file already declares a named volume <code>capscope-data</code> mounted at <code>/data</code>. Keep it; the SQLite database lives there.</li>
+              <li>The container runs as <code>root</code> on purpose (<code>docker.sock</code> needs it). Use the socket-proxy variant from <code>docker-compose.yml</code> to drop the socket mount.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guides — CapScope</title>
+  <meta name="description" content="Step-by-step deployment guides for CapScope on Docker, CapRover, Coolify, Dokploy, Dokku, and Portainer.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="../docs/">Docs</a>
+        <a href="index.html" class="active">Guides</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section-sm">
+      <div class="container">
+        <div class="section-head text-center">
+          <h1>Platform guides</h1>
+          <p>CapScope works on any Docker host. Pick your platform and follow the step-by-step guide.</p>
+        </div>
+
+        <div class="grid grid-cols-3">
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(59,130,246,0.12);color:#3b82f6;border-color:rgba(59,130,246,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2m0 0l2-2m-2 2l2 2"/></svg>
+              </div>
+              <h3>Docker Compose</h3>
+              <p class="muted">One container, one volume, one password. Works on any Docker host.</p>
+              <a href="docker.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border-color:rgba(139,92,246,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <h3>CapRover</h3>
+              <p class="muted">Native app deployment with persistent <code>/data</code> and socket mount.</p>
+              <a href="caprover.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(6,182,212,0.12);color:#06b6d4;border-color:rgba(6,182,212,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M4 9a9 9 0 0 1 9-9h2a9 9 0 0 1 9 9v2"/></svg>
+              </div>
+              <h3>Coolify</h3>
+              <p class="muted">Self-hosted PaaS deployment.</p>
+              <a href="coolify.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM8 10h8m0 0V8m0 0l-4-4m4 4L4 8"/></svg>
+              </div>
+              <h3>Dokploy</h3>
+              <p class="muted">Deploy with Dokploy's dashboard.</p>
+              <a href="dokploy.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(234,179,8,0.12);color:#eab308;border-color:rgba(234,179,8,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <h3>Dokku</h3>
+              <p class="muted">Docker-powered PaaS deployment.</p>
+              <a href="dokku.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="feature-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;border-color:rgba(34,197,94,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 20v-6m4 6v4m4-6v2M17 8h-2m-4 0H5m14 0h-2M12 12V5m0 0L8 3m4 16l4-4"/></svg>
+              </div>
+              <h3>Portainer</h3>
+              <p class="muted">Deploy through Portainer stacks.</p>
+              <a href="portainer.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout callout-info" style="margin-top:3rem;">
+          <strong>Quick start (any host)</strong>
+          <p style="margin:0.5rem 0 1rem;">The fastest way to try CapScope is Docker Compose:</p>
+          <pre><code class="language-bash">docker run -d --name capscope \
+  -p 8080:8080 \
+  -e AUTH_USER=admin \
+  -e AUTH_PASS=change-me \
+  -v capscope-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  ghcr.io/hacrex/capscope:latest</code></pre>
+          <p class="muted small" style="margin:0;">Open <code>http://localhost:8080</code> and log in. See the <a href="docker.html" style="color:var(--accent);text-decoration:underline;">full Docker guide</a> for Compose and production tuning.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>

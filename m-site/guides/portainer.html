@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy on Portainer — CapScope</title>
+  <meta name="description" content="Deploy CapScope on Portainer, plain Docker Compose, or plain docker run.">
+  <meta name="theme-color" content="#0b1121">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        CapScope
+      </a>
+      <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+      <nav class="nav-menu">
+        <a href="/">Home</a>
+        <a href="../docs/">Docs</a>
+        <a href="index.html">Guides</a>
+        <a href="portainer.html" class="active">Portainer</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-cols-3">
+          <aside class="doc-sidebar">
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">In this guide</h4>
+            <nav class="doc-nav">
+              <a href="#portainer">Portainer</a>
+              <a href="#compose">Plain Docker Compose</a>
+              <a href="#docker-run">Plain docker run</a>
+              <a href="#swarm">Swarm / docker stack deploy</a>
+              <a href="#podman">Podman</a>
+              <a href="#checklist">Generic requirements checklist</a>
+              <a href="#not-supported">Not supported</a>
+            </nav>
+          </aside>
+
+          <div class="doc-content">
+            <h1>CapScope without a PaaS: Portainer, plain Docker, and others</h1>
+            <p class="muted">CapScope is one Go binary + a Dockerfile + a compose file. Any platform that can run a Docker image can run it; nothing platform-specific is required.</p>
+
+            <h2 id="portainer">Portainer</h2>
+            <ol>
+              <li><strong>Stacks</strong> → <strong>Add stack</strong>, paste the contents of <code>deploy/docker-compose.yml</code>.</li>
+              <li>Set <code>AUTH_PASS</code> to a long random password before exposing the port.</li>
+              <li>Deploy. Portainer's own container shows up in the sidebar; exclude it with <code>EXCLUDE=^portainer</code> if it is noisy.</li>
+            </ol>
+
+            <h2 id="compose">Plain Docker Compose</h2>
+            <pre><code class="language-bash">cd deploy
+docker compose up -d --build
+# then open http://<host>:8080</code></pre>
+            <p class="muted small"><code>AUTH_PASS</code> defaults to <code>change-me</code> in the compose file — change it before exposing the port.</p>
+
+            <h2 id="docker-run">Plain docker run</h2>
+            <pre><code class="language-bash">docker run -d --name capscope -p 8080:8080 \
+  -e AUTH_PASS='a long random password' \
+  -v capscope-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  capscope</code></pre>
+
+            <h2 id="swarm">Swarm / docker stack deploy</h2>
+            <pre><code class="language-bash">docker stack deploy -c deploy/docker-compose.yml capscope</code></pre>
+            <p class="muted small">Swarm caveat: CapScope only sees containers on the node its task is scheduled on (it reads the host socket). Pin it to the node with the most containers via placement constraints if you run several nodes.</p>
+
+            <h2 id="podman">Podman</h2>
+            <p>Podman's <code>docker</code> alias is a drop-in CLI for the compose and <code>docker run</code> commands above, so building and running the image works unchanged (<code>podman-compose</code> or the <code>podman docker-compose</code> shim for the stack). Two things differ from Docker:</p>
+            <ul>
+              <li><strong>Socket path:</strong> The Podman-compatible API socket is <code>/run/podman/podman.sock</code> (system service; rootful) or <code>/run/user/$UID/podman/podman.sock</code> (rootless quadlet/user service), not <code>/var/run/docker.sock</code>. Mount whichever applies, e.g. <code>-v /run/podman/podman.sock:/var/run/docker.sock</code>, or skip the mount and set <code>DOCKER_HOST=unix:///run/podman/podman.sock</code> (the Go client honours <code>DOCKER_HOST</code>).</li>
+              <li><strong>Rootless caveats:</strong> Under rootless Podman, CapScope sees only that user's containers, and stats/events endpoints depend on the Podman Docker-compatible API emulation level — if the sidebar populates but live tail or crash snapshots stay silent, check <code>podman system service</code> is running and consider the rootful socket. The scratch image itself runs fine under Podman (static binary, no daemon deps).</li>
+            </ul>
+
+            <h2 id="checklist">Generic requirements checklist</h2>
+            <p>For "my NAS, my homelab panel, …":</p>
+            <ol>
+              <li>Build the image from the <code>Dockerfile</code> at the repo root, or run the binary from any host with a Docker daemon reachable via socket or TCP.</li>
+              <li>Persistent volume on <code>/data</code> (SQLite lives there).</li>
+              <li>Mount <code>/var/run/docker.sock</code> (or set <code>DOCKER_HOST=tcp://...</code> to a socket proxy).</li>
+              <li>Environment <code>AUTH_PASS</code> (mandatory), optionally <code>AUTH_USER</code>, <code>LOG_RETENTION</code>, <code>MAX_DB_MB</code>, <code>EXCLUDE</code> — full list in the <a href="../docs/api.html" style="color:var(--accent);text-decoration:underline;">configuration table</a>.</li>
+              <li>Reverse proxy pointing at port <code>8080</code>, HTTPS mandatory (Basic auth credentials travel in clear text on HTTP). Health path: <code>/healthz</code>.</li>
+              <li>One instance only. Never run two CapScope containers against the same <code>/data</code> volume.</li>
+            </ol>
+
+            <div class="callout callout-warn">
+              <strong>Not supported:</strong>
+              <ul style="margin:0.25rem 0 0;padding-left:1.25rem;">
+                <li><strong>Kubernetes:</strong> CapScope talks to the Docker Engine API (containers, logs, stats, events), not the kubelet. Run it as a Docker container on a Docker node instead.</li>
+                <li><strong>TrueNAS SCALE / other k8s-based appliances:</strong> same reason — Docker host only.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom">
+        <p>© 2026 CapScope • MIT License</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/script.js"></script>
+</body>
+</html>
