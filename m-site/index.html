@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CapScope — Persistent Container Logs & Crash Snapshots</title>
   <meta name="description" content="Self-hosted container observability in one binary. Persistent logs, crash snapshots, and CPU/memory history — no external database. For self-hosters, homelabbers, and DevOps engineers.">
-  <meta name="theme-color" content="#0b1121">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1121'/%3E%3Cpath d='M9 10L16 16L9 22' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3Crect x='17' y='9' width='6' height='14' rx='2' fill='none' stroke='%233b82f6' stroke-width='2'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -18,7 +19,7 @@
     <div class="nav-wrap">
       <a href="/" class="brand">
         <div class="brand-mark">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg>
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
         </div>
         CapScope
       </a>
@@ -40,7 +41,7 @@
     <section class="hero">
       <div class="container">
         <span class="hero-kicker">Self-hosted • Container observability</span>
-        <h1>Container logs that survive redeploys.</h1>
+        <h1>Containers never truly disappear.</h1>
         <p>CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is replaced, its history stays searchable — no Prometheus stack, no external database.</p>
         <div class="hero-actions">
           <a href="guides/docker.html" class="btn btn-primary">Quick start</a>
@@ -54,7 +55,7 @@
     </section>
 
     <!-- Stats -->
-    <section class="section-sm">
+    <section class="section-sm section-navy">
       <div class="container">
         <div class="grid grid-cols-4">
           <div class="card stat-card">
@@ -78,7 +79,7 @@
     </section>
 
     <!-- Features -->
-    <section class="section section-bg">
+    <section class="section">
       <div class="container">
         <div class="section-head">
           <h2>Everything you need after a container dies</h2>
@@ -86,43 +87,43 @@
         </div>
         <div class="grid grid-cols-3">
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(59,130,246,0.15);color:#3b82f6;border-color:rgba(59,130,246,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2v20M4 9h16m0 0l-4 6m4-6-4-6"/></svg>
+            <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35)">
+              <i class="fa-solid fa-box"></i>
             </div>
             <h4>Persistent logs</h4>
             <p>Logs stored in SQLite with full-text search. Search history long after a redeploy removes the container.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 20H5c2 0 0-3 0-3s0-1-1-1 1-1 2 0 0 3 0 3M4 3c2 0 0-3 0-3s0-1-1-1 1-1 2 0 0 3 0 3M16 20h4c2 0 0-3 0-3s0-1-1-1 1-1 2 0 0 3 0 3"/></svg>
+            <div class="feature-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35)">
+              <i class="fa-solid fa-bomb"></i>
             </div>
             <h4>Crash snapshots</h4>
             <p>Auto-saved on OOM or non-zero exit with exit code, memory trend, last lines, and a plain-language summary.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 0 0-5.355-1.36M9 14 4 20l5 6m4-6H9m11 0h5v-2a3 3 0 0 0-5.355-1.36"/></svg>
+            <div class="feature-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;border-color:rgba(34,197,94,0.35)">
+              <i class="fa-solid fa-chart-line"></i>
             </div>
             <h4>Metrics history</h4>
             <p>CPU and memory samples persisted per app or replica, from 15 minutes to 7 days.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(139,92,246,0.15);color:#8b5cf6;border-color:rgba(139,92,246,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M1 12s5 3 11 3 11-3 11-3M12 3v7m0 4v7"/></svg>
+            <div class="feature-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border-color:rgba(139,92,246,0.35)">
+              <i class="fa-solid fa-redo"></i>
             </div>
             <h4>Restart-loop detection</h4>
             <p>Flags containers dying in a loop so you know when an app is crash-looping.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(234,179,8,0.15);color:#eab308;border-color:rgba(234,179,8,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2z"/></svg>
+            <div class="feature-icon" style="background:rgba(234,179,8,0.12);color:#eab308;border-color:rgba(234,179,8,0.35)">
+              <i class="fa-solid fa-globe"></i>
             </div>
             <h4>Access-log dashboard</h4>
             <p>GoAccess-style panels from your reverse proxy: status codes, top paths, client IPs, CSV export.</p>
           </div>
           <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(6,182,212,0.15);color:#06b6d4;border-color:rgba(6,182,212,0.4)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 2L7 12l6 6M12 15l-2 4m6-4l2 4"/></svg>
+            <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35)">
+              <i class="fa-solid fa-rocket"></i>
             </div>
             <h4>Deploy markers</h4>
             <p>Correlate crashes and metric spikes with the release that preceded them.</p>
@@ -132,7 +133,7 @@
     </section>
 
     <!-- How it works -->
-    <section class="section">
+    <section class="section section-navy">
       <div class="container">
         <div class="section-head text-center">
           <h2>One binary. One volume.</h2>
@@ -165,11 +166,11 @@
     </section>
 
     <!-- Quick start -->
-    <section class="section section-bg">
+    <section class="section">
       <div class="container">
         <div class="card" style="padding:2.5rem;max-width:760px;margin:0 auto;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
-            <div class="badge badge-ok">Terminal</div>
+            <div class="badge badge-neutral">Terminal</div>
           </div>
           <h3 style="margin-bottom:1rem;">Quick start</h3>
           <pre><code class="language-bash">docker run -d --name capscope \
@@ -189,7 +190,7 @@
     </section>
 
     <!-- Platforms -->
-    <section class="section">
+    <section class="section section-navy">
       <div class="container">
         <div class="section-head text-center">
           <h2>Deploy anywhere you run Docker</h2>
@@ -213,8 +214,8 @@
       <div class="footer-grid">
         <div class="footer-col">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
-            <div class="brand-mark" style="width:26px;height:26px;"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
-            <div style="font-weight:700;font-size:1.1rem;color:var(--text);">CapScope</div>
+            <div class="brand-mark" style="width:26px;height:26px;"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+            <div style="font-weight:700;font-size:1.1rem;color:var(--text-on-navy);">CapScope</div>
           </div>
           <p class="muted small" style="margin:0;">Persistent container logs, crash snapshots, and metrics in one self-hosted binary.</p>
         </div>

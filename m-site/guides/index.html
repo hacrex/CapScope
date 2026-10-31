@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guides — CapScope</title>
   <meta name="description" content="Step-by-step deployment guides for CapScope on Docker, CapRover, Coolify, Dokploy, Dokku, and Portainer.">
-  <meta name="theme-color" content="#0b1121">
+  <meta name="theme-color" content="#ffffff">
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -16,7 +17,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0b1121"/><path d="M9 10L16 16L9 22" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#3b82f6" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
@@ -40,8 +41,8 @@
         <div class="grid grid-cols-3">
           <div class="card">
             <div class="card-body">
-              <div class="feature-icon" style="background:rgba(59,130,246,0.12);color:#3b82f6;border-color:rgba(59,130,246,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2m0 0l2-2m-2 2l2 2"/></svg>
+              <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
+                <i class="fa-solid fa-box"></i>
               </div>
               <h3>Docker Compose</h3>
               <p class="muted">One container, one volume, one password. Works on any Docker host.</p>
@@ -51,7 +52,7 @@
           <div class="card">
             <div class="card-body">
               <div class="feature-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border-color:rgba(139,92,246,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <i class="fa-solid fa-rocket"></i>
               </div>
               <h3>CapRover</h3>
               <p class="muted">Native app deployment with persistent <code>/data</code> and socket mount.</p>
@@ -61,7 +62,7 @@
           <div class="card">
             <div class="card-body">
               <div class="feature-icon" style="background:rgba(6,182,212,0.12);color:#06b6d4;border-color:rgba(6,182,212,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M4 9a9 9 0 0 1 9-9h2a9 9 0 0 1 9 9v2"/></svg>
+                <i class="fa-solid fa-snowflake"></i>
               </div>
               <h3>Coolify</h3>
               <p class="muted">Self-hosted PaaS deployment.</p>
@@ -71,7 +72,7 @@
           <div class="card">
             <div class="card-body">
               <div class="feature-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM8 10h8m0 0V8m0 0l-4-4m4 4L4 8"/></svg>
+                <i class="fa-solid fa-ship"></i>
               </div>
               <h3>Dokploy</h3>
               <p class="muted">Deploy with Dokploy's dashboard.</p>
@@ -81,7 +82,7 @@
           <div class="card">
             <div class="card-body">
               <div class="feature-icon" style="background:rgba(234,179,8,0.12);color:#eab308;border-color:rgba(234,179,8,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <i class="fa-solid fa-whale"></i>
               </div>
               <h3>Dokku</h3>
               <p class="muted">Docker-powered PaaS deployment.</p>
@@ -91,7 +92,7 @@
           <div class="card">
             <div class="card-body">
               <div class="feature-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;border-color:rgba(34,197,94,0.35);width:48px;height:48px;margin-bottom:1.25rem;">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 20v-6m4 6v4m4-6v2M17 8h-2m-4 0H5m14 0h-2M12 12V5m0 0L8 3m4 16l4-4"/></svg>
+                <i class="fa-solid fa-box"></i>
               </div>
               <h3>Portainer</h3>
               <p class="muted">Deploy through Portainer stacks.</p>
