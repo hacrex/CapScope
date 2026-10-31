@@ -53,6 +53,11 @@ header .sp{flex:1}
 #follow.on{background:var(--accent);color:#000;font-weight:600;border-color:transparent}
 .range-chip{font-size:11px;padding:2px 8px;height:auto}
 .range-chip.on{background:var(--accent);color:#000;font-weight:600;border-color:transparent}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.status-dot.firing{background:var(--err);box-shadow:0 0 6px var(--err)}
+.status-dot.resolved{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.status-dot.silenced{background:var(--muted);box-shadow:0 0 6px var(--muted)}
+tr.muted td{opacity:0.55;text-decoration:line-through;text-decoration-color:var(--err)}
 @keyframes connPulse{0%,100%{opacity:1}50%{opacity:0.6}}
 main{flex:1;display:flex;min-height:0}
 aside{width:240px;border-right:1px solid var(--line);background:var(--bg);overflow:auto;flex:none;padding-bottom:12px}
@@ -246,7 +251,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -1017,8 +1022,12 @@ async function crashChip(){
 const ALERT_KIND={deadman:'Dead man',restart_loop:'Restart loop',metric:'Metric',log_pattern:'Log pattern'};
 async function loadAlerts(){
   const box=$('#view-alerts');box.innerHTML='';
-  let meta={rules:[],channels:[],enabled:false};
+  let meta={rules:[],channels:[],enabled:false},hist={alerts:[]};
   try{meta=await api('/api/alerts/rules');}catch(e){connBad('alerts meta failed');}
+  try{hist=await api('/api/alerts?limit=100');}catch(e){connBad('alerts history failed');}
+  const now=Date.now();
+  S.alertStatus=new Map();
+  meta.rules.forEach(r=>{S.alertStatus.set(r.name, hist.alerts.some(a=>a.rule===r.name&&now-a.ts<3e5)?'firing':'resolved');});
   const bar=document.createElement('div');bar.className='bar';bar.style.marginBottom='12px';
   const t=document.createElement('button');t.className='b';t.textContent='Send test alert';
   t.disabled=!meta.channels.length;
@@ -1037,14 +1046,28 @@ async function loadAlerts(){
     p.textContent=meta.enabled?'No rules loaded. Create a JSON rules file (ALERTS_FILE) with deadman, restart_loop, metric or log_pattern rules.':'Alerting is off: no rules file found.';
     rc.append(p);
   }else{
-    const tb=document.createElement('table');tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th></tr>';
+    const tb=document.createElement('table');tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th><th>Status</th><th>Mute</th></tr>';
     meta.rules.forEach(r=>{
       const tr=document.createElement('tr');
       const cond=r.kind==='deadman'?`no logs for ${r.for}`
         :r.kind==='restart_loop'?`> ${r.count} deaths in ${r.window}`
         :r.kind==='metric'?`${r.metric} ${r.op} ${r.value} for ${r.for}`
         :`"${r.pattern}" ≥ ${r.hits} hits in ${r.window}`;
-      [[r.name],[ALERT_KIND[r.kind]||r.kind],[(r.apps||[]).join(', ')||'all'],[cond],[r.repeat||'']].flat().forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      const st=S.alertStatus.get(r.name)||'resolved';
+      const muted=S.alertMuted.get(r.name,0)>now;
+      const dots={firing:'firing',resolved:'resolved',silenced:'silenced'};
+      const nameTd=document.createElement('td');nameTd.textContent=r.name;if(muted)nameTd.classList.add('muted');tr.append(nameTd);
+      [[ALERT_KIND[r.kind]||r.kind],[(r.apps||[]).join(', ')||'all'],[cond],[r.repeat||'']].flat().forEach(v=>{const td=document.createElement('td');td.textContent=v;if(muted)td.classList.add('muted');tr.append(td);});
+      const stTd=document.createElement('td');const dot=document.createElement('span');dot.className='status-dot '+st;dot.title=st;stTd.append(dot,document.createTextNode(' '+st));tr.append(stTd);
+      const muTd=document.createElement('td');
+      const m1=document.createElement('button');m1.className='b';m1.style.fontSize='10px';m1.style.padding='2px 6px';m1.textContent='1h';m1.title='Mute '+r.name+' for 1 hour';
+      m1.onclick=()=>muteRule(r.name,3600e3);
+      const m24=document.createElement('button');m24.className='b';m24.style.fontSize='10px';m24.style.padding='2px 6px';m24.textContent='24h';m24.title='Mute '+r.name+' for 24 hours';
+      m24.onclick=()=>muteRule(r.name,86400e3);
+      const un=document.createElement('button');un.className='b';un.style.fontSize='10px';un.style.padding='2px 6px';un.textContent='unmute';un.style.display=muted?'':'none';un.title='Unmute '+r.name;
+      un.onclick=()=>{S.alertMuted.delete(r.name);loadAlerts();};
+      muTd.append(m1,m24,un);if(muted){m1.style.display='none';m24.style.display='none';}
+      tr.append(muTd);
       tb.append(tr);
     });
     rc.append(tb);
@@ -1068,6 +1091,10 @@ async function loadAlerts(){
     ac.append(tb);
   }
   box.append(ac);
+}
+function muteRule(name,forMs){
+  S.alertMuted.set(name,Date.now()+forMs);
+  loadAlerts();
 }
 
 addEventListener('DOMContentLoaded',()=>{
