@@ -1,0 +1,27 @@
+# Code owners for CapScope
+
+# Default owner for everything
+* @hacrex
+
+# Documentation
+/docs/ @hacrex
+
+# Deploy guides
+/deploy/ @hacrex
+
+# Core Go packages
+/internal/api/ @hacrex
+/internal/auth/ @hacrex
+/internal/collector/ @hacrex
+/internal/docker/ @hacrex
+/internal/hub/ @hacrex
+/internal/logproc/ @hacrex
+/internal/store/ @hacrex
+/internal/alerts/ @hacrex
+/internal/config/ @hacrex
+
+# UI
+/internal/web/static/ @hacrex
+
+# Entry point
+/cmd/ @hacrex

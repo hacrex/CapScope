@@ -129,7 +129,7 @@ A deploy is a plain row in `deploys` (`app`, `version`, optional `note`, timesta
 
 ## 4. Storage
 
-SQLite via `mattn/go-sqlite3` (cgo). WAL mode, `synchronous=NORMAL`, `busy_timeout=5000`. A single writer connection serializes all writes; reads use a separate read-only pool of 4, so UI queries do not wait for ingestion.
+SQLite via `modernc.org/sqlite` (pure Go, no C compiler needed). WAL mode, `synchronous=NORMAL`, `busy_timeout=5000`. A single writer connection serializes all writes; reads use a separate read-only pool of 4, so UI queries do not wait for ingestion.
 
 | Table | Key columns | Notes |
 |---|---|---|
@@ -194,7 +194,7 @@ See [API.md](API.md). The UI is a static page that only uses that public API.
 | Decision | Why | Cost |
 |---|---|---|
 | Raw Docker HTTP instead of the Docker SDK | Fewer dependencies, easy to run against a socket proxy, only the four endpoints needed | We maintain the small decoder ourselves |
-| `mattn/go-sqlite3` (cgo) | Mature, fast, the module was available offline when this was built | Needs a C toolchain in the build stage. `modernc.org/sqlite` is a pure-Go swap in `internal/store` only: change the import, driver name `sqlite`, and the DSN pragma syntax |
+| `mattn/go-sqlite3` (cgo) | Mature, fast | Needs a C toolchain in the build stage. `modernc.org/sqlite` is the pure-Go driver used in this build: change the import, driver name `sqlite`, and the DSN pragma syntax if swapping back |
 | SSE instead of WebSocket | One-way data, works through nginx with one header, automatic reconnect | No client to server channel (not needed yet) |
 | Ring buffer plus SQLite | Snapshots need the final lines even if the DB batch has not flushed | Some memory per container (about 200 lines and 60 samples) |
 | `LIKE` search first | Predictable substring semantics, no extra index | Slower than FTS at tens of millions of rows. FTS5 is a planned addition |

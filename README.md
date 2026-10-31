@@ -1,7 +1,7 @@
 # CapScope
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.24-00add8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/go-1.26-00add8.svg)](https://golang.org/)
 [![Docker Image](https://img.shields.io/badge/docker-capscope-2496ed?logo=docker)](https://hub.docker.com/r/hacrex/capscope)
 [![Go Reference](https://pkg.go.dev/badge/github.com/hacrex/CapScope.svg)](https://pkg.go.dev/github.com/hacrex/CapScope)
 [![Website](https://img.shields.io/badge/web-capscope.live-f89c1c)](https://capscope.live)
