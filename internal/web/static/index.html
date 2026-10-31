@@ -100,6 +100,8 @@ body.sql .hide-sql{display:none}
 .ln{display:flex;gap:12px;padding:0 16px;height:20px;align-items:center;overflow:hidden;white-space:pre;position:relative}
 .ln:hover{background:var(--panel2)}
 .ln.sel{background:var(--sel);outline:2px solid var(--accent);outline-offset:-2px}
+.ln.json-pretty{height:auto;min-height:44px;padding:8px 16px;overflow:visible}
+.ln.json-pretty pre{margin:4px 0 0;font-size:11px;line-height:1.4;color:var(--text-2);white-space:pre-wrap;word-break:break-word}
 .ln .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums;font-size:11px}
 .ln .c{color:var(--muted);flex:none;min-width:14px;text-align:right;font-size:11px}
 .ln .copyBtn{position:absolute;right:8px;top:0;display:none;opacity:0.6;cursor:pointer;font-size:10px;padding:2px 7px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;line-height:1}
@@ -194,6 +196,7 @@ h2{font-weight:600;letter-spacing:-.02em}
         <button class="b hide-sql" id="pause">Pause</button>
         <button class="b hide-sql" id="older">Load older</button>
         <button class="b hide-sql" id="wrap">Wrap</button>
+        <button class="b hide-sql" id="jsonBtn" title="Pretty print all JSON log lines inline">JSON</button>
         <a class="chip hide-sql" id="logCSV" href="/api/logs/export" title="Download matching logs as CSV (whole app, all replicas, up to 200k lines)">Download CSV</a>
         <button class="b hide-sql" id="exportSel" style="display:none" title="Export selected lines as CSV">Export (0) lines</button>
         <span class="chip" id="cnt"></span>
@@ -237,7 +240,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,range:'1h',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,jsonPretty:false,range:'1h',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -660,6 +663,7 @@ $('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.
 function setRangeChip(){document.querySelectorAll('.range-chip').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
 setRangeChip();
 document.querySelectorAll('.range-chip').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();restartLogs();});
+$('#jsonBtn').onclick=()=>{S.jsonPretty=!S.jsonPretty;$('#jsonBtn').classList.toggle('on',S.jsonPretty);restartLogs();};
 $('#older').onclick=()=>{for(const p of S.panes)loadOlder(p);};
 async function loadOlder(pane){
   const rows=pane.vl.rows;
@@ -733,10 +737,16 @@ function lineEl(r){
   const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
   const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||r.container||'';
   const x=document.createElement('span');x.className='x';x.title=r.line;highlight(x,r.line);
-  if(asJSON(r.line)){
+  const o=asJSON(r.line);
+  if(o){
     d.classList.add('json');
     x.title='JSON log line — click to pretty-print';
     x.onclick=()=>showJSON(r.line);
+    if(S.jsonPretty){
+      d.classList.add('json-pretty');
+      const pre=document.createElement('pre');pre.textContent=JSON.stringify(o,null,2);
+      d.append(pre);
+    }
   }
   d.append(t,c,x);
   const cb=document.createElement('span');cb.className='copyBtn';cb.textContent='⧉';cb.title='Copy line';
