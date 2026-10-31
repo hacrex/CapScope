@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type Store struct {
@@ -132,7 +132,7 @@ var migrations = []string{
 // Open creates or migrates the database at path.
 func Open(path string) (*Store, error) {
 	base := "file:" + path + "?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL"
-	w, err := sql.Open("sqlite3", base)
+	w, err := sql.Open("sqlite", base)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	r, err := sql.Open("sqlite3", base+"&_query_only=1")
+	r, err := sql.Open("sqlite", base+"&_query_only=1")
 	if err != nil {
 		w.Close()
 		return nil, err

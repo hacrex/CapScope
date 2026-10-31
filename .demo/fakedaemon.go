@@ -166,8 +166,7 @@ func events(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	sock := os.Args[1]
-	os.Remove(sock)
+	addr := os.Args[1]
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_ping", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
@@ -188,10 +187,10 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/events", events)
-	l, err := net.Listen("unix", sock)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Fprintln(os.Stderr, "fakedaemon listening on", sock)
+	fmt.Fprintln(os.Stderr, "fakedaemon listening on", addr)
 	http.Serve(l, mux)
 }
