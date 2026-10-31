@@ -962,6 +962,11 @@ async function loadAlerts(){
 }
 
 addEventListener('DOMContentLoaded',()=>{
+  function showLogin(){$('#loginOverlay').style.display='flex';}
+  function hideLogin(){$('#loginOverlay').style.display='none';}
+  async function checkSession(){
+    try{await api('/api/session');return true;}catch(e){return false;}
+  }
   $('#loginForm').onsubmit=async(e)=>{
     e.preventDefault();
     const err=$('#loginError');err.style.display='none';
