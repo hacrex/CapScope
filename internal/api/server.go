@@ -26,12 +26,12 @@ import (
 )
 
 type Server struct {
-	cfg   config.Config
-	st    *store.Store
-	mgr   *collector.Manager
-	hub   *hub.Hub
-	log   *slog.Logger
-	eng   *alerts.Engine   // nil when alerting is disabled
+	cfg      config.Config
+	st       *store.Store
+	mgr      *collector.Manager
+	hub      *hub.Hub
+	log      *slog.Logger
+	eng      *alerts.Engine       // nil when alerting is disabled
 	sessions *auth.SessionManager // session manager (nil when auth is off)
 }
 
@@ -160,7 +160,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, map[string]string{"user": user})
+	writeJSON(w, map[string]any{"user": user, "expires_at": s.sessions.Expiry(token)})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -27,9 +27,9 @@ var (
 
 // SessionManager tracks active login sessions. Safe for concurrent use.
 type SessionManager struct {
-	mu      sync.RWMutex
+	mu       sync.RWMutex
 	sessions map[string]*session
-	log     *slog.Logger
+	log      *slog.Logger
 }
 
 type session struct {
@@ -96,6 +96,17 @@ func (m *SessionManager) Validate(token string) (string, bool) {
 		return "", false
 	}
 	return s.user, true
+}
+
+// Expiry returns the session's expiration time as a Unix timestamp, or 0 if not found/expired.
+func (m *SessionManager) Expiry(token string) int64 {
+	m.mu.RLock()
+	s, ok := m.sessions[token]
+	m.mu.RUnlock()
+	if !ok || time.Now().After(s.expires) {
+		return 0
+	}
+	return s.expires.Unix()
 }
 
 // Delete removes a session (logout).

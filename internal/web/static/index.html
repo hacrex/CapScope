@@ -253,7 +253,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -1070,6 +1070,16 @@ async function crashChip(){
   await loadCrashCounts();let n=0;for(const v of S.appCrashes.values())n+=v;
   const c=$('#crashchip');c.style.display=n?'':'none';c.textContent=n+' crash'+(n>1?'es':'')+' in 24h';c.className='chip bad';
 }
+function sessionWarning(){
+  if(!S.sessionExpires)return;
+  const left=S.sessionExpires*1000-Date.now();
+  const mins=Math.floor(left/60000);
+  let el=$('#sessionWarn');
+  if(mins<60&&mins>0){
+    if(!el){el=document.createElement('div');el.id='sessionWarn';el.className='callout warn';el.style.margin='8px 16px';el.style.fontSize='12px';document.querySelector('#view-logs .bar').parentElement.insertBefore(el,document.querySelector('#view-logs .bar'));const btn=document.createElement('button');btn.className='b';btn.style.fontSize='11px';btn.style.marginLeft='8px';btn.textContent='Log in again';btn.onclick=showLogin;el.append(btn);}
+    el.textContent='Session expires in '+mins+' min — ';
+  }else if(el){el.remove();el=null;}
+}
 
 /* ---------- alerts ---------- */
 const ALERT_KIND={deadman:'Dead man',restart_loop:'Restart loop',metric:'Metric',log_pattern:'Log pattern'};
@@ -1154,7 +1164,7 @@ addEventListener('DOMContentLoaded',()=>{
   function showLogin(){$('#loginOverlay').style.display='flex';}
   function hideLogin(){$('#loginOverlay').style.display='none';}
   async function checkSession(){
-    try{await api('/api/session');return true;}catch(e){return false;}
+    try{const d=await api('/api/session');return{ok:true,user:d.user,expiresAt:d.expires_at||0};}catch(e){return{ok:false};}
   }
   $('#loginForm').onsubmit=async(e)=>{
     e.preventDefault();
@@ -1181,12 +1191,14 @@ addEventListener('DOMContentLoaded',()=>{
     location.reload();
   };
   (async()=>{
-    const ok=await checkSession();
-    if(ok){
+    const s=await checkSession();
+    if(s.ok){
+      S.sessionExpires=s.expiresAt;
       $('#logoutBtn').style.display='';
       await loadCrashCounts();
       refreshApps().then(()=>crashChip());
-      setInterval(refreshApps,10000);setInterval(crashChip,60000);
+      setInterval(refreshApps,10000);setInterval(crashChip,60000);setInterval(sessionWarning,60000);
+      sessionWarning();
     }else{
       showLogin();
     }
