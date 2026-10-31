@@ -15,11 +15,17 @@ import (
 	"testing"
 	"time"
 
+	"capscope/internal/auth"
 	"capscope/internal/collector"
 	"capscope/internal/config"
 	"capscope/internal/docker"
 	"capscope/internal/hub"
 	"capscope/internal/store"
+)
+
+var (
+	testServerURL string
+	testToken     string
 )
 
 func setup(t *testing.T) (*httptest.Server, *store.Store, *hub.Hub) {
@@ -33,15 +39,47 @@ func setup(t *testing.T) (*httptest.Server, *store.Store, *hub.Hub) {
 	cfg := config.Config{AuthUser: "u", AuthPass: "p", SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	srv := httptest.NewServer(New(cfg, st, mgr, h, slog.Default()).Handler())
+	as := auth.NewSessionManager(slog.Default())
+	srv := httptest.NewServer(New(cfg, st, mgr, h, slog.Default(), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
+	testServerURL = srv.URL
+	testToken = "" // force re-login against the new server
 	return srv, st, h
 }
 
+// loginIfNeeded obtains a bearer token from /api/login and caches it for the
+// current test server.
+func loginIfNeeded(t *testing.T) {
+	t.Helper()
+	if testToken != "" {
+		return
+	}
+	req, _ := http.NewRequest("POST", testServerURL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("login failed: %d", resp.StatusCode)
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if out.Token == "" {
+		t.Fatal("login response missing token")
+	}
+	testToken = out.Token
+}
+
 func get(t *testing.T, url string, auth bool) *http.Response {
+	t.Helper()
 	req, _ := http.NewRequest("GET", url, nil)
 	if auth {
-		req.SetBasicAuth("u", "p")
+		loginIfNeeded(t)
+		req.Header.Set("Authorization", "Bearer "+testToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -58,10 +96,78 @@ func TestAuthAndUI(t *testing.T) {
 	if r := get(t, srv.URL+"/healthz", false); r.StatusCode != 200 {
 		t.Errorf("healthz should be open, got %d", r.StatusCode)
 	}
+
+	// Login flow: valid credentials issue a token.
+	req, _ := http.NewRequest("POST", srv.URL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("login should succeed, got %d", resp.StatusCode)
+	}
+	var out struct {
+		Token string `json:"token"`
+		User  string `json:"user"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if out.Token == "" || out.User != "u" {
+		t.Errorf("login should return token and user, got %+v", out)
+	}
+
+	// The token works for authenticated requests.
 	r := get(t, srv.URL+"/", true)
-	b, _ := io.ReadAll(r.Body)
-	if r.StatusCode != 200 || !strings.Contains(string(b), "CapScope") {
-		t.Errorf("UI not served: %d", r.StatusCode)
+	if r.StatusCode != 200 {
+		t.Errorf("UI should be served with token, got %d", r.StatusCode)
+	}
+
+	// Wrong password is rejected.
+	req2, _ := http.NewRequest("POST", srv.URL+"/api/login", strings.NewReader(`{"username":"u","password":"wrong"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != 401 {
+		t.Errorf("wrong password should be 401, got %d", resp2.StatusCode)
+	}
+
+	// /api/session reflects the logged-in user.
+	req3, _ := http.NewRequest("GET", srv.URL+"/api/session", nil)
+	req3.Header.Set("Authorization", "Bearer "+out.Token)
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp3.Body.Close()
+	if resp3.StatusCode != 200 {
+		t.Errorf("session should be 200 with token, got %d", resp3.StatusCode)
+	}
+
+	// Logout invalidates the token.
+	req4, _ := http.NewRequest("POST", srv.URL+"/api/logout", nil)
+	req4.Header.Set("Authorization", "Bearer "+out.Token)
+	resp4, err := http.DefaultClient.Do(req4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp4.Body.Close()
+	if resp4.StatusCode != 200 {
+		t.Errorf("logout should succeed, got %d", resp4.StatusCode)
+	}
+	// After logout the token no longer works.
+	req5, _ := http.NewRequest("GET", srv.URL+"/api/session", nil)
+	req5.Header.Set("Authorization", "Bearer "+out.Token)
+	resp5, err := http.DefaultClient.Do(req5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp5.Body.Close()
+	if resp5.StatusCode != 401 {
+		t.Errorf("session should be 401 after logout, got %d", resp5.StatusCode)
 	}
 }
 
@@ -198,7 +304,8 @@ func TestSSEDeliversPublishedRows(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/logs/stream?app=web", nil)
-	req.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

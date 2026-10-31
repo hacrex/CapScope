@@ -131,6 +131,14 @@ a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 h2{font-weight:600;letter-spacing:-.02em}
 @media (max-width:760px){aside{display:none}input[type=search]{min-width:140px}}
+.login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100}
+.login-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:32px 28px;min-width:320px;max-width:90vw;box-shadow:var(--shadow)}
+.login-header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.login-header h2{font-size:18px;margin:0}
+.login-muted{color:var(--muted);font-size:13px;margin:0 0 20px}
+.login-field{margin-bottom:14px}
+.login-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.login-error{color:var(--err);font-size:12px;margin-top:8px;min-height:16px}
 </style>
 </head>
 <body>
@@ -143,6 +151,7 @@ h2{font-weight:600;letter-spacing:-.02em}
   <span class="sp"></span>
   <span class="chip" id="crashchip" title="Crash snapshots in the last 24h" style="cursor:pointer;display:none"></span>
   <button class="b" id="themeBtn" title="Color theme">Auto</button>
+  <button class="b" id="logoutBtn" title="Log out" style="display:none">Log out</button>
 </header>
 <main>
   <aside><h2>Apps</h2><div id="apps"></div></aside>
@@ -220,7 +229,17 @@ $('#themeBtn').onclick=()=>{
   applyTheme(S.theme);
 };
 
-async function api(path,init){const r=await fetch(path,Object.assign({cache:'no-store'},init||{}));if(!r.ok)throw new Error(await r.text());return r.json();}
+async function api(path,init){
+  const opts=Object.assign({cache:'no-store'},init||{});
+  const h=new Headers(opts.headers||{});
+  const t=localStorage.getItem('capscope_token');
+  if(t)h.set('Authorization','Bearer '+t);
+  opts.headers=h;
+  const r=await fetch(path,opts);
+  if(r.status===401){localStorage.removeItem('capscope_token');showLogin();throw new Error('unauthorized');}
+  if(!r.ok)throw new Error(await r.text());
+  return r.json();
+}
 const fmtTime=ms=>{const d=new Date(ms);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
 const fmtDT=ms=>new Date(ms).toLocaleString();
 const mib=b=>(b/1048576).toFixed(b>1073741824?0:1)+' MiB';
@@ -902,6 +921,57 @@ async function loadAlerts(){
 refreshApps().then(()=>crashChip());
 setInterval(refreshApps,10000);setInterval(crashChip,60000);
 addEventListener('resize',()=>{if(S.tab==='metrics')loadMetrics();if(S.tab==='access')loadAccess();if(S.tab==='logs')for(const p of S.panes)p.vl.schedule();});
+
+/* ---------- login screen ---------- */
+function showLogin(){$('#loginOverlay').style.display='flex';}
+function hideLogin(){$('#loginOverlay').style.display='none';}
+async function checkSession(){
+  try{await api('/api/session');return true;}catch(e){return false;}
+}
+$('#loginForm').onsubmit=async(e)=>{
+  e.preventDefault();
+  const err=$('#loginError');err.style.display='none';
+  try{
+    const d=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      username:$('#loginUser').value,password:$('#loginPass').value
+    })});
+    localStorage.setItem('capscope_token',d.token);
+    $('#loginUser').value='';$('#loginPass').value='';
+    hideLogin();
+    refreshApps().then(()=>crashChip());
+  }catch(ex){err.textContent='Invalid username or password.';err.style.display='';}
+};
+$('#logoutBtn').onclick=async()=>{
+  try{await api('/api/logout',{method:'POST'});}catch(e){}
+  localStorage.removeItem('capscope_token');
+  location.reload();
+};
+(async()=>{
+  const ok=await checkSession();
+  if(ok){$('#logoutBtn').style.display='';refreshApps().then(()=>crashChip());}
+  else showLogin();
+})();
 </script>
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <div class="login-header">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M10 9.5L6.5 16L10 22.5" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="var(--bg)"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="var(--bg)"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="var(--bg)"/></svg>
+      <h2>CapScope</h2>
+    </div>
+    <p class="login-muted">Sign in to view container logs and metrics.</p>
+    <form id="loginForm">
+      <div class="login-field">
+        <label>Username</label>
+        <input type="text" id="loginUser" required autocomplete="username">
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="loginPass" required autocomplete="current-password">
+      </div>
+      <div class="login-error" id="loginError" style="display:none"></div>
+      <button class="b" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
 </body>
 </html>

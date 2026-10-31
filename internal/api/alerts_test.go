@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"capscope/internal/alerts"
+	"capscope/internal/auth"
 	"capscope/internal/collector"
 	"capscope/internal/config"
 	"capscope/internal/docker"
@@ -34,7 +35,8 @@ func setupAlerts(t *testing.T, rulesFile string) (*httptest.Server, *store.Store
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := collector.NewManager(cfg, dk, st, h, log)
 	eng := alerts.New(st, rulesFile, time.Minute, nil, log)
-	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng)).Handler())
+	as := auth.NewSessionManager(log)
+	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
 	return srv, st
 }
@@ -115,7 +117,8 @@ func TestAlertsTestEndpointSendsAndReports(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	req, _ := http.NewRequest("POST", srv.URL+"/api/alerts/test", nil)
-	req.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +152,8 @@ func TestAlertsDisabledWithoutEngine(t *testing.T) {
 		t.Error("alerts should report disabled without an engine")
 	}
 	req, _ := http.NewRequest("POST", srv.URL+"/api/alerts/test", nil)
-	req.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

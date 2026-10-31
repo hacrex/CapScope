@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"capscope/internal/alerts"
+	"capscope/internal/auth"
 	"capscope/internal/collector"
 	"capscope/internal/config"
 	"capscope/internal/hub"
@@ -25,16 +26,20 @@ import (
 )
 
 type Server struct {
-	cfg config.Config
-	st  *store.Store
-	mgr *collector.Manager
-	hub *hub.Hub
-	log *slog.Logger
-	eng *alerts.Engine // nil when alerting is disabled
+	cfg   config.Config
+	st    *store.Store
+	mgr   *collector.Manager
+	hub   *hub.Hub
+	log   *slog.Logger
+	eng   *alerts.Engine   // nil when alerting is disabled
+	sessions *auth.SessionManager // session manager (nil when auth is off)
 }
 
 // WithAlerts attaches the alert engine so /api/alerts works.
 func WithAlerts(e *alerts.Engine) func(*Server) { return func(s *Server) { s.eng = e } }
+
+// WithAuth attaches a session manager for bearer-token login auth.
+func WithAuth(a *auth.SessionManager) func(*Server) { return func(s *Server) { s.sessions = a } }
 
 func New(cfg config.Config, st *store.Store, mgr *collector.Manager, h *hub.Hub, log *slog.Logger, opts ...func(*Server)) *Server {
 	s := &Server{cfg: cfg, st: st, mgr: mgr, hub: h, log: log}
@@ -47,6 +52,9 @@ func New(cfg config.Config, st *store.Store, mgr *collector.Manager, h *hub.Hub,
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") })
+	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/logout", s.logout)
+	mux.HandleFunc("GET /api/session", s.session)
 	mux.HandleFunc("GET /api/containers", s.containers)
 	mux.HandleFunc("GET /api/apps", s.apps)
 	mux.HandleFunc("GET /api/logs", s.logs)
@@ -70,7 +78,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {
-	if s.cfg.AuthPass == "" {
+	if s.cfg.AuthPass == "" || s.sessions == nil {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,16 +86,81 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		u, p, ok := r.BasicAuth()
-		okU := subtle.ConstantTimeCompare([]byte(u), []byte(s.cfg.AuthUser))
-		okP := subtle.ConstantTimeCompare([]byte(p), []byte(s.cfg.AuthPass))
-		if !ok || okU&okP != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="capscope"`)
+		if r.URL.Path == "/api/login" && r.Method == http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == r.Header.Get("Authorization") {
+			token = "" // no Bearer prefix present
+		}
+		if token == "" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="capscope"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if _, ok := s.sessions.Validate(token); !ok {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="capscope"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// login validates username/password against AUTH_USER/AUTH_PASS and issues a
+// bearer token. Body: {"username": "...", "password": "..."}.
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(creds.Username), []byte(s.cfg.AuthUser)) != 1 ||
+		subtle.ConstantTimeCompare([]byte(creds.Password), []byte(s.cfg.AuthPass)) != 1 {
+		fail(w, 401, auth.ErrInvalidCredentials)
+		return
+	}
+	token := s.sessions.CreateSession(creds.Username)
+	writeJSON(w, map[string]any{"token": token, "user": creds.Username})
+}
+
+// logout deletes the caller's session.
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == r.Header.Get("Authorization") {
+		token = ""
+	}
+	if token != "" {
+		s.sessions.Delete(token)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
+}
+
+// session returns the authenticated user, or 401 when no valid session exists.
+func (s *Server) session(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == r.Header.Get("Authorization") {
+		token = ""
+	}
+	user, ok := s.sessions.Validate(token)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(w, map[string]string{"user": user})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

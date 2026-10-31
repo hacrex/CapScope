@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"capscope/internal/alerts"
+	"capscope/internal/auth"
 	"capscope/internal/api"
 	"capscope/internal/collector"
 	"capscope/internal/config"
@@ -89,6 +90,7 @@ func run(log *slog.Logger) error {
 
 	h := hub.New()
 	mgr := collector.NewManager(cfg, dk, st, h, log)
+	as := auth.NewSessionManager(log)
 	done := make(chan struct{})
 	go func() { mgr.Run(ctx); close(done) }()
 
@@ -100,7 +102,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           api.New(cfg, st, mgr, h, log, api.WithAlerts(eng)).Handler(),
+		Handler:           api.New(cfg, st, mgr, h, log, api.WithAlerts(eng), api.WithAuth(as)).Handler(),
 		ReadHeaderTimeout: 10 * time.Second, // no WriteTimeout: SSE streams are long-lived
 	}
 	ln, err := net.Listen("tcp", cfg.Listen)

@@ -18,7 +18,8 @@ func TestDeploysRecordAndList(t *testing.T) {
 	// Record a deploy via POST.
 	body, _ := json.Marshal(map[string]any{"app": "web", "version": "v1.2.3", "note": "rollout"})
 	req, _ := http.NewRequest("POST", srv.URL+"/api/deploys", bytes.NewReader(body))
-	req.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -67,7 +68,8 @@ func TestDeploysValidation(t *testing.T) {
 	// Missing app -> 400.
 	body, _ := json.Marshal(map[string]any{"version": "v1"})
 	req, _ := http.NewRequest("POST", srv.URL+"/api/deploys", bytes.NewReader(body))
-	req.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -79,7 +81,8 @@ func TestDeploysValidation(t *testing.T) {
 	}
 	// Bad JSON -> 400.
 	req2, _ := http.NewRequest("POST", srv.URL+"/api/deploys", strings.NewReader("{nope"))
-	req2.SetBasicAuth("u", "p")
+	loginIfNeeded(t)
+	req2.Header.Set("Authorization", "Bearer "+testToken)
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {
 		t.Fatal(err)
