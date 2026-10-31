@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# The 404 page is served for any unknown URL; never index it.
+Disallow: /404.html
+
+Sitemap: https://capscope.live/sitemap.xml

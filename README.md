@@ -4,6 +4,7 @@
 [![Go](https://img.shields.io/badge/go-1.24-00add8.svg)](https://golang.org/)
 [![Docker Image](https://img.shields.io/badge/docker-capscope-2496ed?logo=docker)](https://hub.docker.com/r/hacrex/capscope)
 [![Go Reference](https://pkg.go.dev/badge/github.com/hacrex/CapScope.svg)](https://pkg.go.dev/github.com/hacrex/CapScope)
+[![Website](https://img.shields.io/badge/web-capscope.live-f89c1c)](https://capscope.live)
 
 > **Persistent container logs, crash snapshots, and metrics in one self-hosted binary.**  
 > Built for self-hosters, homelab brewers, and DevOps engineers who run Docker on one server and need to know *what happened before it died.*
@@ -37,6 +38,16 @@ No external database. No Prometheus stack. One container, one volume, one passwo
 - **Homelab brewers** with a dozen apps on one box who need to answer "why did my container restart at 3 AM?"
 - **DevOps engineers** managing CapRover, Coolify, Dokploy, Dokku, Portainer, or raw Docker who want crash forensics and log history out of the box.
 - **Anyone** who has lost logs after a `docker compose up` or CapRover redeploy replaced a container and took its stdout with it.
+
+---
+
+## Why "CapScope"?
+
+**Cap**tain + **Scope** — a captain who checks his containers.
+
+A ship's captain walks the deck and knows what is aboard: what is running, what is sick, and what went over the side. CapScope does the same job for a Docker host — it follows every container on the node, keeps what they print, and holds on to the evidence after a container is replaced.
+
+That is the whole idea behind the name, and the marketing site lives at **[capscope.live](https://capscope.live)**.
 
 ---
 

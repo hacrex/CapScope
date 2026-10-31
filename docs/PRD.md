@@ -6,6 +6,10 @@ Status: MVP implemented (v0.1); access-log pipeline landed (v0.4 scope, C9.1–C
 
 CapScope is a self-hosted container log and stats viewer for CapRover and plain Docker hosts. It does what Dozzle does for live viewing and adds two things Dozzle leaves out on purpose: **persistent, searchable history** and **crash snapshots** that preserve the evidence when a container dies.
 
+**Name.** *Cap* + *Scope* — a captain who checks his containers. A captain's job aboard a ship is to know what is running, what is failing and what went over the side; that is precisely the job this tool does for a Docker host. It is also a nod to CapRover, whose Swarm tasks are prefixed `captain-`.
+
+Live site: <https://capscope.live>
+
 ## 2. Problem
 
 Running apps on CapRover means Docker Swarm services that are replaced on every deploy. Today:

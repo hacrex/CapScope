@@ -1131,6 +1131,10 @@ html[data-theme="light"] .hl-key { color: #7c3aed; }
 .callout.info svg {
   color: var(--accent-text);
 }
+/* naming callout: keep "CapScope" and its two halves picked out in brand orange */
+.callout.name-note b {
+  color: var(--accent-text);
+}
 .callout.warn {
   border-color: color-mix(in srgb, var(--warn) 42%, var(--border));
   background: color-mix(in srgb, var(--warn) 9%, var(--surface));
@@ -1498,6 +1502,17 @@ a.card:hover .card-top svg {
   color: var(--text);
   font-weight: 650;
   margin-bottom: 4px;
+}
+/* naming line: "Cap" and "Scope" picked out in brand orange */
+.footer-brand p.footer-origin {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin-top: -6px;
+  color: var(--muted);
+}
+.footer-brand p.footer-origin strong {
+  color: var(--accent-text);
+  font-weight: 650;
 }
 .footer-social {
   display: flex;
