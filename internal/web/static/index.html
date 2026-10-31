@@ -1076,7 +1076,7 @@ async function loadAlerts(){
 
   const ac=document.createElement('div');ac.className='card';ac.style.marginTop='12px';
   ac.innerHTML='<h3>Recent alerts</h3>';
-  let hist={alerts:[]};
+  hist={alerts:[]};
   try{hist=await api('/api/alerts?limit=100');}catch(e){connBad('alerts history failed');}
   if(!hist.alerts.length){
     const p=document.createElement('div');p.className='empty';p.textContent='No alerts have fired yet.';ac.append(p);
