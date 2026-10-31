@@ -131,6 +131,9 @@ a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 h2{font-weight:600;letter-spacing:-.02em}
 @media (max-width:760px){aside{display:none}input[type=search]{min-width:140px}}
+.cont{font-size:12px;padding:5px 10px;margin-left:16px;border-left:2px solid transparent}
+.cont:hover{background:var(--panel2)}
+.cont.sel{background:var(--panel2);border-left-color:var(--accent)}
 .login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100}
 .login-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:32px 28px;min-width:320px;max-width:90vw;box-shadow:var(--shadow)}
 .login-header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
@@ -150,6 +153,7 @@ h2{font-weight:600;letter-spacing:-.02em}
   <span class="chip" id="conn">connecting</span>
   <span class="sp"></span>
   <span class="chip" id="crashchip" title="Crash snapshots in the last 24h" style="cursor:pointer;display:none"></span>
+  <span class="chip" id="contStat" title="Selected container" style="display:none"></span>
   <button class="b" id="themeBtn" title="Color theme">Auto</button>
   <button class="b" id="logoutBtn" title="Log out" style="display:none">Log out</button>
 </header>
@@ -212,7 +216,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,sel:new Set(),panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto'};
+const S={app:null,tab:'logs',paused:false,follow:true,sel:new Set(),selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto'};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -278,10 +282,23 @@ async function refreshApps(){
     [...names].sort().forEach(n=>{
       const cs=live[n]||[],h=byName[n]||{};
       row(n,n,cs,cs.reduce((t,x)=>t+x.cpu,0),cs.reduce((t,x)=>t+x.mem,0),h.errors_1h||0,h.warns_1h||0);
+      // container rows under this app
+      cs.slice().sort((x,y)=>(x.replica||'').localeCompare(y.replica||'')).forEach(c=>{
+        const cpuPct=c.cpu;
+        const memPct=c.mem_limit>0?(c.mem/c.mem_limit*100).toFixed(0):0;
+        const sel=S.selCont&&S.selCont.id===c.id;
+        const el=document.createElement('div');el.className='cont'+(sel?' sel':'');el.dataset.id=c.id;
+        const nm=document.createElement('div');nm.className='n';
+        const t=document.createElement('span');t.textContent='replica '+(c.replica||c.name.split('.')[1]||c.name);nm.append(t);
+        const m=document.createElement('div');m.className='m';
+        m.textContent=`${cpuPct.toFixed(1)}% cpu  ${memPct}% mem  ${mib(c.mem)}${c.mem_limit>0?' / '+mib(c.mem_limit):''}`;
+        el.append(nm,m);el.onclick=()=>selectContainer(c.id,c);box.append(el);
+      });
     });
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
-    if(S.app===null&&names.size)selectApp([...names].sort()[0]);
+    if(S.app===null&&S.selCont===null&&names.size)selectApp([...names].sort()[0]);
     fillReplicas();fillMetricsContainers();
+    updateContainerStat();
   }catch(e){$('#conn').textContent='offline';$('#conn').className='chip bad';}
 }
 function fillMetricsContainers(){
@@ -290,7 +307,33 @@ function fillMetricsContainers(){
   appContainers().forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=(S.app?'':c.app+' / ')+'replica '+(c.replica||c.name);sel.append(o);});
   sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
 }
-function selectApp(n){S.app=n;S.sel.clear();document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===n));fillReplicas();fillMetricsContainers();show();}
+function selectApp(n){
+  S.app=n;S.sel.clear();S.selCont=null;
+  document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===n));
+  document.querySelectorAll('.cont').forEach(e=>e.classList.remove('sel'));
+  fillReplicas();fillMetricsContainers();
+  show();
+  updateContainerStat();
+}
+function selectContainer(id,c){
+  S.app=c.app;S.sel=new Set([c.name]);S.selCont=c;
+  document.querySelectorAll('.app').forEach(e=>e.classList.remove('sel'));
+  document.querySelectorAll('.cont').forEach(e=>e.classList.toggle('sel',e.dataset.id===id));
+  fillReplicas();fillMetricsContainers();
+  restartLogs();
+  updateContainerStat();
+}
+function updateContainerStat(){
+  const chip=$('#contStat');
+  if(S.selCont){
+    const cpuPct=S.selCont.cpu.toFixed(1);
+    const memPct=S.selCont.mem_limit>0?(S.selCont.mem/S.selCont.mem_limit*100).toFixed(0):0;
+    chip.textContent=`${S.selCont.name} · ${cpuPct}% cpu · ${memPct}% mem`;
+    chip.style.display='';
+  }else{
+    chip.style.display='none';
+  }
+}
 
 /* ---------- replica multi-select ---------- */
 function appContainers(){return S.app?S.conts.filter(c=>c.app===S.app):S.conts;}
@@ -305,7 +348,7 @@ function fillReplicas(){
   for(const name of [...S.sel])if(!appContainers().some(c=>c.name===name))S.sel.delete(name);
   const pop=$('#repPop');pop.replaceChildren();
   const all=document.createElement('button');all.textContent='All replicas (clear selection)';
-  all.onclick=()=>{S.sel.clear();$('#repPop').style.display='none';updateReplicaBtn();fillReplicas();restartLogs();};
+  all.onclick=()=>{S.sel.clear();S.selCont=null;$('#repPop').style.display='none';updateReplicaBtn();fillReplicas();restartLogs();updateContainerStat();};
   pop.append(all);
   appContainers().forEach(c=>{
     const lab=document.createElement('label');lab.className='chk';
