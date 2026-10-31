@@ -17,7 +17,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
@@ -26,7 +26,7 @@
         <a href="index.html">Docs</a>
         <a href="api.html" class="active">API</a>
         <a href="architecture.html">Architecture</a>
-        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;">GitHub</a>
       </nav>
     </div>
   </header>
@@ -36,7 +36,7 @@
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">API sections</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:1rem;">API sections</h4>
             <nav class="doc-nav">
               <a href="#health">Health</a>
               <a href="#containers">Containers &amp; apps</a>
@@ -61,26 +61,26 @@
             </div>
 
             <h2 id="health">Health</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/healthz</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns <code>ok</code>.</p>
             </div>
 
             <h2 id="containers">Containers &amp; apps</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/containers</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns running containers being followed.</p>
               <pre><code class="language-json">{"containers":[{"id":"...","name":"srv-captain--shop.1.x","app":"shop","replica":"1","image":"shop:1.4","started":1793158700000,"cpu":12.5,"mem":104857600,"mem_limit":536870912,"sample_ts":1793158700000}]}</code></pre>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/apps</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns apps known from history with a one-hour error and warning count.</p>
@@ -88,9 +88,9 @@
             </div>
 
             <h2 id="logs">Logs</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/logs</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns rows oldest first.</p>
@@ -110,42 +110,42 @@
               </table>
               <p class="small muted" style="margin-top:1rem;">Row shape: <code>{id, ts, container_id, container, app, stream, level, line}</code>. <code>stream</code> is <code>o</code> for stdout and <code>e</code> for stderr.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/logs/stream</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Server-Sent Events stream of new rows matching the same filters.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/logs/export</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Streams matching rows as CSV (<code>capscope-logs.csv</code>), up to 200,000 lines.</p>
             </div>
 
             <h2 id="access">Access logs</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/access?range=1h</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns aggregated dashboard data: totals, status-code distribution, top paths/IPs/referrers, hits-and-errors timeline.</p>
               <pre><code class="language-json">{"since_ms":...,"until_ms":0,"bucket_ms":12000,"totals":{"requests":900,"client_err":41,"server_err":9,"unique_ips":3,"bytes":88401},"codes":[{"code":200,"n":600}],"paths":[{"key":"/api/items","hits":212,"bytes":9901,"errors":3}],"ips":[{"key":"203.0.113.0","hits":400,"bytes":41000,"errors":2}],"refs":[{"key":"https://google.com/","hits":12,"errors":0}],"timeline":[{"ts":1793157492000,"hits":30,"errors":1,"bytes":2955}]}</code></pre>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/access/export</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Streams raw parsed rows as CSV (<code>capscope-access.csv</code>). Default range 24 h, 100,000 rows max.</p>
             </div>
 
             <h2 id="sql">SQL queries</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/sql?query=</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Runs one ad-hoc read statement against the stored tables. <code>SELECT</code> or <code>WITH … SELECT</code> only.</p>
@@ -158,9 +158,9 @@ ORDER BY n DESC</code></pre>
             </div>
 
             <h2 id="metrics">Metrics</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/metrics?app=shop&amp;range=1h</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns bucketed points (about 300 per range, minimum bucket 5 s). For an app, CPU and memory are summed across replicas.</p>
@@ -168,23 +168,23 @@ ORDER BY n DESC</code></pre>
             </div>
 
             <h2 id="snapshots">Crash snapshots</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots?app=shop&amp;limit=100</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns light rows (no logs or metrics), newest first.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots/{id}</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the full snapshot: metadata, <code>summary</code>, <code>logs</code>, <code>metrics</code> and a trimmed <code>inspect</code> object.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/snapshots/{id}/export</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns a Markdown crash report suitable for pasting into an incident channel.</p>
@@ -192,40 +192,40 @@ ORDER BY n DESC</code></pre>
             <p class="small muted">Snapshot <code>kind</code> is one of <code>oom</code>, <code>crash</code>, <code>killed</code>, <code>clean_exit</code>.</p>
 
             <h2 id="alerts">Alerts</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/alerts?app=shop&amp;limit=100</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the firing history, newest first.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/alerts/rules</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns the armed configuration without secrets.</p>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">POST</span>
+                <span style="font-weight:900;color:var(--accent)">POST</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/alerts/test</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Sends a test message through every configured channel.</p>
             </div>
 
             <h2 id="deploys">Deploys</h2>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">POST</span>
+                <span style="font-weight:900;color:var(--accent)">POST</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/deploys</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Records a deploy marker. Body: <code>{app, version, note?, ts?}</code>. <code>app</code> is required.</p>
               <pre><code class="language-json">{"id":1,"ts":1793158700000,"app":"shop","version":"v1.4","note":"hotfix"}</code></pre>
             </div>
-            <div class="endpoint" style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+            <div class="nb-card" style="padding:1rem;margin-bottom:1rem;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-                <span style="font-weight:700;color:var(--accent)">GET</span>
+                <span style="font-weight:900;color:var(--accent)">GET</span>
                 <span class="small muted" style="font-family:var(--font-mono)">/api/deploys?app=shop</span>
               </div>
               <p style="margin:0;color:var(--text-muted);font-size:0.95rem;">Returns markers newest first.</p>

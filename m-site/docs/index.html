@@ -17,7 +17,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
@@ -25,7 +25,7 @@
         <a href="/">Home</a>
         <a href="index.html" class="active">Docs</a>
         <a href="../guides/">Guides</a>
-        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;">GitHub</a>
       </nav>
     </div>
   </header>
@@ -35,7 +35,7 @@
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">On this page</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:1rem;">On this page</h4>
             <nav class="doc-nav">
               <a href="index.html">Overview</a>
               <a href="api.html">HTTP API</a>
@@ -54,60 +54,60 @@
             </div>
 
             <div class="grid grid-cols-3" style="margin-bottom:3rem;">
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-box"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-box" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Docker (any host)</h4>
                   <p class="small muted" style="margin-bottom:1rem;">One container, one volume, one password.</p>
                   <a href="../guides/docker.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border-color:rgba(139,92,246,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-rocket"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-rocket" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">CapRover</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Native app deployment with persistent <code>/data</code> and socket mount.</p>
                   <a href="caprover.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(6,182,212,0.12);color:#06b6d4;border-color:rgba(6,182,212,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-snowflake"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-snowflake" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Coolify</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Self-hosted PaaS deployment.</p>
                   <a href="../guides/coolify.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-ship"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-ship" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Dokploy</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Deploy with Dokploy's dashboard.</p>
                   <a href="../guides/dokploy.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(234,179,8,0.12);color:#eab308;border-color:rgba(234,179,8,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-whale"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-whale" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Dokku</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Docker-powered PaaS deployment.</p>
                   <a href="../guides/dokku.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;border-color:rgba(34,197,94,0.35);width:40px;height:40px;margin-bottom:1rem">
-                    <i class="fa-solid fa-box"></i>
+                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                    <i class="fa-solid fa-box" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Portainer</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Deploy through Portainer stacks.</p>

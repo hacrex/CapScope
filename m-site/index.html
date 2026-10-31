@@ -19,7 +19,7 @@
     <div class="nav-wrap">
       <a href="/" class="brand">
         <div class="brand-mark">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
         </div>
         CapScope
       </a>
@@ -30,8 +30,7 @@
         <a href="/">Home</a>
         <a href="docs/">Docs</a>
         <a href="guides/">Guides</a>
-        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
-        <button class="nav-cta">Get started</button>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;">GitHub</a>
       </nav>
     </div>
   </header>
@@ -40,9 +39,9 @@
   <main id="content">
     <section class="hero">
       <div class="container">
-        <span class="hero-kicker">Self-hosted • Container observability</span>
+        <span class="badge">Self-hosted • Container observability</span>
         <h1>Containers never truly disappear.</h1>
-        <p>CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is replaced, its history stays searchable — no Prometheus stack, no external database.</p>
+        <p class="sub">CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or is OOM killed. When a container is replaced, its history stays searchable — no Prometheus stack, no external database.</p>
         <div class="hero-actions">
           <a href="guides/docker.html" class="btn btn-primary">Quick start</a>
           <a href="docs/" class="btn btn-outline">Read the docs</a>
@@ -55,7 +54,7 @@
     </section>
 
     <!-- Stats -->
-    <section class="section-sm section-navy">
+    <section class="section">
       <div class="container">
         <div class="grid grid-cols-4">
           <div class="card stat-card">
@@ -86,43 +85,43 @@
           <p>Live tails are great. History is better. Crash forensics are best.</p>
         </div>
         <div class="grid grid-cols-3">
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-box"></i>
             </div>
             <h4>Persistent logs</h4>
             <p>Logs stored in SQLite with full-text search. Search history long after a redeploy removes the container.</p>
           </div>
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-bomb"></i>
             </div>
             <h4>Crash snapshots</h4>
             <p>Auto-saved on OOM or non-zero exit with exit code, memory trend, last lines, and a plain-language summary.</p>
           </div>
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(34,197,94,0.12);color:#22c55e;border-color:rgba(34,197,94,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-chart-line"></i>
             </div>
             <h4>Metrics history</h4>
             <p>CPU and memory samples persisted per app or replica, from 15 minutes to 7 days.</p>
           </div>
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border-color:rgba(139,92,246,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-redo"></i>
             </div>
             <h4>Restart-loop detection</h4>
             <p>Flags containers dying in a loop so you know when an app is crash-looping.</p>
           </div>
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(234,179,8,0.12);color:#eab308;border-color:rgba(234,179,8,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-globe"></i>
             </div>
             <h4>Access-log dashboard</h4>
             <p>GoAccess-style panels from your reverse proxy: status codes, top paths, client IPs, CSV export.</p>
           </div>
-          <div class="card feature-card">
-            <div class="feature-icon" style="background:rgba(248,156,28,0.12);color:#f89c1c;border-color:rgba(248,156,28,0.35)">
+          <div class="feature-card nb-card">
+            <div class="feature-icon">
               <i class="fa-solid fa-rocket"></i>
             </div>
             <h4>Deploy markers</h4>
@@ -133,28 +132,28 @@
     </section>
 
     <!-- How it works -->
-    <section class="section section-navy">
+    <section class="section">
       <div class="container">
         <div class="section-head text-center">
           <h2>One binary. One volume.</h2>
           <p>Run CapScope next to the containers you already watch.</p>
         </div>
         <div class="grid grid-cols-3" style="margin-top:2rem;">
-          <div class="card step">
+          <div class="step nb-card">
             <div class="step-number">1</div>
             <div>
               <h4>Run it</h4>
               <p>One Docker container with <code>/var/run/docker.sock</code> mounted and a <code>/data</code> volume for SQLite.</p>
             </div>
           </div>
-          <div class="card step">
+          <div class="step nb-card">
             <div class="step-number">2</div>
             <div>
               <h4>Watch it</h4>
               <p>CapScope follows logs and stats for every container, redacting secrets before storage.</p>
             </div>
           </div>
-          <div class="card step">
+          <div class="step nb-card">
             <div class="step-number">3</div>
             <div>
               <h4>Sleep better</h4>
@@ -168,7 +167,7 @@
     <!-- Quick start -->
     <section class="section">
       <div class="container">
-        <div class="card" style="padding:2.5rem;max-width:760px;margin:0 auto;">
+        <div class="nb-card" style="padding:2.5rem;max-width:760px;margin:0 auto;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
             <div class="badge badge-neutral">Terminal</div>
           </div>
@@ -181,7 +180,7 @@
   -v /var/run/docker.sock:/var/run/docker.sock \
   --restart unless-stopped \
   ghcr.io/hacrex/capscope:latest</code></pre>
-          <div class="card-footer" style="border-top:none;padding-top:1rem;">
+          <div style="display:flex;gap:1rem;margin-top:1.5rem;">
             <a href="guides/docker.html" class="btn btn-primary btn-full" style="margin-bottom:0.75rem;">View Docker guide →</a>
             <a href="docs/" class="btn btn-outline btn-full">Read full documentation →</a>
           </div>
@@ -190,19 +189,19 @@
     </section>
 
     <!-- Platforms -->
-    <section class="section section-navy">
+    <section class="section">
       <div class="container">
         <div class="section-head text-center">
           <h2>Deploy anywhere you run Docker</h2>
           <p>Step-by-step guides for your platform.</p>
         </div>
         <div class="platforms">
-          <a href="guides/docker.html" class="platform-chip">Docker Compose</a>
-          <a href="guides/caprover.html" class="platform-chip">CapRover</a>
-          <a href="guides/coolify.html" class="platform-chip">Coolify</a>
-          <a href="guides/dokploy.html" class="platform-chip">Dokploy</a>
-          <a href="guides/dokku.html" class="platform-chip">Dokku</a>
-          <a href="guides/portainer.html" class="platform-chip">Portainer</a>
+          <a href="guides/docker.html" class="platform-chip"><i class="fa-solid fa-box"></i> Docker Compose</a>
+          <a href="guides/caprover.html" class="platform-chip"><i class="fa-solid fa-rocket"></i> CapRover</a>
+          <a href="guides/coolify.html" class="platform-chip"><i class="fa-solid fa-snowflake"></i> Coolify</a>
+          <a href="guides/dokploy.html" class="platform-chip"><i class="fa-solid fa-ship"></i> Dokploy</a>
+          <a href="guides/dokku.html" class="platform-chip"><i class="fa-solid fa-whale"></i> Dokku</a>
+          <a href="guides/portainer.html" class="platform-chip"><i class="fa-solid fa-box"></i> Portainer</a>
         </div>
       </div>
     </section>
@@ -213,9 +212,9 @@
     <div class="container">
       <div class="footer-grid">
         <div class="footer-col">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
-            <div class="brand-mark" style="width:26px;height:26px;"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
-            <div style="font-weight:700;font-size:1.1rem;color:var(--text-on-navy);">CapScope</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;justify-content:center;">
+            <div class="brand-mark" style="width:26px;height:26px;"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+            <div style="font-weight:900;font-size:1.1rem;color:var(--text);">CapScope</div>
           </div>
           <p class="muted small" style="margin:0;">Persistent container logs, crash snapshots, and metrics in one self-hosted binary.</p>
         </div>

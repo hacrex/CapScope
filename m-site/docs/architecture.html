@@ -17,7 +17,7 @@
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="mobile-menu-btn" aria-expanded="false" aria-label="Toggle navigation">☰</button>
@@ -26,7 +26,7 @@
         <a href="index.html">Docs</a>
         <a href="api.html">API</a>
         <a href="architecture.html" class="active">Architecture</a>
-        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;">GitHub</a>
       </nav>
     </div>
   </header>
@@ -36,7 +36,7 @@
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">In this section</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:1rem;">In this section</h4>
             <nav class="doc-nav">
               <a href="#overview">Overview</a>
               <a href="#components">Components</a>
@@ -50,14 +50,14 @@
             <h1>Architecture</h1>
             <p class="muted">CapScope is a single Go binary with no frontend build step — the UI is an embedded HTML file. It runs as one container next to the containers it watches.</p>
 
-            <div class="card" style="margin-bottom:2rem;">
+            <div class="nb-card" style="margin-bottom:2rem;">
               <div class="card-body">
-                <pre style="background:#0f172a;border:none;"><code style="color:#8b5cf6;">Docker Engine</code> <span style="color:#64748b;">→</span> <code style="color:#f89c1c;">CapScope (one Go binary)</code> <span style="color:#64748b;">→</span> <code style="color:#22c55e;">SQLite (one file)</code>
+                <pre style="background:var(--bg-panel);border:none;"><code style="color:#8b5cf6;">Docker Engine</code> <span style="color:#64748b;">→</span> <code style="color:#f89c1c;">CapScope (one Go binary)</code> <span style="color:#64748b;">→</span> <code style="color:#15803d;">SQLite (one file)</code>
     │
-    ├─ <span style="color:#eab308;">collector:</span> follows logs + stats per container
-    ├─ <span style="color:#06b6d4;">hub:</span> SSE fan-out to the browser
-    ├─ <span style="color:#22c55e;">store:</span> WAL mode, batched inserts, retention
-    └─ <span style="color:#ef4444;">api:</span> REST + SSE + embedded single-page UI</pre>
+    ├─ <span style="color:#b45309;">collector:</span> follows logs + stats per container
+    ├─ <span style="color:#0ea5e9;">hub:</span> SSE fan-out to the browser
+    ├─ <span style="color:#15803d;">store:</span> WAL mode, batched inserts, retention
+    └─ <span style="color:#dc2626;">api:</span> REST + SSE + embedded single-page UI</pre>
               </div>
             </div>
 
@@ -66,27 +66,27 @@
 
             <h2 id="components">Components</h2>
             <div class="grid grid-cols-3">
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
                   <h4 style="color:#f89c1c;margin-bottom:0.75rem;">Collector</h4>
                   <p class="small muted">Discovers running containers at startup and on Docker <code>start</code>/<code>die</code> events, reconciles every 30s. Follows stdout/stderr per container and samples CPU, memory, network, block I/O, and pids at a configurable interval (default 10s).</p>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <h4 style="color:#06b6d4;margin-bottom:0.75rem;">Hub</h4>
+                  <h4 style="color:#0ea5e9;margin-bottom:0.75rem;">Hub</h4>
                   <p class="small muted">SSE fan-out to the browser. The live log view uses Server-Sent Events so the UI streams new log lines as they arrive, with pause/follow and load-older support.</p>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <h4 style="color:#22c55e;margin-bottom:0.75rem;">Store</h4>
+                  <h4 style="color:#15803d;margin-bottom:0.75rem;">Store</h4>
                   <p class="small muted">SQLite in WAL mode with <code>synchronous=NORMAL</code> and batched inserts (~156k rows/sec measured upper bound). Enforces age and size retention, dropping oldest logs first when the <code>MAX_DB_MB</code> cap is reached.</p>
                 </div>
               </div>
-              <div class="card">
+              <div class="nb-card">
                 <div class="card-body">
-                  <h4 style="color:#ef4444;margin-bottom:0.75rem;">API</h4>
+                  <h4 style="color:#dc2626;margin-bottom:0.75rem;">API</h4>
                   <p class="small muted">REST endpoints for containers, logs, metrics, crash snapshots, access logs, SQL queries, alerts, and deploys. Basic auth by default; read-only Docker access.</p>
                 </div>
               </div>
