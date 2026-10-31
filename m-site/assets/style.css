@@ -418,7 +418,7 @@ html[data-theme="light"] .theme-toggle .icon-moon {
 /* ---------- Hero ---------- */
 .hero {
   position: relative;
-  padding: 52px 0 56px;
+  padding: 84px 0 64px;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
@@ -434,19 +434,73 @@ html[data-theme="light"] .theme-toggle .icon-moon {
 html[data-theme="light"] .hero::before {
   opacity: 0.55;
 }
-.hero::after {
-  content: "";
+
+/* Live log wall behind the hero — real CapScope output, scrolling upward.
+   Dimmed in the horizontal centre so the headline stays readable. */
+.hero-logs {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 78%);
-  -webkit-mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 78%);
+  overflow: hidden;
   pointer-events: none;
-  opacity: 0.7;
+  user-select: none;
+  z-index: 0;
+  opacity: 0.5;
+  /* fade out at the very top and bottom of the section */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 74%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 74%, transparent 100%);
 }
+html[data-theme="light"] .hero-logs {
+  opacity: 0.3;
+}
+.hero-logs-fade {
+  height: 100%;
+  /* fade out the horizontal centre, where the headline and sub sit */
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.35) 30%, transparent 46%, transparent 54%, rgba(0, 0, 0, 0.35) 70%, #000 100%);
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.35) 30%, transparent 46%, transparent 54%, rgba(0, 0, 0, 0.35) 70%, #000 100%);
+}
+.hero-logs-track {
+  display: flex;
+  flex-direction: column;
+  animation: logScroll 46s linear infinite;
+  will-change: transform;
+}
+@keyframes logScroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, -50%, 0);
+  }
+}
+.hero-logs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 2.05;
+  color: var(--muted);
+  text-align: left;
+}
+.hero-logs-list li {
+  /* pre lives on the li, not the ul: on the ul the source newlines
+     between <li> elements would become significant and add blank rows */
+  white-space: pre;
+  padding-left: clamp(12px, 4vw, 60px);
+  overflow: hidden;
+}
+.hl-t { color: #5b6478; }
+.hl-info { color: #60a5fa; }
+.hl-warn { color: #fbbf24; }
+.hl-err { color: #f87171; }
+.hl-ok { color: #34d399; }
+.hl-key { color: #a78bfa; }
+html[data-theme="light"] .hl-t { color: #94a0b4; }
+html[data-theme="light"] .hl-info { color: #2563eb; }
+html[data-theme="light"] .hl-warn { color: #b45309; }
+html[data-theme="light"] .hl-err { color: #dc2626; }
+html[data-theme="light"] .hl-ok { color: #059669; }
+html[data-theme="light"] .hl-key { color: #7c3aed; }
 .hero .container {
   position: relative;
   z-index: 1;
@@ -534,7 +588,7 @@ html[data-theme="light"] .hero::before {
   position: relative;
   z-index: 1;
   max-width: 980px;
-  margin: 40px auto 0;
+  margin: 68px auto 0;
 }
 
 .terminal {
@@ -1522,6 +1576,9 @@ a.card:hover .card-top svg {
     opacity: 1;
     transform: none;
   }
+  .hero-logs-track {
+    animation: none;
+  }
 }
 
 /* ---------- Responsive ---------- */
@@ -1644,7 +1701,10 @@ a.card:hover .card-top svg {
     grid-template-columns: 1fr;
   }
   .hero {
-    padding: 40px 0 44px;
+    padding: 56px 0 48px;
+  }
+  .hero-visual {
+    margin-top: 44px;
   }
   .hero-actions .btn {
     width: 100%;

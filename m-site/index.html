@@ -67,6 +67,49 @@
   <main>
     <!-- ============ HERO ============ -->
     <section class="hero">
+      <div class="hero-logs" aria-hidden="true">
+        <div class="hero-logs-fade">
+          <div class="hero-logs-track">
+            <ul class="hero-logs-list">
+              <li><span class="hl-t">12:04:31.082</span> <span class="hl-info">INFO</span>  shop.1   GET /api/orders/8841 200 4ms</li>
+              <li><span class="hl-t">12:04:31.190</span> <span class="hl-info">INFO</span>  api.2    POST /v1/checkout 201 62ms</li>
+              <li><span class="hl-t">12:04:31.443</span> <span class="hl-info">INFO</span>  web.1    GET /assets/app.9f2c.js 304 1ms</li>
+              <li><span class="hl-t">12:04:32.017</span> <span class="hl-warn">WARN</span>  shop.2   upstream payment-gateway latency=1930ms</li>
+              <li><span class="hl-t">12:04:32.355</span> <span class="hl-info">INFO</span>  worker.1 job=reindex.done items=5120</li>
+              <li><span class="hl-t">12:04:33.128</span> <span class="hl-err">ERROR</span> shop.2   <span class="hl-key">pool</span>: database is locked (timeout after 5s)</li>
+              <li><span class="hl-t">12:04:33.402</span> <span class="hl-info">INFO</span>  api.1    GET /healthz 200 0ms</li>
+              <li><span class="hl-t">12:04:33.877</span> <span class="hl-warn">WARN</span>  api.2    retry 1/3 failed: <span class="hl-key">dial tcp</span> 10.0.0.7:5432</li>
+              <li><span class="hl-t">12:04:34.206</span> <span class="hl-err">ERROR</span> shop.2   retry 3/3 failed: <span class="hl-key">dial tcp</span> 10.0.0.7:5432</li>
+              <li><span class="hl-t">12:04:34.551</span> <span class="hl-err">EVENT</span> die      exit=<span class="hl-err">137</span> oom=<span class="hl-err">true</span> restarts=<span class="hl-err">4</span></li>
+              <li><span class="hl-t">12:04:34.588</span> <span class="hl-ok">SAVED</span> snapshot #184 · summary written · alert dispatched</li>
+              <li><span class="hl-t">12:04:35.004</span> <span class="hl-info">INFO</span>  web.2    GET /pricing 200 7ms</li>
+              <li><span class="hl-t">12:04:35.319</span> <span class="hl-info">INFO</span>  api.3    GET /api/metrics?range=1h 200 12ms</li>
+              <li><span class="hl-t">12:04:35.902</span> <span class="hl-warn">WARN</span>  web.1    slow query 1200ms</li>
+              <li><span class="hl-t">12:04:36.233</span> <span class="hl-info">INFO</span>  shop.3   GET /api/items/8841 200 3ms</li>
+              <li><span class="hl-t">12:04:36.710</span> <span class="hl-info">INFO</span>  worker.2 job=alerts.sweep fired=0</li>
+            </ul>
+            <ul class="hero-logs-list" aria-hidden="true">
+              <li><span class="hl-t">12:04:31.082</span> <span class="hl-info">INFO</span>  shop.1   GET /api/orders/8841 200 4ms</li>
+              <li><span class="hl-t">12:04:31.190</span> <span class="hl-info">INFO</span>  api.2    POST /v1/checkout 201 62ms</li>
+              <li><span class="hl-t">12:04:31.443</span> <span class="hl-info">INFO</span>  web.1    GET /assets/app.9f2c.js 304 1ms</li>
+              <li><span class="hl-t">12:04:32.017</span> <span class="hl-warn">WARN</span>  shop.2   upstream payment-gateway latency=1930ms</li>
+              <li><span class="hl-t">12:04:32.355</span> <span class="hl-info">INFO</span>  worker.1 job=reindex.done items=5120</li>
+              <li><span class="hl-t">12:04:33.128</span> <span class="hl-err">ERROR</span> shop.2   <span class="hl-key">pool</span>: database is locked (timeout after 5s)</li>
+              <li><span class="hl-t">12:04:33.402</span> <span class="hl-info">INFO</span>  api.1    GET /healthz 200 0ms</li>
+              <li><span class="hl-t">12:04:33.877</span> <span class="hl-warn">WARN</span>  api.2    retry 1/3 failed: <span class="hl-key">dial tcp</span> 10.0.0.7:5432</li>
+              <li><span class="hl-t">12:04:34.206</span> <span class="hl-err">ERROR</span> shop.2   retry 3/3 failed: <span class="hl-key">dial tcp</span> 10.0.0.7:5432</li>
+              <li><span class="hl-t">12:04:34.551</span> <span class="hl-err">EVENT</span> die      exit=<span class="hl-err">137</span> oom=<span class="hl-err">true</span> restarts=<span class="hl-err">4</span></li>
+              <li><span class="hl-t">12:04:34.588</span> <span class="hl-ok">SAVED</span> snapshot #184 · summary written · alert dispatched</li>
+              <li><span class="hl-t">12:04:35.004</span> <span class="hl-info">INFO</span>  web.2    GET /pricing 200 7ms</li>
+              <li><span class="hl-t">12:04:35.319</span> <span class="hl-info">INFO</span>  api.3    GET /api/metrics?range=1h 200 12ms</li>
+              <li><span class="hl-t">12:04:35.902</span> <span class="hl-warn">WARN</span>  web.1    slow query 1200ms</li>
+              <li><span class="hl-t">12:04:36.233</span> <span class="hl-info">INFO</span>  shop.3   GET /api/items/8841 200 3ms</li>
+              <li><span class="hl-t">12:04:36.710</span> <span class="hl-info">INFO</span>  worker.2 job=alerts.sweep fired=0</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <div class="container">
         <div class="hero-inner">
           <span class="pill"><span class="dot"></span> <b>v0.6</b> &nbsp;·&nbsp; self-hosted container observability</span>
