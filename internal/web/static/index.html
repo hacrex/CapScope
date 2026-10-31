@@ -105,6 +105,8 @@ body.sql .hide-sql{display:none}
 .ln{display:flex;gap:12px;padding:0 16px;height:20px;align-items:center;overflow:hidden;white-space:pre;position:relative}
 .ln:hover{background:var(--panel2)}
 .ln.sel{background:var(--sel);outline:2px solid var(--accent);outline-offset:-2px}
+.ln.hl{background:color-mix(in srgb,var(--mark) 60%,transparent);position:relative}
+.ln.hl::after{content:'⚑';position:absolute;right:2px;top:1px;font-size:10px;color:var(--accent-text);opacity:0.7}
 .ln.json-pretty{height:auto;min-height:44px;padding:8px 16px;overflow:visible}
 .ln.json-pretty pre{margin:4px 0 0;font-size:11px;line-height:1.4;color:var(--text-2);white-space:pre-wrap;word-break:break-word}
 .ln .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums;font-size:11px}
@@ -251,7 +253,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -543,7 +545,7 @@ function stopStreams(){
 function restartLogs(){
   stopStreams();
   S.panes=[];
-  S.selKeys.clear();S.selData.clear();S.lastSelKey=null;updateSelBtn();
+  S.selKeys.clear();S.selData.clear();S.lastSelKey=null;S.hl.clear();updateSelBtn();
   syncLogCSV();
   if(sqlOn()){runSQL();return;}
   if(S.app===null)return;
@@ -772,6 +774,7 @@ function lineEl(r){
   }
   const d=document.createElement('div');d.className='ln '+(r.level||'')+(r.stream==='e'?' e':'');d.dataset.key=lineKey(r);d.dataset.ts=r.ts||'';d.dataset.container=r.container||'';d.dataset.line=r.line||'';
   if(S.selKeys.has(d.dataset.key))d.classList.add('sel');
+  if(S.hl.has(d.dataset.key))d.classList.add('hl');
   const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
   const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||r.container||'';
   const x=document.createElement('span');x.className='x';x.title=r.line;highlight(x,r.line);
@@ -793,6 +796,7 @@ function lineEl(r){
   });};
   d.append(cb);
   d.onclick=e=>selToggle(r,e);
+  d.ondblclick=e=>{e.stopPropagation();const k=d.dataset.key;if(S.hl.has(k))S.hl.delete(k);else{S.hl.add(k);S.selData.set(k,{ts:r.ts,container:r.container,line:r.line});}renderSel();};
   return d;
 }
 
@@ -800,7 +804,9 @@ function lineEl(r){
 function lineKey(r){return`${r.ts||0}\0${r.container||''}\0${r.line}`;}
 function renderSel(){
   document.querySelectorAll('#logs .ln,.plog .ln').forEach(d=>{
-    d.classList.toggle('sel',S.selKeys.has(d.dataset.key||''));
+    const k=d.dataset.key||'';
+    d.classList.toggle('sel',S.selKeys.has(k));
+    d.classList.toggle('hl',S.hl.has(k));
   });
   updateSelBtn();
 }
