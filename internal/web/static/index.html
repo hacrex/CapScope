@@ -51,6 +51,8 @@ header .sp{flex:1}
 .chip.live{color:var(--ok);border-color:transparent;background:var(--ok-bg);animation:connPulse 2s infinite ease-in-out}
 .chip.bad{color:var(--err);border-color:transparent;background:var(--err-bg)}
 #follow.on{background:var(--accent);color:#000;font-weight:600;border-color:transparent}
+.range-chip{font-size:11px;padding:2px 8px;height:auto}
+.range-chip.on{background:var(--accent);color:#000;font-weight:600;border-color:transparent}
 @keyframes connPulse{0%,100%{opacity:1}50%{opacity:0.6}}
 main{flex:1;display:flex;min-height:0}
 aside{width:240px;border-right:1px solid var(--line);background:var(--bg);overflow:auto;flex:none;padding-bottom:12px}
@@ -178,6 +180,12 @@ h2{font-weight:600;letter-spacing:-.02em}
       <button class="b" id="jumpLive" title="Jump to live logs">↓ New logs</button>
       <div class="bar">
         <input type="search" id="q" placeholder="Search logs">
+        <div class="range-wrap" style="display:flex;align-items:center;gap:6px;margin-left:10px;">
+          <button class="b range-chip hide-sql" id="r5m" data-range="5m">5m</button>
+          <button class="b range-chip hide-sql" id="r15m" data-range="15m">15m</button>
+          <button class="b range-chip hide-sql" id="r1h" data-range="1h">1h</button>
+          <button class="b range-chip hide-sql" id="r24h" data-range="24h">24h</button>
+        </div>
         <select id="smode" title="Search mode"><option value="">text</option><option value="rx">regex</option><option value="sql">SQL</option></select>
         <select id="lvl" class="hide-sql"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="info">info</option><option value="debug">debug</option></select>
         <select id="strm" class="hide-sql"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
@@ -229,7 +237,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
+const S={app:null,tab:'logs',paused:false,follow:true,wrapLines:false,range:'1h',sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map()};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -487,6 +495,7 @@ function params(extra,container){
   if($('#smode').value==='rx')p.set('regex','1');
   if($('#lvl').value)p.set('level',$('#lvl').value);
   if($('#strm').value)p.set('stream',$('#strm').value);
+  if(S.range)p.set('range',S.range);
   for(const k in extra)p.set(k,extra[k]);
   return p.toString();
 }
@@ -648,6 +657,9 @@ function updateCnt(){
 $('#follow').onclick=()=>{S.follow=!S.follow;$('#follow').classList.toggle('on',S.follow);if(S.follow)for(const p of S.panes)p.vl.toBottom();};
 $('#wrap').onclick=()=>{S.wrapLines=!S.wrapLines;$('#wrap').classList.toggle('on',S.wrapLines);document.documentElement.classList.toggle('wrap',S.wrapLines);};
 $('#pause').onclick=()=>{S.paused=!S.paused;$('#pause').classList.toggle('on',S.paused);$('#pause').textContent=S.paused?'Resume':'Pause';if(!S.paused)for(const p of S.panes)flushPending(p);};
+function setRangeChip(){document.querySelectorAll('.range-chip').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
+setRangeChip();
+document.querySelectorAll('.range-chip').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();restartLogs();});
 $('#older').onclick=()=>{for(const p of S.panes)loadOlder(p);};
 async function loadOlder(pane){
   const rows=pane.vl.rows;
