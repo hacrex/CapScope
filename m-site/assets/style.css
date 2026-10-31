@@ -71,6 +71,7 @@ body {
   font-family: var(--font-sans);
   line-height: 1.5;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 a {
@@ -478,6 +479,7 @@ pre {
   border-radius: 8px;
   padding: 1rem;
   overflow-x: auto;
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
@@ -507,6 +509,7 @@ table {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: var(--shadow);
+  max-width: 100%;
 }
 
 th {
