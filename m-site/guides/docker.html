@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Compose guide — CapScope</title>
+  <meta name="description" content="Run CapScope with Docker Compose or docker run: full compose file, socket-proxy hardening, retention and environment highlights, verification steps, troubleshooting and capacity planning.">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="../docs/index.html">Docs</a>
+        <a href="../guides/index.html" class="active">Guides</a>
+        <a href="../docs/api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="../docs/index.html">Introduction</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a class="active" href="docker.html">Docker Compose</a></li>
+            <li><a href="caprover.html">CapRover</a></li>
+            <li><a href="coolify.html">Coolify</a></li>
+            <li><a href="dokploy.html">Dokploy</a></li>
+            <li><a href="dokku.html">Dokku</a></li>
+            <li><a href="portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Resources</div>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope#readme" target="_blank" rel="noopener">README</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/tree/main/docs" target="_blank" rel="noopener">Source docs</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issue tracker</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><a href="index.html">Guides</a><i data-lucide="chevron-right"></i><span>Docker Compose</span>
+        </div>
+
+        <h1>Docker Compose guide</h1>
+        <p class="doc-lead">The shortest path to a working CapScope: one compose service, one named volume, one password. This guide covers the published image and a plain <code>docker run</code>, then hardens the setup with a read-only socket proxy and shows how to size the database.</p>
+
+        <h2 id="prereq">Prerequisites</h2>
+        <ul>
+          <li>A Docker host — any machine with the Docker Engine and its socket available.</li>
+          <li>A long random password for Basic auth: <code>openssl rand -base64 24</code>.</li>
+          <li>Outbound internet on the host if you build from source (the first build downloads Go modules).</li>
+          <li>A TLS-terminating reverse proxy in production — CapScope listens on <code>8080</code> with plain HTTP.</li>
+        </ul>
+
+        <div class="callout danger">
+          <i data-lucide="shield-alert"></i>
+          <div><b>Docker socket access is root equivalent.</b> Mounting <code>/var/run/docker.sock</code> gives the container full control of the host. Use Basic auth, HTTPS, and preferably the read-only socket proxy below in production.</div>
+        </div>
+
+        <h2 id="run">Quick start with <code>docker run</code></h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>docker run -d --name capscope \
+  -p 8080:8080 \
+  -e AUTH_USER=admin \
+  -e AUTH_PASS=<span class="c-str">'change-me'</span> \
+  -v capscope-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  ghcr.io/hacrex/capscope:latest</code></pre>
+        </div>
+        <p>Open <code>http://localhost:8080</code> and log in. The named volume <code>capscope-data</code> holds the SQLite database at <code>/data/capscope.db</code> — do not drop it, or history dies with the container.</p>
+
+        <h2 id="compose">Docker Compose</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>docker-compose.yml</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-key">services</span>:
+  <span class="c-key">capscope</span>:
+    <span class="c-key">image</span>: <span class="c-str">ghcr.io/hacrex/capscope:latest</span>
+    <span class="c-key">ports</span>:
+      - <span class="c-str">"8080:8080"</span>
+    <span class="c-key">environment</span>:
+      <span class="c-key">AUTH_USER</span>: <span class="c-str">admin</span>
+      <span class="c-key">AUTH_PASS</span>: <span class="c-str">change-me</span>
+      <span class="c-comment"># LOG_RETENTION: 7d</span>
+      <span class="c-comment"># MAX_DB_MB: 2048</span>
+      <span class="c-comment"># EXCLUDE: '^captain-'</span>
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">capscope-data:/data</span>
+      - <span class="c-str">/var/run/docker.sock:/var/run/docker.sock</span>
+    <span class="c-key">restart</span>: <span class="c-str">unless-stopped</span>
+
+<span class="c-key">volumes</span>:
+  <span class="c-key">capscope-data</span>:</code></pre>
+        </div>
+        <p><code>AUTH_PASS</code> defaults to <code>change-me</code> — change it before exposing the port. The repo also ships <code>deploy/docker-compose.yml</code>, which builds from source (<code>build: ..</code>) instead of pulling the published image:</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-cmd">cd</span> deploy
+docker compose up -d --build   <span class="c-comment"># then open http://&lt;host&gt;:8080</span></code></pre>
+        </div>
+
+        <h2 id="proxy">Harden with a socket proxy</h2>
+        <p>Mounting the socket is the simplest setup, but a read-only socket proxy keeps the raw socket out of CapScope entirely. Add a <code>tecnativa/docker-socket-proxy</code> service that exposes only the read endpoints CapScope needs, drop the socket mount from CapScope, and point <code>DOCKER_HOST</code> at the proxy:</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>docker-compose.yml (safer variant)</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-key">services</span>:
+  <span class="c-key">socket-proxy</span>:
+    <span class="c-key">image</span>: <span class="c-str">tecnativa/docker-socket-proxy</span>
+    <span class="c-key">environment</span>: { <span class="c-key">CONTAINERS</span>: <span class="c-num">1</span>, <span class="c-key">EVENTS</span>: <span class="c-num">1</span>, <span class="c-key">PING</span>: <span class="c-num">1</span>, <span class="c-key">POST</span>: <span class="c-num">0</span> }
+    <span class="c-key">volumes</span>: [<span class="c-str">"/var/run/docker.sock:/var/run/docker.sock:ro"</span>]
+
+<span class="c-comment"># capscope: drop the docker.sock mount and set:</span>
+<span class="c-comment">#   DOCKER_HOST=tcp://socket-proxy:2375</span></code></pre>
+        </div>
+        <p><code>CONTAINERS=1</code> is what allows <code>GET /containers/*</code> — inspect, logs and stats. <code>POST=0</code> blocks every write. Do not publish the proxy's port publicly; keep it on the same Docker network as CapScope.</p>
+
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div><b>Retention and size caps.</b> Age-based retention runs 30 seconds after start, then every 10 minutes: old rows are deleted in batches, then per-app budgets, then the <code>MAX_DB_MB</code> cap drops the oldest logs first. <code>MAX_DB_MB</code> wins over <code>LOG_RETENTION</code> if the two ever conflict.</div>
+        </div>
+
+        <h2 id="env">Environment highlights</h2>
+        <p>Everything is configured through environment variables. The full list lives in the <a href="../docs/configuration.html">configuration reference</a>; these are the ones you almost always touch on a Docker host:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>AUTH_PASS</code></td><td>none</td><td>Mandatory. The server refuses to start without it.</td></tr>
+              <tr><td><code>DOCKER_HOST</code></td><td><code>unix:///var/run/docker.sock</code></td><td><code>unix://</code> socket or <code>tcp://host:port</code> for a socket proxy.</td></tr>
+              <tr><td><code>LOG_RETENTION</code></td><td><code>7d</code></td><td>Delete logs older than this (<code>d</code>, <code>h</code>, <code>m</code>).</td></tr>
+              <tr><td><code>SNAPSHOT_RETENTION</code></td><td><code>30d</code></td><td>Same for crash snapshots.</td></tr>
+              <tr><td><code>MAX_DB_MB</code></td><td><code>1024</code></td><td>Hard cap on database size; oldest data dropped first.</td></tr>
+              <tr><td><code>STATS_INTERVAL</code></td><td><code>10s</code></td><td>Metric sample interval per container (min 1s).</td></tr>
+              <tr><td><code>INCLUDE</code> / <code>EXCLUDE</code></td><td>none</td><td>Regexes matched against container and app names.</td></tr>
+              <tr><td><code>REDACT</code></td><td><code>true</code></td><td>Mask JWTs, bearer tokens, AWS keys and PEM keys before storage.</td></tr>
+              <tr><td><code>ALERTS_FILE</code></td><td><code>/data/alerts.json</code></td><td>Hot-reloaded JSON alert-rules file.</td></tr>
+              <tr><td><code>ALLOW_NO_AUTH</code></td><td><code>false</code></td><td>Local testing only — never on a shared host.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="verify">Verify</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>Health endpoint</h3>
+            <p><code>curl -k http://localhost:8080/healthz</code> returns <code>200</code>. The path is auth-free by design so proxies and monitors can probe it.</p>
+          </div>
+          <div class="step">
+            <h3>Log in and check the sidebar</h3>
+            <p>Open the UI with Basic auth. The header chip shows a container count above zero, and the sidebar lists your apps within about 10 seconds.</p>
+          </div>
+          <div class="step">
+            <h3>Search a known string</h3>
+            <p>Pick any container, open a log line you expect to exist, and run an FTS5 text search. Results come back with timestamps.</p>
+          </div>
+          <div class="step">
+            <h3>Crash something on purpose</h3>
+            <p>Run a throwaway container that exits with code 1. The <b>Crashes</b> tab shows a snapshot with exit code, log tail and a plain-language summary you can export as Markdown.</p>
+          </div>
+          <div class="step">
+            <h3>Prove the volume works</h3>
+            <p>Restart the CapScope container, then search again — logs, metrics and snapshots survive, which confirms <code>/data</code> is persisted.</p>
+          </div>
+        </div>
+
+        <h2 id="troubleshooting">Troubleshooting</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Symptom</th><th>Cause / fix</th></tr></thead>
+            <tbody>
+              <tr><td>Container exits instantly with "AUTH_PASS …"</td><td>Password not set — set it in the compose file or with <code>-e AUTH_PASS=…</code>.</td></tr>
+              <tr><td>Exits with "cannot reach Docker"</td><td>Socket not mounted, or the <code>DOCKER_HOST</code> proxy URL is wrong.</td></tr>
+              <tr><td>Sidebar empty</td><td>Socket not mounted / wrong path, or an <code>EXCLUDE</code> regex that is too greedy.</td></tr>
+              <tr><td>Live tail stalls</td><td>The reverse proxy is buffering SSE — honor <code>X-Accel-Buffering: no</code> or disable buffering for <code>/api/logs/stream</code>.</td></tr>
+              <tr><td>Data gone after redeploy</td><td><code>/data</code> is not on a persistent volume.</td></tr>
+              <tr><td>Corrupt DB / locked errors</td><td>More than one replica writing the same file — scale to exactly 1.</td></tr>
+              <tr><td>Container shows no logs</td><td>Its logging driver does not support reading (<code>docker logs</code> fails for it). Supported drivers: <code>json-file</code>, <code>local</code>, <code>journald</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="capacity">Capacity</h2>
+        <p>Measured on a sandbox: about <b>400 bytes of database per stored log line</b> for a 130-byte JSON line (three indexes included). Estimate with <code>bytes per day = lines per second × 86400 × 400</code>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Lines per second (all apps)</th><th>Per day</th><th>Per 7 days</th></tr></thead>
+            <tbody>
+              <tr><td><code>1</code></td><td>about 35 MB</td><td>about 240 MB</td></tr>
+              <tr><td><code>10</code></td><td>about 350 MB</td><td>about 2.4 GB</td></tr>
+              <tr><td><code>100</code></td><td>about 3.5 GB</td><td>about 24 GB</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Metrics are cheap: one row per container every 10 seconds is roughly 8,600 rows per container per day. Set <code>MAX_DB_MB</code> to fit your volume — the oldest logs are dropped early to stay under the cap.</p>
+
+        <hr>
+
+        <p class="muted">Next: platform-specific steps for <a href="caprover.html">CapRover</a>, <a href="coolify.html">Coolify</a>, <a href="dokploy.html">Dokploy</a>, <a href="dokku.html">Dokku</a> or <a href="portainer.html">Portainer &amp; others</a>.</p>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="index.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Deployment guides</span>
+          </a>
+          <a class="pager-link next" href="caprover.html">
+            <span class="dir">Next →</span>
+            <span class="ttl">CapRover</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="../index.html" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="../docs/api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="../docs/index.html">Docs home</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

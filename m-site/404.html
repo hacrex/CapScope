@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — CapScope</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="/assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="/#features">Features</a>
+        <a href="/docs/">Docs</a>
+        <a href="/guides/">Guides</a>
+        <a href="/docs/api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="border-bottom:none;">
+      <div class="container">
+        <div class="hero-inner">
+          <span class="pill"><span class="dot"></span> HTTP <b>404</b> · container not found</span>
+          <h1>This page was<br><span class="text-grad">redeployed away</span>.</h1>
+          <p class="sub">The URL you asked for doesn't exist — much like the logs of a container with no volume. Pick a path below and we'll get you back to a running service.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="/">Back to home <i data-lucide="arrow-right"></i></a>
+            <a class="btn btn-outline btn-lg" href="/docs/"><i data-lucide="book-open"></i> Documentation</a>
+          </div>
+          <div class="hero-meta">
+            <span><i data-lucide="search"></i> <a href="/docs/api.html">API reference</a></span>
+            <span><i data-lucide="container"></i> <a href="/guides/">Deployment guides</a></span>
+            <span><i data-lucide="github"></i> <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub</a></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="/" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License</p>
+        <div class="fb-right">
+          <span class="mono">404 · not found</span>
+          <a href="/">Home</a>
+          <a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Report a broken link</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

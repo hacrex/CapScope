@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dokku guide — CapScope</title>
+  <meta name="description" content="Deploy CapScope on Dokku with git push: persistent storage mounts, config:set variables, letsencrypt HTTPS, scaling rules, socket proxy hardening and port notes.">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="../docs/index.html">Docs</a>
+        <a href="../guides/index.html" class="active">Guides</a>
+        <a href="../docs/api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="../docs/index.html">Introduction</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a href="docker.html">Docker Compose</a></li>
+            <li><a href="caprover.html">CapRover</a></li>
+            <li><a href="coolify.html">Coolify</a></li>
+            <li><a href="dokploy.html">Dokploy</a></li>
+            <li><a class="active" href="dokku.html">Dokku</a></li>
+            <li><a href="portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Resources</div>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope#readme" target="_blank" rel="noopener">README</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/tree/main/docs" target="_blank" rel="noopener">Source docs</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issue tracker</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><a href="index.html">Guides</a><i data-lucide="chevron-right"></i><span>Dokku</span>
+        </div>
+
+        <h1>Deploying CapScope on Dokku</h1>
+        <p class="doc-lead">Dokku builds the repository's <code>Dockerfile</code> on <code>git push</code> — no buildpack needed. The <code>CHECKS</code> file at the repo root makes Dokku wait for <code>/healthz</code> before it routes any traffic.</p>
+
+        <h2 id="app">1. Create the app</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash — app + persistent storage</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>dokku apps:create capscope
+
+<span class="c-comment"># persistent storage — the SQLite database survives redeploys</span>
+dokku storage:ensure-directory capscope --chown-on-add
+dokku storage:mount capscope /var/lib/dokku/data/storage/capscope:/data
+
+<span class="c-comment"># Docker socket access</span>
+dokku storage:mount capscope /var/run/docker.sock:/var/run/docker.sock</code></pre>
+        </div>
+        <p>The <code>storage:mount</code> commands take effect on the next deploy, so mount them before your first push.</p>
+
+        <div class="callout danger">
+          <i data-lucide="shield-alert"></i>
+          <div><b>Mounting <code>docker.sock</code> is root equivalent.</b> Skip the second mount and use the socket proxy in <a href="#proxy">step 5</a> if you want CapScope to have read-only access.</div>
+        </div>
+
+        <h2 id="config">2. Configure it</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash — environment</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>dokku config:set capscope AUTH_USER=admin AUTH_PASS=<span class="c-str">'a long random password'</span>
+dokku config:set capscope MAX_DB_MB=<span class="c-num">2048</span>              <span class="c-comment"># optional size cap</span>
+dokku config:set capscope EXCLUDE=<span class="c-str">'^nginx|traefik'</span>       <span class="c-comment"># hide Dokku's own proxies</span></code></pre>
+        </div>
+        <p><b>Worth excluding:</b> the per-app <code>nginx</code> sidecars Dokku adds and the <code>traefik</code>/<code>caddy</code> ingress containers — they are noisy. Excluded containers are still followed for access logs only, so your Access dashboard keeps working.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Key</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td><code>AUTH_USER</code> / <code>AUTH_PASS</code></td><td>Mandatory password — the server refuses to start without it.</td></tr>
+              <tr><td><code>MAX_DB_MB</code></td><td>Hard cap on database size; oldest data dropped first.</td></tr>
+              <tr><td><code>EXCLUDE</code></td><td>Regex over container and app names.</td></tr>
+              <tr><td><code>LOG_RETENTION</code></td><td>Default <code>7d</code> — raise it if disk allows.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="deploy">3. Deploy</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>git remote add dokku dokku@&lt;your-dokku-host&gt;:capscope
+git push dokku main</code></pre>
+        </div>
+        <p>The first build downloads Go modules, so the Dokku host needs outbound internet during the build.</p>
+
+        <h3 id="https">HTTPS</h3>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash — letsencrypt plugin</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>dokku domains:set capscope capscope.example.com
+dokku letsencrypt:set --global email you@example.com
+dokku letsencrypt capscope</code></pre>
+        </div>
+        <div class="callout warn">
+          <i data-lucide="shield-alert"></i>
+          <div><b>Do not expose CapScope on plain HTTP</b> — Basic auth credentials travel in clear text. Also re-run <code>dokku letsencrypt capscope</code> before the certificate expires.</div>
+        </div>
+
+        <h3 id="scale">Scaling</h3>
+        <p>Keep it at <b>1 process</b>. The Dockerfile build already defaults to a single <code>web</code> process; do not run <code>dokku ps:scale capscope web=2</code> or higher — instances would write the same SQLite file.</p>
+
+        <h2 id="proxy">4. Socket proxy (recommended)</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>Run the proxy</h3>
+            <p>Start <code>tecnativa/docker-socket-proxy</code> with <code>CONTAINERS=1</code>, <code>EVENTS=1</code>, <code>PING=1</code>, <code>POST=0</code>, no public port, on the same Docker network as CapScope.</p>
+          </div>
+          <div class="step">
+            <h3>Remove the socket mount</h3>
+            <p>Instead of mounting the socket, point CapScope at the proxy:</p>
+            <div class="code-block">
+              <div class="code-head"><span>bash</span><button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button></div>
+              <pre><code>dokku config:set capscope DOCKER_HOST=<span class="c-str">tcp://&lt;proxy-container-name&gt;:2375</span></code></pre>
+            </div>
+          </div>
+          <div class="step">
+            <h3>Re-deploy</h3>
+            <p><code>git push dokku main</code> again. CapScope only issues GET requests, so the proxy can stay fully read-only.</p>
+          </div>
+        </div>
+
+        <h2 id="notes">5. Notes</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Topic</th><th>Detail</th></tr></thead>
+            <tbody>
+              <tr><td><b>Ports</b></td><td>The <code>Dockerfile</code> exposes <code>8080</code> and Dokku maps the first exposed port automatically, so no <code>ports:set</code> is needed. If you skip the web proxy: <code>dokku ports:set capscope http:80:8080</code>.</td></tr>
+              <tr><td><b>Live tail (SSE)</b></td><td>CapScope sends <code>X-Accel-Buffering: no</code>, which Dokku's default Nginx proxy respects. Behind another reverse proxy, disable response buffering for <code>/api/logs/stream</code>.</td></tr>
+              <tr><td><b>Health check</b></td><td><code>/healthz</code> — auth-free by design; the <code>CHECKS</code> file already uses it.</td></tr>
+              <tr><td><b>Container user</b></td><td>Runs as root on purpose — <code>docker.sock</code> needs it.</td></tr>
+              <tr><td><b>Crash catch-up</b></td><td>Deaths that happened while CapScope was down are replayed from the persisted event cursor on startup (up to 24 h back).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="verify">6. Verify</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>Open the app</h3>
+            <p>Visit <code>https://capscope.example.com</code> and log in. The header chip should show a container count above zero.</p>
+          </div>
+          <div class="step">
+            <h3>Check the sidebar</h3>
+            <p>Your apps appear on the left; containers matched by <code>EXCLUDE</code> stay out but still feed the Access dashboard.</p>
+          </div>
+          <div class="step">
+            <h3>Trigger a test crash</h3>
+            <p>Run a container that exits with code 1 and confirm a snapshot appears under <b>Crashes</b> with an exit code and log tail.</p>
+          </div>
+        </div>
+
+        <div class="callout ok">
+          <i data-lucide="circle-check"></i>
+          <div><b>Rollback safety:</b> because <code>/data</code> lives outside the container, redeploys, rebuilds and rollbacks never touch your log history, snapshots or alert rules.</div>
+        </div>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="dokploy.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Dokploy</span>
+          </a>
+          <a class="pager-link next" href="portainer.html">
+            <span class="dir">Next →</span>
+            <span class="ttl">Portainer &amp; others</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="../index.html" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="../docs/api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="../docs/index.html">Docs home</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

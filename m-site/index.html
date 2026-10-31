@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CapScope — Container logs & crash snapshots that survive redeploys</title>
+  <meta name="description" content="Self-hosted Docker observability in one binary: persistent logs with full-text search, crash snapshots, CPU/memory history, deploy markers and alerts — no Prometheus stack.">
+  <meta name="theme-color" content="#08090c">
+  <meta property="og:title" content="CapScope — Container logs & crash snapshots that survive redeploys">
+  <meta property="og:description" content="Persistent container logs, crash snapshots and metrics in one self-hosted binary.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html#features">Features</a>
+        <a href="docs/index.html">Docs</a>
+        <a href="guides/index.html">Guides</a>
+        <a href="docs/api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-inner">
+          <span class="pill"><span class="dot"></span> <b>v0.6</b> &nbsp;·&nbsp; self-hosted container observability</span>
+          <h1>Logs that outlive<br>the container that <span class="text-grad">wrote them</span>.</h1>
+          <p class="sub">CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or gets OOM killed. Redeploy all you want — the evidence stays searchable.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="guides/docker.html">
+              Quick start <i data-lucide="arrow-right"></i>
+            </a>
+            <a class="btn btn-outline btn-lg" href="docs/index.html">
+              <i data-lucide="book-open"></i> Documentation
+            </a>
+          </div>
+          <div class="hero-meta">
+            <span><i data-lucide="database"></i> SQLite, no external DB</span>
+            <span><i data-lucide="box"></i> One binary, one volume</span>
+            <span><i data-lucide="shield-check"></i> MIT licensed</span>
+            <span><i data-lucide="lock"></i> Basic auth by default</span>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+              <span class="title">capscope — logs · shop · live</span>
+              <span class="badge">SSE connected</span>
+            </div>
+            <pre class="terminal-body"><code><span class="l"><span class="t-time">03:14:07.118</span> <span class="t-info">INFO</span>  shop.2  order accepted id=8841 total=42.50</span>
+<span class="l"><span class="t-time">03:14:07.402</span> <span class="t-warn">WARN</span>  shop.2  upstream payment-gateway latency=1930ms</span>
+<span class="l"><span class="t-time">03:14:08.910</span> <span class="t-err">ERROR</span> shop.2  <span class="t-key">pool</span>: database is locked (timeout after 5s)</span>
+<span class="l"><span class="t-time">03:14:09.066</span> <span class="t-err">ERROR</span> shop.2  retry 3/3 failed: <span class="t-key">dial tcp</span> 10.0.0.7:5432</span>
+<span class="l"><span class="t-time">03:14:09.301</span> <span class="t-err">FATAL</span> shop.2  exiting: cannot open database</span>
+<span class="l"><span class="t-time">03:14:09.318</span> <span class="t-warn">EVENT</span> die   exit=<span class="t-err">137</span> oom=<span class="t-err">true</span> restarts_window=<span class="t-err">4</span></span>
+<span class="l"><span class="t-time">03:14:09.340</span> <span class="t-ok">SAVED</span> snapshot #184 · summary written · alert dispatched <span class="cursor"></span></span></code></pre>
+          </div>
+
+          <aside class="float-card" aria-label="Crash snapshot preview">
+            <div class="fc-head">
+              <i data-lucide="flame"></i> snapshot #184
+              <span class="fc-kind">OOM</span>
+            </div>
+            <div class="fc-row"><span>exit code</span><b>137 (SIGKILL)</b></div>
+            <div class="fc-row"><span>uptime</span><b>4m 12s</b></div>
+            <div class="fc-row"><span>restarts in 5m</span><b>4 ↻</b></div>
+            <div class="fc-row"><span>last deploy</span><b>v1.4.2</b></div>
+            <p class="fc-summary">Process was killed after memory crossed its 512 MB limit. Peak RSS 640 MB in the last 60s — this is the classic signature of an OOM kill, not an application error.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STATS ============ -->
+    <section class="section-tight">
+      <div class="container">
+        <div class="stats reveal">
+          <div class="stat"><div class="num">1</div><div class="lbl">binary · zero external services</div></div>
+          <div class="stat"><div class="num">24h</div><div class="lbl">crash catch-up after downtime</div></div>
+          <div class="stat"><div class="num">4</div><div class="lbl">alert channels (webhook · Telegram · Slack · Discord)</div></div>
+          <div class="stat"><div class="num">200k</div><div class="lbl">lines per CSV export</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROBLEM / SOLUTION ============ -->
+    <section class="section section-alt">
+      <div class="container">
+        <div class="section-head center reveal">
+          <span class="kicker">the 3 AM problem</span>
+          <h2>Your container died. Its logs died with it.</h2>
+          <p>Live log viewers show the present tense. Debugging needs the past.</p>
+        </div>
+
+        <div class="split reveal">
+          <div class="panel bad">
+            <div class="panel-title"><i data-lucide="circle-x"></i> Without CapScope</div>
+            <ul class="ticklist bad">
+              <li><i data-lucide="x"></i><span><b>Redeploy erases evidence.</b> <code>docker compose up</code> replaces the container and takes stdout, exit codes and memory trends with it.</span></li>
+              <li><i data-lucide="x"></i><span><b>The observability tax.</b> Prometheus + Grafana + Loki + exporters is a lot of moving parts for one server or a homelab.</span></li>
+              <li><i data-lucide="x"></i><span><b>Crashes arrive as a shrug.</b> "Restarting…" with no exit code, no last lines, no idea whether it was your release or the OOM killer.</span></li>
+              <li><i data-lucide="x"></i><span><b>Secrets in plain logs.</b> JWTs and passwords get copied into screenshots and pastebins.</span></li>
+            </ul>
+          </div>
+
+          <div class="panel good">
+            <div class="panel-title"><i data-lucide="circle-check"></i> With CapScope</div>
+            <ul class="ticklist good">
+              <li><i data-lucide="check"></i><span><b>History that survives redeploy.</b> Logs and metrics land in SQLite with age and size retention — search an app's logs long after its container is gone.</span></li>
+              <li><i data-lucide="check"></i><span><b>One container, one volume, one password.</b> No external database, no scraping stack, no build step for the UI.</span></li>
+              <li><i data-lucide="check"></i><span><b>Crash snapshots.</b> Exit code, OOM flag, restart count, uptime, last log lines, metric trend and a plain-language summary — exported as Markdown for incident handoff.</span></li>
+              <li><i data-lucide="check"></i><span><b>Redaction on ingest.</b> JWTs, bearer tokens, <code>password=</code>, URL credentials, AWS keys and PEM keys are masked before anything touches disk.</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head center reveal">
+          <span class="kicker">features</span>
+          <h2>Everything you need to answer "what happened?"</h2>
+          <p>Built for self-hosters, homelab brewers and DevOps engineers who run Docker on one box.</p>
+        </div>
+
+        <div class="grid grid-3">
+          <div class="card reveal">
+            <div class="icon-box"><i data-lucide="list"></i></div>
+            <h3>Live tail over SSE</h3>
+            <p>Per-app sidebar, virtual-scrolled live tail, pause &amp; follow, load older, and a split view for up to 4 replicas side by side. Click any JSON line to pretty-print it.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box cyan"><i data-lucide="search"></i></div>
+            <h3>Search that finds it</h3>
+            <p>FTS5 full-text index with prefix matching, regex mode, raw SQL over <code>logs</code>, <code>metrics</code>, <code>containers</code> and <code>snapshots</code>, plus filters for level, stream and replica.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box violet"><i data-lucide="database"></i></div>
+            <h3>Persistent history</h3>
+            <p>Everything is stored in SQLite with age and size retention, per-app budgets and a hard <code>MAX_DB_MB</code> cap. The oldest data is dropped first, always.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box err"><i data-lucide="flame"></i></div>
+            <h3>Crash snapshots</h3>
+            <p>Captured on non-zero exit or OOM kill: exit code, restart count, uptime, ring-buffered last lines, metric samples, rule-based summary and Markdown export.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box warn"><i data-lucide="refresh-cw"></i></div>
+            <h3>Restart-loop detection</h3>
+            <p>Deaths are counted in a sliding window; looping containers get a <code>↻</code> badge in the UI and a called-out summary — rollouts stay out of the count.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box ok"><i data-lucide="activity"></i></div>
+            <h3>CPU &amp; memory charts</h3>
+            <p>Bucketed samples from 15 minutes to 7 days, summed per app across replicas, with net, block and PID counters alongside.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box"><i data-lucide="globe"></i></div>
+            <h3>Access-log dashboard</h3>
+            <p>GoAccess-style panels from your reverse proxy: status codes, top paths, client IPs (anonymized by default), referrers, hits/errors timeline and CSV export.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box cyan"><i data-lucide="git-branch"></i></div>
+            <h3>Deploy markers</h3>
+            <p>Record releases from CI or the UI. Markers appear on the CPU/memory charts, inline in the log timeline, and on the crash detail as "Last deploy: v1.4".</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box violet"><i data-lucide="bell"></i></div>
+            <h3>Alerts</h3>
+            <p>Dead-man, restart loop, metric threshold with duration, and log-pattern rules. Webhook, Telegram, Slack and Discord channels with a test button.</p>
+          </div>
+        </div>
+
+        <div class="callout info reveal" style="margin-top:28px;">
+          <i data-lucide="info"></i>
+          <div><b>Also included:</b> secret redaction before storage, Basic auth required by default (the server refuses to start without a password), CSV export up to 200,000 lines, per-app retention and size budgets, <code>INCLUDE</code>/<code>EXCLUDE</code> name filters, and a hot-reloaded JSON alert file.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section section-alt">
+      <div class="container">
+        <div class="section-head center reveal">
+          <span class="kicker">architecture</span>
+          <h2>One Go process. One SQLite file.</h2>
+          <p>No agent, no sidecar, no collector daemon, no external database.</p>
+        </div>
+
+        <div class="code-block reveal">
+          <div class="code-head">
+            <span>architecture</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-comment">Docker Engine  →  CapScope (one Go binary)  →  SQLite (one file)</span>
+                    │
+                    ├─ collector: follows logs + stats per container
+                    ├─ hub: SSE fan-out to the browser
+                    ├─ store: WAL mode, batched inserts, retention
+                    └─ api: REST + SSE + embedded single-page UI</code></pre>
+        </div>
+
+        <div class="grid grid-4" style="margin-top:26px;">
+          <div class="card reveal">
+            <div class="icon-box"><i data-lucide="box"></i></div>
+            <h3>Collector</h3>
+            <p>Follows Docker's log and stats streams, redacts, level-tags and batches rows. Ring buffers keep the final lines for snapshots.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box cyan"><i data-lucide="layers"></i></div>
+            <h3>Store</h3>
+            <p>WAL mode, <code>synchronous=NORMAL</code>, single writer plus a read-only pool — UI queries never block ingestion.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box violet"><i data-lucide="zap"></i></div>
+            <h3>Hub</h3>
+            <p>Non-blocking fan-out of committed rows to SSE subscribers, with per-subscriber filters and a drop counter.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box ok"><i data-lucide="code"></i></div>
+            <h3>API</h3>
+            <p>Plain REST + SSE + the embedded UI. The dashboard only ever calls the same public API you do.</p>
+          </div>
+        </div>
+
+        <p class="muted small" style="margin-top:22px;text-align:center;">
+          Deep dive in the <a href="docs/architecture.html" style="color:var(--accent);">architecture guide</a> — failure modes, concurrency model, storage decisions and trade-offs.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ QUICK START ============ -->
+    <section class="section">
+      <div class="container" style="max-width:860px;">
+        <div class="section-head center reveal">
+          <span class="kicker">quick start</span>
+          <h2>Running in about 30 seconds</h2>
+          <p>Two mounts and one password. Open <code>http://localhost:8080</code> when it's up.</p>
+        </div>
+
+        <div class="code-block reveal">
+          <div class="code-head">
+            <span>bash — docker run</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>docker run -d --name capscope \
+  -p 8080:8080 \
+  -e AUTH_USER=<span class="c-str">admin</span> \
+  -e AUTH_PASS=<span class="c-str">'change-me'</span> \
+  -v capscope-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  ghcr.io/hacrex/capscope:latest</code></pre>
+        </div>
+
+        <div class="code-block reveal">
+          <div class="code-head">
+            <span>docker-compose.yml</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-key">services</span>:
+  <span class="c-key">capscope</span>:
+    <span class="c-key">image</span>: ghcr.io/hacrex/capscope:latest
+    <span class="c-key">ports</span>:
+      - <span class="c-str">"8080:8080"</span>
+    <span class="c-key">environment</span>:
+      <span class="c-key">AUTH_USER</span>: admin
+      <span class="c-key">AUTH_PASS</span>: change-me
+      <span class="c-key">MAX_DB_MB</span>: <span class="c-num">2048</span>
+      <span class="c-key">EXCLUDE</span>: <span class="c-str">"^captain-"</span>
+    <span class="c-key">volumes</span>:
+      - capscope-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    <span class="c-key">restart</span>: unless-stopped
+
+<span class="c-key">volumes</span>:
+  capscope-data:</code></pre>
+        </div>
+
+        <div class="hero-actions reveal" style="margin-top:26px;">
+          <a class="btn btn-primary" href="guides/docker.html">Full Docker guide <i data-lucide="arrow-right"></i></a>
+          <a class="btn btn-outline" href="docs/configuration.html">Configuration reference</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PLATFORMS ============ -->
+    <section class="section section-alt">
+      <div class="container">
+        <div class="section-head center reveal">
+          <span class="kicker">deployment guides</span>
+          <h2>Runs wherever Docker runs</h2>
+          <p>Every guide covers storage, socket access, TLS, health checks and single-replica rules.</p>
+        </div>
+
+        <div class="platform-grid reveal">
+          <a class="platform" href="guides/docker.html">
+            <span class="p-ico"><i data-lucide="container"></i></span>
+            <span><span class="p-name">Docker Compose</span><br><span class="p-sub">generic host · docker run</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="guides/caprover.html">
+            <span class="p-ico"><i data-lucide="rocket"></i></span>
+            <span><span class="p-name">CapRover</span><br><span class="p-sub">captain-definition included</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="guides/coolify.html">
+            <span class="p-ico"><i data-lucide="snowflake"></i></span>
+            <span><span class="p-name">Coolify</span><br><span class="p-sub">Dockerfile resource</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="guides/dokploy.html">
+            <span class="p-ico"><i data-lucide="ship"></i></span>
+            <span><span class="p-name">Dokploy</span><br><span class="p-sub">compose service · Swarm</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="guides/dokku.html">
+            <span class="p-ico"><i data-lucide="git-pull-request"></i></span>
+            <span><span class="p-name">Dokku</span><br><span class="p-sub">git push deployments</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="guides/portainer.html">
+            <span class="p-ico"><i data-lucide="server"></i></span>
+            <span><span class="p-name">Portainer &amp; others</span><br><span class="p-sub">stacks · Podman · Swarm</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="section">
+      <div class="container">
+        <div class="cta-band reveal">
+          <span class="kicker">open source · MIT</span>
+          <h2>Stop losing the logs that matter.</h2>
+          <p>Clone the repo, run <code>make demo</code> for a UI with fake data, or deploy it to your server in one command.</p>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+              <i data-lucide="github"></i> View on GitHub
+            </a>
+            <a class="btn btn-outline btn-lg" href="docs/index.html">
+              <i data-lucide="book-open"></i> Read the docs
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="footer-wordmark">
+      <a href="index.html" aria-label="CapScope">CapScope</a>
+    </div>
+
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary. No external database, no Prometheus stack.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="docs/api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="index.html#features">Features</a></li>
+            <li><a href="guides/docker.html">Quick start</a></li>
+            <li><a href="docs/architecture.html">Architecture</a></li>
+            <li><a href="docs/configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="docs/index.html">Docs home</a></li>
+            <li><a href="docs/api.html">API reference</a></li>
+            <li><a href="docs/alerts.html">Alert rules</a></li>
+            <li><a href="docs/architecture.html">How it works</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="guides/docker.html">Docker Compose</a></li>
+            <li><a href="guides/caprover.html">CapRover</a></li>
+            <li><a href="guides/coolify.html">Coolify</a></li>
+            <li><a href="guides/dokploy.html">Dokploy</a></li>
+            <li><a href="guides/dokku.html">Dokku</a></li>
+            <li><a href="guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/pulls" target="_blank" rel="noopener">Pull requests</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://hub.docker.com/r/hacrex/capscope" target="_blank" rel="noopener">Docker Hub</a>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

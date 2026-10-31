@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deployment guides — CapScope</title>
+  <meta name="description" content="Deploy CapScope on Docker Compose, CapRover, Coolify, Dokploy, Dokku, Portainer or Podman — with the same checklist for storage, socket access, TLS and single-replica rules.">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="../docs/index.html">Docs</a>
+        <a href="../guides/index.html" class="active">Guides</a>
+        <a href="../docs/api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="../docs/index.html">Introduction</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a href="docker.html">Docker Compose</a></li>
+            <li><a href="caprover.html">CapRover</a></li>
+            <li><a href="coolify.html">Coolify</a></li>
+            <li><a href="dokploy.html">Dokploy</a></li>
+            <li><a href="dokku.html">Dokku</a></li>
+            <li><a href="portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Resources</div>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope#readme" target="_blank" rel="noopener">README</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/tree/main/docs" target="_blank" rel="noopener">Source docs</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issue tracker</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><span>Guides</span>
+        </div>
+
+        <h1>Deployment guides</h1>
+        <p class="doc-lead">CapScope is one Go binary plus a Dockerfile and a compose file, so anything that can run a Docker image can run it. Every guide below covers the same five things: a password, a persistent <code>/data</code> volume, Docker socket access, HTTPS in front of port <code>8080</code>, and exactly one replica.</p>
+
+        <div class="grid grid-2">
+          <a class="platform" href="docker.html">
+            <span class="p-ico"><i data-lucide="container"></i></span>
+            <span><span class="p-name">Docker Compose</span><br><span class="p-sub">generic host · docker run</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="caprover.html">
+            <span class="p-ico"><i data-lucide="rocket"></i></span>
+            <span><span class="p-name">CapRover</span><br><span class="p-sub">captain-definition included</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="coolify.html">
+            <span class="p-ico"><i data-lucide="snowflake"></i></span>
+            <span><span class="p-name">Coolify</span><br><span class="p-sub">Dockerfile resource</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="dokploy.html">
+            <span class="p-ico"><i data-lucide="ship"></i></span>
+            <span><span class="p-name">Dokploy</span><br><span class="p-sub">compose service · Swarm</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="dokku.html">
+            <span class="p-ico"><i data-lucide="git-pull-request"></i></span>
+            <span><span class="p-name">Dokku</span><br><span class="p-sub">git push deployments</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+          <a class="platform" href="portainer.html">
+            <span class="p-ico"><i data-lucide="server"></i></span>
+            <span><span class="p-name">Portainer &amp; others</span><br><span class="p-sub">stacks · Podman · Swarm</span></span>
+            <span class="p-arrow"><i data-lucide="arrow-right"></i></span>
+          </a>
+        </div>
+
+        <h2 id="common">Common to all platforms</h2>
+        <p>The image ships everything a PaaS expects: a plain <code>Dockerfile</code>, <code>EXPOSE 8080</code>, a <code>VOLUME /data</code>, a built-in <code>HEALTHCHECK</code> and an unauthenticated <code>GET /healthz</code> endpoint. Whatever the platform, these six rules always apply:</p>
+
+        <ul class="ticklist good">
+          <li><i data-lucide="circle-check"></i><span><b>Set <code>AUTH_PASS</code></b> to a long random password — the server refuses to start without it (unless you explicitly set <code>ALLOW_NO_AUTH=true</code> for a private test).</span></li>
+          <li><i data-lucide="circle-check"></i><span><b>Persist <code>/data</code> on a volume.</b> The SQLite database — logs, metrics, snapshots, alert state — lives there and dies on redeploy without it.</span></li>
+          <li><i data-lucide="circle-check"></i><span><b>Give CapScope Docker API access:</b> mount <code>/var/run/docker.sock</code>, or (safer, no socket in CapScope) point <code>DOCKER_HOST</code> at a read-only socket proxy.</span></li>
+          <li><i data-lucide="circle-check"></i><span><b>Exactly one replica.</b> Each instance writes the same SQLite file — two writers corrupt the database.</span></li>
+          <li><i data-lucide="circle-check"></i><span><b>HTTPS in front.</b> The app listens on <code>8080</code>; Basic auth credentials travel in clear text on plain HTTP.</span></li>
+          <li><i data-lucide="circle-check"></i><span><b>Kubernetes is not supported.</b> CapScope talks to the Docker Engine API, not the kubelet — run it as a Docker container on a Docker node.</span></li>
+        </ul>
+
+        <div class="callout info">
+          <i data-lucide="key"></i>
+          <div><b>Generate the password first</b> — it is used by every guide below:
+            <div class="code-block">
+              <div class="code-head">
+                <span>bash</span>
+                <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+              </div>
+              <pre><code>openssl rand -base64 24</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <p>The image is built from the repo's multi-stage <code>Dockerfile</code> (Go 1.24 to a static scratch binary), so any platform that can build or pull a Docker image works. The first build downloads Go modules — the host needs outbound internet during the build.</p>
+
+        <h2 id="platforms">Pick your platform</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Platform</th><th>Guide</th><th>What it needs on top</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Docker Compose</td><td><a href="docker.html">Docker Compose guide</a></td><td>the compose file from the repo, or a plain <code>docker run</code></td></tr>
+              <tr><td>CapRover</td><td><a href="caprover.html">CapRover guide</a></td><td>nothing — <code>captain-definition</code> is in the repo</td></tr>
+              <tr><td>Coolify</td><td><a href="coolify.html">Coolify guide</a></td><td>Dockerfile resource + socket proxy volume</td></tr>
+              <tr><td>Dokploy</td><td><a href="dokploy.html">Dokploy guide</a></td><td>compose service, Swarm single-node caveat</td></tr>
+              <tr><td>Dokku</td><td><a href="dokku.html">Dokku guide</a></td><td><code>git push</code> + <code>storage:mount</code> overrides</td></tr>
+              <tr><td>Portainer / plain Docker</td><td><a href="portainer.html">Portainer &amp; others</a></td><td>paste the compose stack</td></tr>
+              <tr><td>Podman</td><td><a href="portainer.html#podman">Portainer &amp; others — Podman</a></td><td>same image; mount the Podman API socket instead of <code>docker.sock</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="verify">Verify after any deployment</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>Health check answers</h3>
+            <p><code>GET /healthz</code> returns <code>200</code> — the path is auth-free by design, so platforms can probe it without secrets.</p>
+          </div>
+          <div class="step">
+            <h3>Sidebar fills up</h3>
+            <p>Log in with Basic auth; the app list appears within about 10 seconds of the first deploy.</p>
+          </div>
+          <div class="step">
+            <h3>Live tail streams</h3>
+            <p>Open any container — the SSE stream flows. If it is silent, your reverse proxy is buffering; see the troubleshooting table in each guide.</p>
+          </div>
+          <div class="step">
+            <h3>History survives a redeploy</h3>
+            <p>Restart or redeploy CapScope, then search a known log string again. If the data is still there, <code>/data</code> is persisted correctly.</p>
+          </div>
+        </div>
+
+        <hr>
+
+        <p class="muted">New to CapScope? Read the <a href="../docs/index.html">documentation intro</a> first, then come back and pick a platform.</p>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="../docs/index.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Documentation</span>
+          </a>
+          <a class="pager-link next" href="docker.html">
+            <span class="dir">Next →</span>
+            <span class="ttl">Docker Compose</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="../index.html" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="../docs/api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="../docs/architecture.html">Architecture</a></li>
+            <li><a href="../docs/configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="../docs/index.html">Docs home</a></li>
+            <li><a href="../docs/api.html">API reference</a></li>
+            <li><a href="../docs/alerts.html">Alert rules</a></li>
+            <li><a href="../docs/architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

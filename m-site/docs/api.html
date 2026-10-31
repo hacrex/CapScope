@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTTP API reference — CapScope</title>
+  <meta name="description" content="CapScope HTTP API: logs, SSE log stream, metrics, crash snapshots, access-log dashboard, read-only SQL, deploy markers, alerts and CSV/Markdown exports.">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="index.html">Docs</a>
+        <a href="../guides/index.html">Guides</a>
+        <a href="api.html" class="active">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">On this page</div>
+          <ul>
+            <li><a href="#auth">Authentication</a></li>
+            <li><a href="#health">Health</a></li>
+            <li><a href="#containers">Containers &amp; apps</a></li>
+            <li><a href="#logs">Logs</a></li>
+            <li><a href="#access">Access logs</a></li>
+            <li><a href="#sql">SQL queries</a></li>
+            <li><a href="#metrics">Metrics</a></li>
+            <li><a href="#snapshots">Crash snapshots</a></li>
+            <li><a href="#alerts">Alerts</a></li>
+            <li><a href="#deploys">Deploys</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="index.html">Introduction</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+            <li><a href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a class="active" href="api.html">API reference</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><a href="index.html">Docs</a><i data-lucide="chevron-right"></i><span>API reference</span>
+        </div>
+
+        <h1>HTTP API reference</h1>
+        <p class="doc-lead">Every endpoint returns JSON unless noted. Timestamps named <code>ts</code> are Unix milliseconds. The dashboard UI is a static page that only uses this public API — anything the UI can do, you can script.</p>
+
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div><b>No SDK, no client library.</b> Plain <code>curl</code> is enough. All examples below use <code>-u admin:$AUTH_PASS</code> for Basic auth and assume <code>http://localhost:8080</code>.</div>
+        </div>
+
+        <h2 id="auth">Authentication</h2>
+        <p>Every endpoint except <code>/healthz</code> requires HTTP Basic auth when <code>AUTH_PASS</code> is set (the default posture). Credentials are compared in constant time.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>curl -s -u admin:<span class="c-str">'change-me'</span> http://localhost:8080/api/apps
+
+<span class="c-comment"># or with a header</span>
+curl -s -H <span class="c-str">'Authorization: Basic YWRtaW46Y2hhbmdlLW1l'</span> http://localhost:8080/api/containers</code></pre>
+        </div>
+
+        <h2 id="health">Health</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/healthz</span>
+          <span class="ep-note">no auth · use for probes</span>
+        </div>
+        <p>Returns the plain text <code>ok</code>. The image carries a matching Docker <code>HEALTHCHECK</code>, so use the same path on your platform's HTTP health check.</p>
+
+        <h2 id="containers">Containers and apps</h2>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/containers</span>
+          <span class="ep-note">currently followed containers</span>
+        </div>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"containers"</span>:[{<span class="c-key">"id"</span>:<span class="c-str">"..."</span>,<span class="c-key">"name"</span>:<span class="c-str">"srv-captain--shop.1.x"</span>,<span class="c-key">"app"</span>:<span class="c-str">"shop"</span>,<span class="c-key">"replica"</span>:<span class="c-str">"1"</span>,
+  <span class="c-key">"image"</span>:<span class="c-str">"shop:1.4"</span>,<span class="c-key">"started"</span>:<span class="c-num">1793158700000</span>,<span class="c-key">"cpu"</span>:<span class="c-num">12.5</span>,<span class="c-key">"mem"</span>:<span class="c-num">104857600</span>,
+  <span class="c-key">"mem_limit"</span>:<span class="c-num">536870912</span>,<span class="c-key">"sample_ts"</span>:<span class="c-num">1793158700000</span>}]}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/apps</span>
+          <span class="ep-note">apps known from history</span>
+        </div>
+        <p>Includes apps whose containers are gone — that is the point. Each row carries a one-hour error and warning count.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"apps"</span>:[{<span class="c-key">"app"</span>:<span class="c-str">"shop"</span>,<span class="c-key">"containers"</span>:<span class="c-num">1</span>,<span class="c-key">"last_seen"</span>:<span class="c-num">1793158700437</span>,
+  <span class="c-key">"errors_1h"</span>:<span class="c-num">8</span>,<span class="c-key">"warns_1h"</span>:<span class="c-num">14</span>}]}</code></pre>
+        </div>
+
+        <h2 id="logs">Logs</h2>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/logs</span>
+          <span class="ep-note">rows oldest first</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>app</code></td><td>App name.</td></tr>
+              <tr><td><code>container</code></td><td>Container name or id prefix.</td></tr>
+              <tr><td><code>q</code></td><td>Search text, case-insensitive. Uses the FTS5 token/prefix index as a fast path (each word matches as a prefix, so <code>dat</code> finds <code>database</code>); when the index finds nothing it falls back to <code>LIKE</code>, so mid-word searches still work.</td></tr>
+              <tr><td><code>regex</code></td><td><code>1</code> treats <code>q</code> as a case-insensitive regular expression. Invalid patterns return <code>400</code>.</td></tr>
+              <tr><td><code>level</code></td><td>Comma list of <code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code>.</td></tr>
+              <tr><td><code>stream</code></td><td><code>stdout</code> or <code>stderr</code>.</td></tr>
+              <tr><td><code>since</code></td><td>Relative (<code>15m</code>, <code>2h</code>, <code>1d</code>) or epoch milliseconds.</td></tr>
+              <tr><td><code>until</code></td><td>Epoch milliseconds.</td></tr>
+              <tr><td><code>after_id</code></td><td>Only rows with a larger id, ascending — use for catching up.</td></tr>
+              <tr><td><code>before_id</code></td><td>Only rows with a smaller id — use for paging back.</td></tr>
+              <tr><td><code>limit</code></td><td>Default 500, max 5000. Without <code>after_id</code> you get the newest <code>limit</code> rows.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block">
+          <div class="code-head">
+            <span>row shape</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"id"</span>:<span class="c-num">260</span>,<span class="c-key">"ts"</span>:<span class="c-num">1793158659437</span>,<span class="c-key">"container_id"</span>:<span class="c-str">"..."</span>,<span class="c-key">"container"</span>:<span class="c-str">"srv-captain--shop.1.x"</span>,
+ <span class="c-key">"app"</span>:<span class="c-str">"shop"</span>,<span class="c-key">"stream"</span>:<span class="c-str">"o"</span>,<span class="c-key">"level"</span>:<span class="c-str">"error"</span>,<span class="c-key">"line"</span>:<span class="c-str">"ERROR ..."</span>}</code></pre>
+        </div>
+        <p><code>stream</code> is <code>o</code> for stdout and <code>e</code> for stderr. <code>level</code> may be empty when the heuristic finds no level word.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/logs/stream</span>
+          <span class="ep-note">Server-Sent Events</span>
+        </div>
+        <p>A Server-Sent Events stream of new rows matching the same filters (except paging and time params). Each <code>data:</code> line is one row. A <code>dropped</code> event reports how many rows this client lost to back-pressure. Comment lines (<code>: ping</code>) keep the connection alive.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash — tail one app</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>curl -N -u admin:$AUTH_PASS <span class="c-str">'http://localhost:8080/api/logs/stream?app=shop&amp;level=error'</span></code></pre>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/logs/export</span>
+          <span class="ep-note">CSV · up to 200,000 lines</span>
+        </div>
+        <p>Streams matching rows as <code>capscope-logs.csv</code>, honoring the same filters as <code>/api/logs</code> (<code>app</code>, <code>q</code>, <code>level</code>, <code>since</code>, …). It paginates internally, so exports reach up to 200,000 lines regardless of the normal 5000-row cap.</p>
+
+        <h2 id="access">Access logs (GoAccess-style)</h2>
+        <p>Parsed web-server access-log rows — nginx <code>combined</code>/<code>common</code>, CapRover's <code>captain-nginx</code> defaults and most proxy formats — are collected automatically:</p>
+        <ul>
+          <li>Containers whose app name looks like a reverse proxy are parsed from the first line.</li>
+          <li>Any other container is probed and switched on once most of its recent stdout parses as access logs.</li>
+          <li>Containers matched by <code>EXCLUDE</code> are followed <b>only</b> for this purpose: no rows in <code>logs</code>, no sidebar entry, but their requests still feed the dashboard.</li>
+          <li><code>ACCESS_LOG</code> selects <code>auto</code> (default), <code>all</code> or <code>off</code>; <code>ANON_IPS=false</code> stores original IPs (default anonymizes: last octet zeroed, IPv6 cut to /48).</li>
+          <li>Retention follows <code>LOG_RETENTION</code>.</li>
+        </ul>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/access</span>
+          <span class="ep-note">aggregated dashboard data</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Default</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>range</code></td><td><code>1h</code></td><td>Window such as <code>1h</code>, <code>24h</code>, <code>7d</code>.</td></tr>
+              <tr><td><code>app</code></td><td>all</td><td>Restrict to one app.</td></tr>
+              <tr><td><code>top</code></td><td><code>20</code></td><td>Rows returned per path/IP/referrer list.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"since_ms"</span>:<span class="c-num">...</span>,<span class="c-key">"until_ms"</span>:<span class="c-num">0</span>,<span class="c-key">"bucket_ms"</span>:<span class="c-num">12000</span>,
+ <span class="c-key">"totals"</span>:{<span class="c-key">"requests"</span>:<span class="c-num">900</span>,<span class="c-key">"client_err"</span>:<span class="c-num">41</span>,<span class="c-key">"server_err"</span>:<span class="c-num">9</span>,<span class="c-key">"unique_ips"</span>:<span class="c-num">3</span>,<span class="c-key">"bytes"</span>:<span class="c-num">88401</span>},
+ <span class="c-key">"codes"</span>:[{<span class="c-key">"code"</span>:<span class="c-num">200</span>,<span class="c-key">"n"</span>:<span class="c-num">600</span>}],
+ <span class="c-key">"paths"</span>:[{<span class="c-key">"key"</span>:<span class="c-str">"/api/items"</span>,<span class="c-key">"hits"</span>:<span class="c-num">212</span>,<span class="c-key">"bytes"</span>:<span class="c-num">9901</span>,<span class="c-key">"errors"</span>:<span class="c-num">3</span>}],
+ <span class="c-key">"ips"</span>:[{<span class="c-key">"key"</span>:<span class="c-str">"203.0.113.0"</span>,<span class="c-key">"hits"</span>:<span class="c-num">400</span>,<span class="c-key">"bytes"</span>:<span class="c-num">41000</span>,<span class="c-key">"errors"</span>:<span class="c-num">2</span>}],
+ <span class="c-key">"refs"</span>:[{<span class="c-key">"key"</span>:<span class="c-str">"https://google.com/"</span>,<span class="c-key">"hits"</span>:<span class="c-num">12</span>,<span class="c-key">"errors"</span>:<span class="c-num">0</span>}],
+ <span class="c-key">"timeline"</span>:[{<span class="c-key">"ts"</span>:<span class="c-num">1793157492000</span>,<span class="c-key">"hits"</span>:<span class="c-num">30</span>,<span class="c-key">"errors"</span>:<span class="c-num">1</span>,<span class="c-key">"bytes"</span>:<span class="c-num">2955</span>}]}</code></pre>
+        </div>
+        <p><code>refs</code> excludes empty and <code>-</code> referrers.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/access/export</span>
+          <span class="ep-note">CSV · 100,000 rows</span>
+        </div>
+        <p>Streams raw parsed rows as <code>capscope-access.csv</code>: <code>ts, ts_ms, container, app, ip, method, path, status, bytes, referer, user_agent</code>. Default range 24 h.</p>
+
+        <h2 id="sql">SQL queries</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/sql</span>
+          <span class="ep-note">read-only ad-hoc query</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>query</code></td><td>A single <code>SELECT</code> (or <code>WITH … SELECT</code>) statement.</td></tr>
+              <tr><td><code>limit</code></td><td>Default 1000, max 5000. <code>truncated</code> is <code>true</code> when more rows matched.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"columns"</span>:[<span class="c-str">"level"</span>,<span class="c-str">"n"</span>],<span class="c-key">"rows"</span>:[[<span class="c-str">"error"</span>,<span class="c-num">3</span>],[<span class="c-str">"info"</span>,<span class="c-num">41</span>]],<span class="c-key">"truncated"</span>:<span class="c-key">false</span>,<span class="c-key">"ms"</span>:<span class="c-num">1</span>}</code></pre>
+        </div>
+        <h3>Rules, enforced in order</h3>
+        <ol>
+          <li>The statement must start with <code>SELECT</code> or <code>WITH</code>, contain no stacked statements (<code>;</code>), and carry no write/DDL keywords outside string literals and comments. Violations return <code>400</code>.</li>
+          <li>The read connection pool opens with <code>_query_only=1</code>, so any write that slipped through still fails at SQLite level.</li>
+          <li>A 5-second deadline and the row cap keep heavy scans from pinning the pool.</li>
+        </ol>
+        <p>Tables: <code>logs</code>, <code>metrics</code>, <code>containers</code>, <code>snapshots</code> (plus <code>logs_fts</code> for <code>MATCH</code> joins). Column notes: <code>logs.ts</code> is <b>unix nanoseconds</b>; <code>metrics.ts</code> and <code>snapshots.ts</code> are <b>unix milliseconds</b>; <code>snapshots.die_ts</code> is the death time in milliseconds (0 for rows saved before v0.5); <code>logs.stream</code> is <code>o</code>/<code>e</code>.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>sql</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-cmd">SELECT</span> app, level, count(*) <span class="c-cmd">AS</span> n <span class="c-cmd">FROM</span> logs
+<span class="c-cmd">WHERE</span> ts &gt; (unixepoch(<span class="c-str">'now'</span>) - <span class="c-num">3600</span>) * <span class="c-num">1000000000</span>
+<span class="c-cmd">GROUP BY</span> app, level <span class="c-cmd">HAVING</span> n &gt; <span class="c-num">5</span> <span class="c-cmd">ORDER BY</span> n <span class="c-cmd">DESC</span></code></pre>
+        </div>
+        <p class="muted small">The UI exposes this as the <b>SQL</b> option in the search-mode select.</p>
+
+        <h2 id="metrics">Metrics</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/metrics</span>
+          <span class="ep-note">bucketed points</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>app</code></td><td>App name — CPU and memory are summed across replicas.</td></tr>
+              <tr><td><code>range</code></td><td>Window such as <code>15m</code>, <code>1h</code>, <code>7d</code>.</td></tr>
+              <tr><td><code>container</code></td><td>Container id prefix, for a single replica.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Expect about 300 points per range with a minimum bucket of 5 s. <code>net_rx</code>/<code>net_tx</code> are cumulative counters.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"bucket_ms"</span>:<span class="c-num">12000</span>,<span class="c-key">"points"</span>:[{<span class="c-key">"ts"</span>:<span class="c-num">1793157492000</span>,<span class="c-key">"cpu"</span>:<span class="c-num">10</span>,<span class="c-key">"mem"</span>:<span class="c-num">104857600</span>,
+  <span class="c-key">"mem_limit"</span>:<span class="c-num">536870912</span>,<span class="c-key">"net_rx"</span>:<span class="c-num">0</span>,<span class="c-key">"net_tx"</span>:<span class="c-num">0</span>,<span class="c-key">"blk_r"</span>:<span class="c-num">0</span>,<span class="c-key">"blk_w"</span>:<span class="c-num">0</span>,<span class="c-key">"pids"</span>:<span class="c-num">0</span>}]}</code></pre>
+        </div>
+
+        <h2 id="snapshots">Crash snapshots</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/snapshots</span>
+          <span class="ep-note">light rows · newest first</span>
+        </div>
+        <p><code>?app=shop&amp;limit=100</code> — metadata only, no embedded logs or metrics.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/snapshots/{id}</span>
+          <span class="ep-note">full snapshot</span>
+        </div>
+        <p>Metadata, <code>summary</code>, <code>logs</code>, <code>metrics</code> and a trimmed <code>inspect</code> object — plus the newest deploy before the crash as a <code>deploy</code> object when one exists.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/snapshots/{id}/export</span>
+          <span class="ep-note">Markdown incident report</span>
+        </div>
+        <p>A Markdown crash report suitable for pasting into an incident channel, including exit code, restart window, last deploy and the log tail.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>kind</code></td><td>One of <code>oom</code>, <code>crash</code>, <code>killed</code>, <code>clean_exit</code>.</td></tr>
+              <tr><td><code>die_ts</code></td><td>Death time taken from the Docker event — a snapshot rebuilt after CapScope was down keeps the real death time, not the assembly time.</td></tr>
+              <tr><td><code>restarts_window</code></td><td>How many times that container had died inside the restart-loop window at that moment (0 when detection is disabled). The UI marks rows at or above the threshold with <code>↻</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Deaths that happened while CapScope was down are replayed from the persisted event cursor on startup and snapshotted like live ones, as long as the container still exists and the gap is under 24 hours.</p>
+
+        <h2 id="alerts">Alerts</h2>
+        <p>Rules from <code>ALERTS_FILE</code> are evaluated every <code>ALERTS_INTERVAL</code> (default <code>1m</code>). Every firing is recorded, and the most recent firing per rule and app doubles as the silence window that prevents re-notifying on every tick — a <code>repeat</code> on the rule (default <code>30m</code>) sets that silence.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/alerts</span>
+          <span class="ep-note">firing history</span>
+        </div>
+        <p><code>?app=shop&amp;limit=100</code> — newest first. Each row is <code>{id, ts, rule, app, kind, message}</code>, where <code>ts</code> is Unix ms and <code>kind</code> is the rule kind.</p>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/alerts/rules</span>
+          <span class="ep-note">armed configuration · no secrets</span>
+        </div>
+        <div class="code-block">
+          <div class="code-head">
+            <span>200 OK</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{<span class="c-key">"rules"</span>:[{<span class="c-key">"name"</span>:<span class="c-str">"api-mem"</span>,<span class="c-key">"kind"</span>:<span class="c-str">"metric"</span>,<span class="c-key">"apps"</span>:[<span class="c-str">"api"</span>],<span class="c-key">"for"</span>:<span class="c-str">"5m"</span>,
+  <span class="c-key">"metric"</span>:<span class="c-str">"mem_pct"</span>,<span class="c-key">"op"</span>:<span class="c-str">"gt"</span>,<span class="c-key">"value"</span>:<span class="c-num">85</span>,<span class="c-key">"repeat"</span>:<span class="c-str">"30m"</span>}],
+ <span class="c-key">"channels"</span>:[<span class="c-str">"webhook"</span>],<span class="c-key">"enabled"</span>:<span class="c-key">true</span>}</code></pre>
+        </div>
+        <p><code>enabled</code> is <code>false</code> when no rules file exists.</p>
+
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="path">/api/alerts/test</span>
+          <span class="ep-note">verify channels</span>
+        </div>
+        <p>Sends a test message through every configured channel and returns <code>{results: {webhook: "sent" | "failed: …"}}</code>. Returns <code>400</code> when no channels are configured or alerting is off.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>curl -s -X POST -u admin:$AUTH_PASS http://localhost:8080/api/alerts/test</code></pre>
+        </div>
+
+        <h2 id="deploys">Deploys</h2>
+        <p>Deploy markers correlate a crash or a metric spike with the release that preceded it. Record them from CI (<code>POST</code>) or with the <b>Record deploy</b> button in the Metrics tab.</p>
+
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="path">/api/deploys</span>
+          <span class="ep-note">record a release marker</span>
+        </div>
+        <p>Body <code>{app, version, note?, ts?}</code>. <code>app</code> is required; <code>ts</code> is optional Unix ms and defaults to now (a far-future value is clamped to now). Returns <code>{id, ts, app, version, note}</code>.</p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash — CI step</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>curl -s -X POST -u admin:$AUTH_PASS \
+  -H <span class="c-str">'Content-Type: application/json'</span> \
+  -d <span class="c-str">'{"app":"shop","version":"v1.4.2","note":"rollout"}'</span> \
+  http://localhost:8080/api/deploys</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/deploys</span>
+          <span class="ep-note">markers · newest first</span>
+        </div>
+        <p><code>?app=shop&amp;since=1700000000000&amp;until=&amp;limit=200</code> — <code>app</code>, <code>since</code> and <code>until</code> (Unix ms) are optional; an empty <code>app</code> returns every app's markers.</p>
+
+        <p>Markers appear as dashed vertical lines with a version label on the CPU and memory charts, and as inline rows in the log timeline. The crash detail and its Markdown export carry the newest marker before the death as <b>Last deploy</b>.</p>
+
+        <div class="callout ok">
+          <i data-lucide="circle-check"></i>
+          <div><b>Recipe — find every crash that followed a release:</b>
+          <div class="code-block" style="margin:12px 0 0;">
+            <div class="code-head"><span>bash</span><button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button></div>
+            <pre><code>curl -s -G -u admin:$AUTH_PASS http://localhost:8080/api/sql \
+  --data-urlencode <span class="c-str">"query=SELECT s.die_ts, s.app, s.kind, d.version FROM snapshots s LEFT JOIN deploys d ON d.app = s.app AND d.ts = s.die_ts ORDER BY s.die_ts DESC LIMIT 50"</span></code></pre>
+          </div>
+          </div>
+        </div>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="architecture.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Architecture</span>
+          </a>
+          <a class="pager-link next" href="../guides/index.html">
+            <span class="dir">Next →</span>
+            <span class="ttl">Deployment guides</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="../index.html" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="index.html">Docs home</a></li>
+            <li><a href="api.html">API reference</a></li>
+            <li><a href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

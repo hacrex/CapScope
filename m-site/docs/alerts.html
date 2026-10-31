@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alert rules — CapScope</title>
+  <meta name="description" content="Write CapScope alert rules: dead-man silence, restart loops, metric thresholds with duration, and log patterns — delivered to webhook, Telegram, Slack or Discord.">
+  <meta name="theme-color" content="#08090c">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="index.html" class="active">Docs</a>
+        <a href="../guides/index.html">Guides</a>
+        <a href="api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="index.html">Introduction</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+            <li><a class="active" href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="api.html">API reference</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Resources</div>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope#readme" target="_blank" rel="noopener">README</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/tree/main/docs" target="_blank" rel="noopener">Source docs</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issue tracker</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><a href="index.html">Docs</a><i data-lucide="chevron-right"></i><span>Alert rules</span>
+        </div>
+
+        <h1>Alert rules</h1>
+        <p class="doc-lead">Alerts are plain JSON in <code>ALERTS_FILE</code> (default <code>/data/alerts.json</code>). The file is hot-reloaded when its mtime changes — save it and the new rules take effect without restarting. Evaluation runs every <code>ALERTS_INTERVAL</code>, default <code>1m</code>.</p>
+
+        <h2 id="example">A complete rules file</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>alerts.json</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{
+  <span class="c-key">"rules"</span>: [
+    { <span class="c-key">"name"</span>: <span class="c-str">"api-silent"</span>,    <span class="c-key">"kind"</span>: <span class="c-str">"deadman"</span>,      <span class="c-key">"apps"</span>: [<span class="c-str">"api"</span>], <span class="c-key">"for"</span>: <span class="c-str">"5m"</span> },
+    { <span class="c-key">"name"</span>: <span class="c-str">"api-looping"</span>,   <span class="c-key">"kind"</span>: <span class="c-str">"restart_loop"</span>, <span class="c-key">"apps"</span>: [<span class="c-str">"api"</span>], <span class="c-key">"count"</span>: <span class="c-num">3</span>, <span class="c-key">"window"</span>: <span class="c-str">"10m"</span> },
+    { <span class="c-key">"name"</span>: <span class="c-str">"api-mem"</span>,       <span class="c-key">"kind"</span>: <span class="c-str">"metric"</span>,       <span class="c-key">"apps"</span>: [<span class="c-str">"api"</span>], <span class="c-key">"metric"</span>: <span class="c-str">"mem_pct"</span>,
+      <span class="c-key">"op"</span>: <span class="c-str">"gt"</span>, <span class="c-key">"value"</span>: <span class="c-num">85</span>, <span class="c-key">"for"</span>: <span class="c-str">"5m"</span> },
+    { <span class="c-key">"name"</span>: <span class="c-str">"api-5xx"</span>,      <span class="c-key">"kind"</span>: <span class="c-str">"log_pattern"</span>,  <span class="c-key">"apps"</span>: [<span class="c-str">"api"</span>], <span class="c-key">"pattern"</span>: <span class="c-str">"status=5\\d\\d"</span>,
+      <span class="c-key">"hits"</span>: <span class="c-num">5</span>, <span class="c-key">"window"</span>: <span class="c-str">"5m"</span>, <span class="c-key">"repeat"</span>: <span class="c-str">"30m"</span> }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div>Mount the rules file read-only into <code>/data</code> so it lives with the database: <code>- ./alerts.json:/data/alerts.json:ro</code>. A malformed file keeps the previous rules running and logs the error — alerting never silently stops.</div>
+        </div>
+
+        <h2 id="kinds">Rule kinds</h2>
+
+        <div class="endpoint">
+          <span class="method get">DEADMAN</span>
+          <span class="path">silence detector</span>
+          <span class="ep-note">"the app stopped talking"</span>
+        </div>
+        <p>Fires when an app has produced no log lines for longer than <code>for</code>. This is your watchdog: cron jobs, health reporters and webhooks all go quiet when they break.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>for</code></td><td>yes</td><td>Silence duration, e.g. <code>5m</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">RESTART_LOOP</span>
+          <span class="path">crash-loop detector</span>
+          <span class="ep-note">"it keeps dying"</span>
+        </div>
+        <p>Fires when an app accumulates <code>count</code> deaths inside <code>window</code>. Deaths are counted from stored snapshots, so rollout noise stays out of the count by default.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>count</code></td><td>yes</td><td>Deaths required to fire.</td></tr>
+              <tr><td><code>window</code></td><td>yes</td><td>Sliding window, e.g. <code>10m</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">METRIC</span>
+          <span class="path">threshold with duration</span>
+          <span class="ep-note">"CPU or memory is pinned"</span>
+        </div>
+        <p>Fires when <b>every</b> sample in the <code>for</code> window satisfies the comparison and the newest sample is fresh. One cool sample inside the window stops the alert, and stale data (newest sample older than twice the window) is ignored so a stopped app cannot page forever.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Values</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>metric</code></td><td><code>cpu</code>, <code>mem</code>, <code>mem_pct</code></td><td>Which series to compare. <code>cpu</code> is percent, <code>mem</code> bytes, <code>mem_pct</code> percent of limit.</td></tr>
+              <tr><td><code>op</code></td><td><code>gt</code>, <code>lt</code>, <code>gte</code>, <code>lte</code></td><td>Comparison operator.</td></tr>
+              <tr><td><code>value</code></td><td>number</td><td>Threshold.</td></tr>
+              <tr><td><code>for</code></td><td>duration</td><td>How long the condition must hold.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="endpoint">
+          <span class="method get">LOG_PATTERN</span>
+          <span class="path">regex over new log lines</span>
+          <span class="ep-note">"5xx spike / auth failures"</span>
+        </div>
+        <p>Fires when at least <code>hits</code> lines matching the regular expression arrive inside <code>window</code>. The pattern is matched against stored rows for the app, so redaction has already run — secrets are not part of the match.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>pattern</code></td><td>yes</td><td>Regular expression (escape backslashes, e.g. <code>status=5\\d\\d</code> in JSON).</td></tr>
+              <tr><td><code>hits</code></td><td>yes</td><td>Matching lines required inside the window.</td></tr>
+              <tr><td><code>window</code></td><td>yes</td><td>Counting window, e.g. <code>5m</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="shared">Fields shared by every rule</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Default</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>—</td><td>Unique identifier, shown in the firing history.</td></tr>
+              <tr><td><code>kind</code></td><td>—</td><td>One of <code>deadman</code>, <code>restart_loop</code>, <code>metric</code>, <code>log_pattern</code>.</td></tr>
+              <tr><td><code>apps</code></td><td>all known apps</td><td>App names the rule applies to. Omit to watch everything.</td></tr>
+              <tr><td><code>repeat</code></td><td><code>30m</code></td><td>Silence between notifications for the same rule and app. The <code>alerts</code> table is the silence window, so restarts cannot reset it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="channels">Channels</h2>
+        <p>Configure one or more with environment variables — see <a href="configuration.html#alerting">configuration → alerting</a>. All configured channels are notified for every firing; each has its own 10-second timeout and one failure never blocks the rest.</p>
+        <div class="grid grid-4" style="margin:22px 0;">
+          <div class="card">
+            <div class="icon-box"><i data-lucide="webhook"></i></div>
+            <h3>Webhook</h3>
+            <p><code>ALERT_WEBHOOK_URL</code> — generic JSON POST.</p>
+          </div>
+          <div class="card">
+            <div class="icon-box cyan"><i data-lucide="send"></i></div>
+            <h3>Telegram</h3>
+            <p><code>ALERT_TELEGRAM_TOKEN</code> + <code>CHAT_ID</code>.</p>
+          </div>
+          <div class="card">
+            <div class="icon-box violet"><i data-lucide="message-square"></i></div>
+            <h3>Slack</h3>
+            <p><code>ALERT_SLACK_URL</code> — incoming webhook.</p>
+          </div>
+          <div class="card">
+            <div class="icon-box ok"><i data-lucide="hash"></i></div>
+            <h3>Discord</h3>
+            <p><code>ALERT_DISCORD_URL</code> — webhook URL.</p>
+          </div>
+        </div>
+
+        <div class="callout ok">
+          <i data-lucide="circle-check"></i>
+          <div><b>Test before the incident, not during it.</b> Use the <b>Send test alert</b> button in the UI, or <code>POST /api/alerts/test</code>, which pushes a test message through every configured channel and returns <code>{results: {webhook: "sent", …}}</code>.</div>
+        </div>
+
+        <h2 id="inspect">Inspecting armed rules</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>bash</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code><span class="c-comment"># armed configuration, secrets stripped</span>
+curl -s -u admin:$AUTH_PASS http://localhost:8080/api/alerts/rules
+
+<span class="c-comment"># firing history, newest first</span>
+curl -s -u admin:$AUTH_PASS <span class="c-str">'http://localhost:8080/api/alerts?app=api&amp;limit=50'</span>
+
+<span class="c-comment"># push a test message on every channel</span>
+curl -s -X POST -u admin:$AUTH_PASS http://localhost:8080/api/alerts/test</code></pre>
+        </div>
+        <p class="muted small">Full response shapes on the <a href="api.html#alerts">API reference → alerts</a>.</p>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="configuration.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Configuration</span>
+          </a>
+          <a class="pager-link next" href="architecture.html">
+            <span class="dir">Next →</span>
+            <span class="ttl">Architecture</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-wordmark"><a href="../index.html" aria-label="CapScope">CapScope</a></div>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="index.html">Docs home</a></li>
+            <li><a href="api.html">API reference</a></li>
+            <li><a href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">v0.6 · Go 1.24</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
