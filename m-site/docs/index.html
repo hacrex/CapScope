@@ -12,11 +12,10 @@
 </head>
 <body>
 
-
   <header class="site-header">
     <div class="nav-wrap">
       <a href="/" class="brand">
-        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
+        <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
         CapScope
       </a>
       <button class="theme-toggle" aria-label="Toggle theme"><i class="fa-solid fa-moon"></i></button>
@@ -25,17 +24,17 @@
         <a href="/">Home</a>
         <a href="index.html" class="active">Docs</a>
         <a href="../guides/">Guides</a>
-        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="nb-btn github" style="padding: 6px 14px; font-size: 0.9rem;"><i class="fa-brands fa-github"></i> GitHub</a>
+        <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" class="btn btn-outline btn-icon"><i class="fa-brands fa-github"></i></a>
       </nav>
     </div>
   </header>
 
-  <main id="content">
+  <main>
     <section class="section-sm">
       <div class="container">
         <div class="grid grid-cols-3">
           <aside class="doc-sidebar">
-            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:1rem;">On this page</h4>
+            <h4 style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:1rem;">On this page</h4>
             <nav class="doc-nav">
               <a href="index.html">Overview</a>
               <a href="api.html">HTTP API</a>
@@ -54,64 +53,64 @@
             </div>
 
             <div class="grid grid-cols-3" style="margin-bottom:3rem;">
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-box" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Docker (any host)</h4>
                   <p class="small muted" style="margin-bottom:1rem;">One container, one volume, one password.</p>
-                  <a href="../guides/docker.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="../guides/docker.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-rocket" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">CapRover</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Native app deployment with persistent <code>/data</code> and socket mount.</p>
-                  <a href="caprover.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="caprover.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-snowflake" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Coolify</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Self-hosted PaaS deployment.</p>
-                  <a href="../guides/coolify.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="../guides/coolify.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-ship" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Dokploy</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Deploy with Dokploy's dashboard.</p>
-                  <a href="../guides/dokploy.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="../guides/dokploy.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-whale" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Dokku</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Docker-powered PaaS deployment.</p>
-                  <a href="../guides/dokku.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="../guides/dokku.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
-              <div class="nb-card">
+              <div class="card">
                 <div class="card-body">
-                  <div class="feature-icon" style="background:var(--bg);border-color:var(--border);">
+                  <div class="feature-icon" style="background:var(--bg);">
                     <i class="fa-solid fa-box" style="color:var(--accent);"></i>
                   </div>
                   <h4 style="margin-bottom:0.5rem;">Portainer</h4>
                   <p class="small muted" style="margin-bottom:1rem;">Deploy through Portainer stacks.</p>
-                  <a href="../guides/portainer.html" class="btn btn-outline btn-full" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
+                  <a href="../guides/portainer.html" class="btn btn-outline" style="padding:8px 16px;font-size:0.9rem;">View guide →</a>
                 </div>
               </div>
             </div>
@@ -124,7 +123,7 @@
             <h2 id="what-it-does">What CapScope does</h2>
             <table>
               <thead>
-                <tr><th>Area</th><th>What you get</th></tr>
+                <tr><th style="width:22%">Area</th><th>What you get</th></tr>
               </thead>
               <tbody>
                 <tr>
@@ -175,9 +174,11 @@
     <div class="container">
       <div class="footer-grid">
         <div class="footer-col">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;justify-content:center;">
-            <div class="brand-mark" style="width:26px;height:26px;"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#ffffff"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg></div>
-            <div style="font-weight:900;font-size:1.1rem;color:var(--text);">CapScope</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
+            <div class="brand-mark" style="width:24px;height:24px;">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0a192f"/><path d="M9 10L16 16L9 22" stroke="#f89c1c" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="17" y="9" width="6" height="14" rx="2" fill="none" stroke="#f89c1c" stroke-width="2"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:1.1rem;">CapScope</div>
           </div>
           <p class="muted small" style="margin:0;">Persistent container logs, crash snapshots, and metrics in one self-hosted binary.</p>
         </div>
