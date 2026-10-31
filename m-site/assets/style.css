@@ -9,8 +9,6 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --accent: #4f8cff;
-  --accent-2: #22d3ee;
-  --accent-3: #a78bfa;
   --ok: #34d399;
   --warn: #fbbf24;
   --err: #f87171;
@@ -20,7 +18,6 @@
   --container: 1180px;
   --header-h: 64px;
 
-  --grad-accent: linear-gradient(120deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -41,7 +38,6 @@ html:not([data-theme]) {
   --muted: #8b93a7;
 
   --shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
-  --glow: rgba(79, 140, 255, 0.28);
   --header-bg: rgba(8, 9, 12, 0.72);
   --code-bg: #0a0c11;
 }
@@ -62,7 +58,6 @@ html[data-theme="light"] {
   --muted: #6b7488;
 
   --shadow: 0 24px 50px -24px rgba(16, 24, 40, 0.3);
-  --glow: rgba(79, 140, 255, 0.22);
   --header-bg: rgba(255, 255, 255, 0.82);
   --code-bg: #0c0f16;
 }
@@ -119,7 +114,7 @@ h4 {
 }
 
 h1 {
-  font-size: clamp(2.4rem, 5.4vw, 4.1rem);
+  font-size: clamp(2.1rem, 4.2vw, 3.4rem);
   letter-spacing: -0.04em;
   font-weight: 800;
 }
@@ -202,7 +197,7 @@ kbd {
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent-2);
+  color: var(--accent);
   margin-bottom: 18px;
 }
 html[data-theme="light"] .kicker {
@@ -219,10 +214,7 @@ html[data-theme="light"] .kicker {
   font-family: var(--font-mono);
 }
 .text-grad {
-  background: var(--grad-accent);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
 }
 
 /* ---------- Buttons ---------- */
@@ -255,15 +247,11 @@ html[data-theme="light"] .kicker {
 }
 
 .btn-primary {
-  background: var(--grad-accent);
-  color: #05060a;
-  box-shadow: 0 12px 30px -12px var(--glow);
-}
-html[data-theme="light"] .btn-primary {
-  color: #fff;
+  background: var(--text);
+  color: var(--bg);
 }
 .btn-primary:hover {
-  box-shadow: 0 16px 36px -12px var(--glow);
+  box-shadow: 0 14px 30px -18px rgba(0, 0, 0, 0.85);
 }
 
 .btn-outline {
@@ -354,9 +342,10 @@ html[data-theme="light"] .btn-primary {
   display: grid;
   place-items: center;
   border-radius: 9px;
-  background: var(--grad-accent);
-  color: #05060a;
-  box-shadow: 0 8px 22px -10px var(--glow);
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }
 .brand-mark svg {
   width: 17px;
@@ -426,7 +415,7 @@ html[data-theme="light"] .theme-toggle .icon-moon {
 /* ---------- Hero ---------- */
 .hero {
   position: relative;
-  padding: 96px 0 80px;
+  padding: 52px 0 56px;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
@@ -435,10 +424,7 @@ html[data-theme="light"] .theme-toggle .icon-moon {
   position: absolute;
   inset: -40% -10% auto;
   height: 720px;
-  background:
-    radial-gradient(52% 46% at 50% 40%, rgba(79, 140, 255, 0.3) 0%, rgba(79, 140, 255, 0) 70%),
-    radial-gradient(38% 34% at 72% 30%, rgba(34, 211, 238, 0.22) 0%, rgba(34, 211, 238, 0) 70%),
-    radial-gradient(34% 32% at 26% 34%, rgba(167, 139, 250, 0.2) 0%, rgba(167, 139, 250, 0) 70%);
+  background: radial-gradient(56% 50% at 50% 36%, rgba(79, 140, 255, 0.16) 0%, rgba(79, 140, 255, 0) 72%);
   pointer-events: none;
   z-index: 0;
 }
@@ -478,7 +464,7 @@ html[data-theme="light"] .hero::before {
   border-radius: 999px;
   font-size: 0.82rem;
   color: var(--text-2);
-  margin-bottom: 26px;
+  margin-bottom: 18px;
 }
 .pill .dot {
   width: 7px;
@@ -505,13 +491,13 @@ html[data-theme="light"] .hero::before {
 }
 
 .hero h1 {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 .hero .sub {
-  font-size: clamp(1.02rem, 1.6vw, 1.2rem);
+  font-size: clamp(1rem, 1.4vw, 1.1rem);
   color: var(--muted);
   max-width: 720px;
-  margin: 0 auto 34px;
+  margin: 0 auto 26px;
 }
 .hero-actions {
   display: flex;
@@ -537,7 +523,7 @@ html[data-theme="light"] .hero::before {
 .hero-meta svg {
   width: 14px;
   height: 14px;
-  color: var(--accent-2);
+  color: var(--accent);
 }
 
 /* Hero visual: terminal + snapshot card */
@@ -545,7 +531,7 @@ html[data-theme="light"] .hero::before {
   position: relative;
   z-index: 1;
   max-width: 980px;
-  margin: 64px auto 0;
+  margin: 40px auto 0;
 }
 
 .terminal {
@@ -734,10 +720,7 @@ html[data-theme="light"] .hero::before {
   font-size: 1.9rem;
   font-weight: 800;
   letter-spacing: -0.04em;
-  background: var(--grad-accent);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--text);
 }
 .stat .lbl {
   font-size: 0.84rem;
@@ -796,15 +779,11 @@ html[data-theme="light"] .hero::before {
   width: 20px;
   height: 20px;
 }
-.icon-box.cyan {
-  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
-  color: var(--accent-2);
-}
+.icon-box.cyan,
 .icon-box.violet {
-  background: color-mix(in srgb, var(--accent-3) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent-3) 35%, transparent);
-  color: var(--accent-3);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--accent);
 }
 .icon-box.ok {
   background: color-mix(in srgb, var(--ok) 14%, transparent);
@@ -1120,10 +1099,7 @@ html[data-theme="light"] .hero::before {
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 20px;
-  background:
-    radial-gradient(60% 120% at 15% 0%, rgba(79, 140, 255, 0.25), transparent 60%),
-    radial-gradient(50% 110% at 85% 100%, rgba(34, 211, 238, 0.2), transparent 60%),
-    var(--surface);
+  background: var(--surface);
   padding: 56px 44px;
   text-align: center;
 }
@@ -1447,9 +1423,8 @@ a.card:hover .card-top svg {
   transition: background 0.3s var(--ease);
 }
 .footer-wordmark a:hover {
-  background: var(--grad-accent);
-  -webkit-background-clip: text;
-  background-clip: text;
+  background: none;
+  color: var(--accent);
 }
 
 .footer-grid {
@@ -1665,7 +1640,7 @@ a.card:hover .card-top svg {
     grid-template-columns: 1fr;
   }
   .hero {
-    padding: 64px 0 56px;
+    padding: 40px 0 44px;
   }
   .hero-actions .btn {
     width: 100%;
