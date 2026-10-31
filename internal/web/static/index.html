@@ -866,7 +866,7 @@ $('#arange').onchange=()=>{syncAccCSV();loadAccess();};
 syncAccCSV();
 
 /* ---------- metrics ---------- */
-function draw(canvas,pts,key,fmt,limitKey,deploys){
+function draw(canvas,pts,key,fmt,limitKey,deploys,crashes){
   const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
   canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
   const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
@@ -895,6 +895,21 @@ function draw(canvas,pts,key,fmt,limitKey,deploys){
     }
     g.restore();
   }
+  // Crash markers — red dashed vertical line with a ✕ flag.
+  if(crashes&&crashes.length){
+    g.save();g.font='10px system-ui';
+    for(const c of crashes){
+      if(c.ts<x0||c.ts>x1)continue;
+      const x=X(c.ts);
+      g.strokeStyle=col('--err');g.setLineDash([2,2]);g.lineWidth=1;
+      g.beginPath();g.moveTo(x,T);g.lineTo(x,h-B);g.stroke();g.setLineDash([]);
+      g.fillStyle=col('--err');g.beginPath();g.moveTo(x-3,T);g.lineTo(x+3,T+6);g.lineTo(x,T+3);g.closePath();g.fill();
+      const lab=c.kind?c.kind.replace('_',' '):'crash';const tw=g.measureText(lab).width;
+      let lx=x+4;if(lx+tw>w-R)lx=x-4-tw;
+      g.fillStyle=col('--err');g.fillText(lab,lx,T+9);
+    }
+    g.restore();
+  }
   g.strokeStyle=col('--accent');g.lineWidth=1.6;g.beginPath();
   pts.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
 }
@@ -903,8 +918,9 @@ async function loadMetrics(){
   const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('range',$('#range').value);if($('#mcont').value)p.set('container',$('#mcont').value);
   const d=await api('/api/metrics?'+p);
   const deploys=await loadDeploys($('#range').value);
-  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys);
-  draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit',deploys);
+  const crashes=await loadCrashes($('#range').value);
+  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys,crashes);
+  draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit',deploys,crashes);
   renderDeployList(deploys);
 }
 $('#range').onchange=loadMetrics;$('#mcont').onchange=loadMetrics;
@@ -917,6 +933,12 @@ async function loadDeploys(range,sinceMs){
   const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('since',since);p.set('limit','200');
   try{const d=await api('/api/deploys?'+p);return (d.deploys||[]).slice().reverse();} // oldest→newest for drawing
   catch(e){console.warn('capscope: deploys load failed',e);return [];}
+}
+async function loadCrashes(range,sinceMs){
+  const ms=RANGE_MS[range]||3600e3;const since=sinceMs||(Date.now()-ms);
+  const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('since',since);p.set('limit','200');
+  try{const d=await api('/api/snapshots?'+p);return (d.snapshots||[]).slice().reverse();} // oldest→newest for drawing
+  catch(e){console.warn('capscope: crashes load failed',e);return [];}
 }
 /* Interleave deploy marker rows into ascending-ts log rows by timestamp. */
 function mergeDeploys(rows,deploys){
