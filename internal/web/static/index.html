@@ -961,39 +961,36 @@ async function loadAlerts(){
   box.append(ac);
 }
 
-refreshApps().then(()=>crashChip());
-setInterval(refreshApps,10000);setInterval(crashChip,60000);
-addEventListener('resize',()=>{if(S.tab==='metrics')loadMetrics();if(S.tab==='access')loadAccess();if(S.tab==='logs')for(const p of S.panes)p.vl.schedule();});
-
-/* ---------- login screen ---------- */
-function showLogin(){$('#loginOverlay').style.display='flex';}
-function hideLogin(){$('#loginOverlay').style.display='none';}
-async function checkSession(){
-  try{await api('/api/session');return true;}catch(e){return false;}
-}
-$('#loginForm').onsubmit=async(e)=>{
-  e.preventDefault();
-  const err=$('#loginError');err.style.display='none';
-  try{
-    const d=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      username:$('#loginUser').value,password:$('#loginPass').value
-    })});
-    localStorage.setItem('capscope_token',d.token);
-    $('#loginUser').value='';$('#loginPass').value='';
-    hideLogin();
-    refreshApps().then(()=>crashChip());
-  }catch(ex){err.textContent='Invalid username or password.';err.style.display='';}
-};
-$('#logoutBtn').onclick=async()=>{
-  try{await api('/api/logout',{method:'POST'});}catch(e){}
-  localStorage.removeItem('capscope_token');
-  location.reload();
-};
-(async()=>{
-  const ok=await checkSession();
-  if(ok){$('#logoutBtn').style.display='';refreshApps().then(()=>crashChip());}
-  else showLogin();
-})();
+addEventListener('DOMContentLoaded',()=>{
+  $('#loginForm').onsubmit=async(e)=>{
+    e.preventDefault();
+    const err=$('#loginError');err.style.display='none';
+    try{
+      const d=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        username:$('#loginUser').value,password:$('#loginPass').value
+      })});
+      localStorage.setItem('capscope_token',d.token);
+      $('#loginUser').value='';$('#loginPass').value='';
+      hideLogin();
+      refreshApps().then(()=>crashChip());
+    }catch(ex){err.textContent='Invalid username or password.';err.style.display='';}
+  };
+  $('#logoutBtn').onclick=async()=>{
+    try{await api('/api/logout',{method:'POST'});}catch(e){}
+    localStorage.removeItem('capscope_token');
+    location.reload();
+  };
+  (async()=>{
+    const ok=await checkSession();
+    if(ok){
+      $('#logoutBtn').style.display='';
+      refreshApps().then(()=>crashChip());
+      setInterval(refreshApps,10000);setInterval(crashChip,60000);
+    }else{
+      showLogin();
+    }
+  })();
+});
 </script>
 <div id="loginOverlay" class="login-overlay">
   <div class="login-card">
