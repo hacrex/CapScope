@@ -1260,7 +1260,11 @@ addEventListener('DOMContentLoaded',()=>{
   function showLogin(){$('#loginOverlay').style.display='flex';}
   function hideLogin(){$('#loginOverlay').style.display='none';}
   async function checkSession(){
-    try{const d=await api('/api/session');return{ok:true,user:d.user,expiresAt:d.expires_at||0};}catch(e){return{ok:false};}
+    try{
+      const d=await api('/api/session');
+      // auth_enabled:false => server runs without AUTH_PASS; proceed anonymously.
+      return{ok:true,user:d.user||'anonymous',expiresAt:d.expires_at||0,authEnabled:d.auth_enabled!==false};
+    }catch(e){return{ok:false};}
   }
   $('#loginForm').onsubmit=async(e)=>{
     e.preventDefault();
@@ -1290,11 +1294,13 @@ addEventListener('DOMContentLoaded',()=>{
     const s=await checkSession();
     if(s.ok){
       S.sessionExpires=s.expiresAt;
-      $('#logoutBtn').style.display='';
+      if(s.authEnabled)$('#logoutBtn').style.display='';
+      hideLogin();
       await loadCrashCounts();
       refreshApps().then(()=>crashChip());
-      setInterval(refreshApps,10000);setInterval(crashChip,60000);setInterval(sessionWarning,60000);
-      sessionWarning();
+      setInterval(refreshApps,10000);setInterval(crashChip,60000);
+      if(s.authEnabled)setInterval(sessionWarning,60000);
+      if(s.authEnabled)sessionWarning();
     }else{
       showLogin();
     }
@@ -1306,7 +1312,7 @@ addEventListener('DOMContentLoaded',()=>{
   });
 });
 </script>
-<div id="loginOverlay" class="login-overlay">
+<div id="loginOverlay" class="login-overlay" style="display:none">
   <div class="login-card">
     <div class="login-header">
       <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M10 9.5L6.5 16L10 22.5" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="var(--bg)"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="var(--bg)"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="var(--bg)"/></svg>

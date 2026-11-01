@@ -152,7 +152,13 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // session returns the authenticated user, or 401 when no valid session exists.
+// When auth is disabled (no AUTH_PASS configured), it reports auth_enabled:false
+// with an anonymous user so the SPA can skip the login overlay entirely.
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.AuthPass == "" || s.sessions == nil {
+		writeJSON(w, map[string]any{"auth_enabled": false, "user": "anonymous", "expires_at": 0})
+		return
+	}
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if token == r.Header.Get("Authorization") {
 		token = ""
@@ -162,7 +168,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, map[string]any{"user": user, "expires_at": s.sessions.Expiry(token)})
+	writeJSON(w, map[string]any{"auth_enabled": true, "user": user, "expires_at": s.sessions.Expiry(token)})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
