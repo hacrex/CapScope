@@ -1,8 +1,16 @@
-bin/
-data/*.db
-data/*.db-shm
-data/*.db-wal
-
-# Demo / development artifacts (not part of the release)
-.demo/
-demo-env.txt
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+.env
+.env.local

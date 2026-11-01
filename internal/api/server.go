@@ -277,6 +277,7 @@ func parseLogQuery(r *http.Request) (store.LogQuery, error) {
 	q.UntilMs, _ = strconv.ParseInt(v.Get("until"), 10, 64)
 	q.AfterID, _ = strconv.ParseInt(v.Get("after_id"), 10, 64)
 	q.BeforeID, _ = strconv.ParseInt(v.Get("before_id"), 10, 64)
+	q.Asc = v.Get("asc") == "1"
 	q.Limit, _ = strconv.Atoi(v.Get("limit"))
 	if q.Limit <= 0 || q.Limit > 5000 {
 		q.Limit = 500 // mirror store.QueryLogs so paging math is exact here too

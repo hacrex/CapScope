@@ -86,7 +86,19 @@ tr.muted td{opacity:0.55;text-decoration:line-through;text-decoration-color:var(
 .toast.err{border-left-color:var(--err)}
 @keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 main{flex:1;display:flex;min-height:0}
-aside{width:240px;border-right:1px solid var(--line);background:var(--bg);overflow:auto;flex:none;padding-bottom:12px}
+aside{width:240px;border-right:1px solid var(--line);background:var(--bg);overflow:auto;flex:none;padding-bottom:12px;transition:width .15s ease}
+main.narrow aside{width:46px;overflow:hidden}
+main.narrow aside h2{display:none}
+main.narrow aside #apps{display:none}
+#sideToggle{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:5px 7px;margin:8px 0 8px 8px;display:block}
+#sideToggle:hover{color:var(--text);border-color:var(--line2)}
+/* v0.7-C: collapsed duplicate-line run */
+.ln.collapse{cursor:pointer;color:var(--muted);font-style:italic;background:var(--panel2);border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
+.ln.collapse:hover{color:var(--text)}
+/* v0.7-D: incident card */
+.incident{border:1px solid var(--line2);border-left:4px solid var(--accent);border-radius:10px;background:var(--panel);padding:16px;margin:12px 0;box-shadow:var(--shadow)}
+.incident h2{margin:0 0 6px;font-size:16px}
+.incident .ibar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 aside h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:18px 14px 8px}
 .app{margin:1px 8px;padding:7px 10px;cursor:pointer;border-radius:6px;border-left:2px solid transparent}
 .app:hover{background:var(--panel2)}
@@ -209,8 +221,8 @@ h2{font-weight:600;letter-spacing:-.02em}
   <button class="b" id="themeBtn" title="Color theme">Auto</button>
   <button class="b" id="logoutBtn" title="Log out" style="display:none">Log out</button>
 </header>
-<main>
-  <aside><h2>Apps</h2><div id="apps"></div></aside>
+<main id="main">
+  <aside><button id="sideToggle" title="Collapse sidebar">⟨⟨</button><h2>Apps</h2><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
       <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
@@ -296,7 +308,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -333,6 +345,8 @@ function paletteActions(){
     ...Object.keys(RANGE_MS).map(r=>({grp:'Range',label:'Time range: '+r,run:()=>{S.range=r;setRangeChip();syncURL();show();}})),
     {grp:'View',label:'Toggle wrap lines',run:()=>{$('#wrap')?.click();}},
     {grp:'View',label:(S.theme==='dark'?'Switch to light theme':'Switch to dark theme'),run:()=>{S.theme=S.theme==='dark'?'light':'dark';localStorage.setItem('theme',S.theme);applyTheme(S.theme);toast('Theme: '+THEME_LABEL[S.theme]);}},
+    {grp:'View',label:'Collapse duplicate log lines: '+(S.collapseDupes?'on':'off'),run:()=>{S.collapseDupes=!S.collapseDupes;localStorage.setItem('collapseDupes',S.collapseDupes?'1':'0');toast('Pattern collapse '+(S.collapseDupes?'enabled':'disabled'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);}},
+    {grp:'View',label:'Toggle sidebar: '+(S.sideNarrow?'collapsed':'expanded'),run:()=>setSidebar(!S.sideNarrow)},
     {grp:'Alerts',label:'New alert rule',run:()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}},
   ];
   for(const a of S.apps)acts.push({grp:'Apps',label:'Open app: '+a.app,run:()=>selectApp(a.app)});
@@ -581,6 +595,15 @@ function setTab(t){
 }
 $('#tabs').onclick=e=>{const t=e.target.dataset.t;if(t)setTab(t);};
 $('#crashchip').onclick=()=>setTab('crashes');
+/* v0.7-D: collapsible sidebar (persisted) */
+function setSidebar(narrow){
+  S.sideNarrow=narrow;localStorage.setItem('sideNarrow',narrow?'1':'0');
+  $('#main').classList.toggle('narrow',narrow);
+  $('#sideToggle').textContent=narrow?'⟩⟩':'⟨⟨';
+  $('#sideToggle').title=narrow?'Expand sidebar':'Collapse sidebar';
+}
+$('#sideToggle').onclick=()=>setSidebar(!S.sideNarrow);
+setSidebar(localStorage.getItem('sideNarrow')==='1');
 function syncURL(){
   const p=new URLSearchParams();
   if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
@@ -614,18 +637,59 @@ function show(){
 function makeVList(scroller){
   const inner=document.createElement('div');inner.className='vl-inner';scroller.append(inner);
   const win=document.createElement('div');win.className='vl-win';inner.append(win);
-  const vl={rows:[],renderRow:null,scroller,inner,win,raf:0};
-  const total=()=>vl.rows.length*ROW_H;
+  const vl={rows:[],disp:[],renderRow:null,scroller,inner,win,raf:0,expanded:new Set()};
+  /* v0.7-C: pattern collapse — fold runs of >=COLLAPSE_MIN consecutive
+     identical (container+level+line) rows into one summary row. Click the
+     summary to expand the run in place; click again to re-fold. */
+  const COLLAPSE_MIN=3;
+  const norm=r=>r.d?('d\0'+(r.ts||0)+'\0'+(r.version||'')):('l\0'+(r.container||'')+'\0'+(r.level||'')+'\0'+r.line);
+  const runKey=g=>g.first.d?('dk\0'+g.first.ts):('k\0'+(g.first.ts||0)+'\0'+(g.first.container||'')+'\0'+g.n);
+  function groupRows(rows){
+    const out=[];let i=0;
+    while(i<rows.length){
+      let j=i+1;const k=norm(rows[i]);
+      while(j<rows.length&&norm(rows[j])===k)j++;
+      if(!rows[i].d&&j-i>=COLLAPSE_MIN&&S.collapseDupes){
+        const g={c:true,first:rows[i],n:j-i};
+        if(vl.expanded.has(runKey(g)))for(let p=i;p<j;p++)out.push(rows[p]);
+        else out.push(g);
+      }else for(let p=i;p<j;p++)out.push(rows[p]);
+      i=j;
+    }
+    return out;
+  }
+  function rebuild(){vl.disp=groupRows(vl.rows);syncH();}
+  const total=()=>vl.disp.length*ROW_H;
+  function syncH(){inner.style.height=total()+'px';}
   function paint(){
     vl.raf=0;
     const st=scroller.scrollTop,h=scroller.clientHeight;
     const first=Math.max(0,Math.floor(st/ROW_H)-20);
-    const last=Math.min(vl.rows.length,Math.ceil((st+h)/ROW_H)+20);
+    const last=Math.min(vl.disp.length,Math.ceil((st+h)/ROW_H)+20);
     win.style.transform='translateY('+(first*ROW_H)+'px)';
     win.replaceChildren();
     const frag=document.createDocumentFragment();
-    for(let i=first;i<last;i++)frag.append(vl.renderRow(vl.rows[i]));
+    for(let i=first;i<last;i++){
+      const r=vl.disp[i];
+      frag.append(r.c?collapseRow(r):vl.renderRow(r));
+    }
     win.append(frag);
+  }
+  function collapseRow(g){
+    const d=document.createElement('div');d.className='ln collapse';
+    const t=document.createElement('span');t.className='t';t.textContent=g.first.ts?fmtTime(g.first.ts):'';
+    const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===g.first.container)||{}).replica||'';
+    const x=document.createElement('span');x.className='x';
+    x.textContent='× '+g.n+' identical lines · '+(g.first.line||'').slice(0,120)+(g.first.line&&g.first.line.length>120?'…':'')+' — click to expand';
+    x.title='Click to expand / re-fold this run of '+g.n+' repeated lines';
+    d.append(t,c,x);
+    d.onclick=e=>{
+      e.stopPropagation();
+      const k=runKey(g);
+      if(vl.expanded.has(k))vl.expanded.delete(k);else vl.expanded.add(k);
+      rebuild();paint();
+    };
+    return d;
   }
   vl.schedule=()=>{if(!vl.raf)vl.raf=requestAnimationFrame(paint);};
   const onScroll=()=>vl.schedule();
@@ -633,9 +697,8 @@ function makeVList(scroller){
   vl.destroy=()=>{
     scroller.removeEventListener('scroll',onScroll);
     if(vl.raf)cancelAnimationFrame(vl.raf);
-    vl.raf=0;vl.rows=[];
+    vl.raf=0;vl.rows=[];vl.disp=[];
   };
-  vl.syncHeight=()=>{inner.style.height=total()+'px';};
   vl.trim=()=>{
     if(vl.rows.length>MAXROWS){
       const cut=vl.rows.length-MAXROWS;
@@ -644,25 +707,26 @@ function makeVList(scroller){
     }
   };
   vl.reset=rows=>{
-    vl.rows=rows.slice();vl.trim();vl.syncHeight();
+    vl.rows=rows.slice();vl.trim();rebuild();
     scroller.scrollTop=total();
     vl.schedule();
   };
   vl.append=(rs,pin)=>{
     if(!rs.length)return;
+    const b=pin&&vl.atBottom();
     for(const r of rs)vl.rows.push(r);
-    vl.trim();vl.syncHeight();
-    if(pin)scroller.scrollTop=total();
+    vl.trim();rebuild();
+    if(b)scroller.scrollTop=total();
     vl.schedule();
   };
   vl.prepend=rs=>{
     if(!rs.length)return;
-    vl.rows.unshift(...rs);vl.trim();vl.syncHeight();
+    vl.rows.unshift(...rs);vl.trim();rebuild();
     scroller.scrollTop+=rs.length*ROW_H;
     vl.schedule();
   };
   vl.atBottom=()=>scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<60;
-  vl.toBottom=()=>{vl.syncHeight();scroller.scrollTop=total();};
+  vl.toBottom=()=>{rebuild();scroller.scrollTop=total();};
   return vl;
 }
 
@@ -950,7 +1014,48 @@ function lineEl(r){
   d.append(cb);
   d.onclick=e=>selToggle(r,e);
   d.ondblclick=e=>{e.stopPropagation();const k=d.dataset.key;if(S.hl.has(k))S.hl.delete(k);else{S.hl.add(k);S.selData.set(k,{ts:r.ts,container:r.container,line:r.line});}renderSel();};
+  // v0.7-C: context menu — open ±N lines around this row in the context modal.
+  d.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();openCtx(r);};
   return d;
+}
+
+/* ---------- v0.7-C: log context modal (±50 lines around a row) ---------- */
+async function openCtx(r){
+  const w=document.createElement('div');w.className='modal';
+  const box=document.createElement('div');box.className='box';box.style.maxWidth='980px';box.style.width='92vw';
+  const mh=document.createElement('div');mh.className='mh';
+  const t=document.createElement('span');t.textContent='Context · '+(r.container||'all')+' @ '+fmtTime(r.ts);
+  const x=document.createElement('button');x.className='b';x.textContent='Close';
+  mh.append(t,x);
+  const info=document.createElement('pre');info.textContent='loading…';
+  box.append(mh,info);w.append(box);document.body.append(w);
+  const close=()=>{w.remove();document.removeEventListener('keydown',esc);};
+  const esc=e=>{if(e.key==='Escape')close();};
+  x.onclick=close;w.onclick=e=>{if(e.target===w)close();};
+  document.addEventListener('keydown',esc);
+  try{
+    const p=params({limit:100,before_id:r.id},r.container);
+    const [d,after]=await Promise.all([
+      api('/api/logs?'+p),
+      r.id?api('/api/logs?'+params({limit:50,since_id:r.id+1,asc:'1'},r.container)):Promise.resolve({logs:[]})
+    ]);
+    const rows=(d.logs||[]).concat(after.logs||[]);
+    if(!rows.length){info.textContent='(no lines found around this row)';return;}
+    const W=50;let anchor=rows.findIndex(q=>q.id===r.id);
+    if(anchor<0)anchor=rows.length-1;
+    const lo=Math.max(0,anchor-W),hi=Math.min(rows.length,anchor+W+1);
+    info.replaceChildren();
+    for(let i=lo;i<hi;i++){
+      const q=rows[i];
+      const el=lineEl(q);
+      el.style.height='auto';el.style.whiteSpace='pre-wrap';
+      if(q.id===r.id){el.classList.add('hl');el.title='selected line';}
+      info.append(el);
+    }
+    info.style.maxHeight='60vh';info.style.overflow='auto';info.style.font='12px/20px var(--font-mono)';
+    const selEl=info.children[Math.min(anchor-lo,W)];
+    if(selEl)selEl.scrollIntoView({block:'center'});
+  }catch(e){info.textContent='context load failed: '+(e.message||e);}
 }
 
 /* ---------- line selection (export) ---------- */
@@ -1196,12 +1301,34 @@ async function loadCrashes(){
 }
 async function openCrash(id){
   const s=await api('/api/snapshots/'+id);const box=$('#view-crashes');box.innerHTML='';
-  const back=document.createElement('button');back.className='b';back.textContent='Back to list';back.onclick=()=>{location.hash='';loadCrashes();};
-  const dl=document.createElement('a');dl.href='/api/snapshots/'+id+'/export';dl.textContent='Download as Markdown';dl.style.marginLeft='12px';
+  // v0.7-D: incident card layout — action bar, summary, kv grid, chart, logs.
+  const card=document.createElement('div');card.className='incident';
+  const ibar=document.createElement('div');ibar.className='ibar';
+  const back=document.createElement('button');back.className='b';back.textContent='← Back to list';back.onclick=()=>{location.hash='';loadCrashes();};
+  const dl=document.createElement('a');dl.className='b';dl.href='/api/snapshots/'+id+'/export';dl.textContent='Download Markdown';dl.style.textDecoration='none';
   // v0.7: shareable incident permalink + copy-link
-  const link=document.createElement('a');link.href='#crash='+s.id;link.textContent='Permalink';link.style.marginLeft='12px';
-  const cp=document.createElement('button');cp.className='b';cp.textContent='Copy link';cp.style.marginLeft='8px';
-  cp.onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+location.pathname+'#crash='+s.id);cp.textContent='Copied ✓';setTimeout(()=>cp.textContent='Copy link',1500);}catch(e){prompt('Copy this incident link:',location.origin+location.pathname+'#crash='+s.id);}};
+  const link=document.createElement('a');link.href='#crash='+s.id;link.textContent='Permalink';
+  const cp=document.createElement('button');cp.className='b';cp.textContent='Copy link';
+  cp.onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+location.pathname+'#crash='+s.id);cp.textContent='Copied ✓';toast('Incident link copied','ok');setTimeout(()=>cp.textContent='Copy link',1500);}catch(e){prompt('Copy this incident link:',location.origin+location.pathname+'#crash='+s.id);}};
+  // v0.7-D: one-click "copy as Markdown" of the whole incident for pasting into chat/tickets
+  const cm=document.createElement('button');cm.className='b';cm.textContent='Copy as Markdown';
+  cm.onclick=async()=>{
+    const md=[
+      '## Incident: '+s.app+' — '+s.kind.replace('_',' ')+' (exit '+s.exit_code+')',
+      '- Time: '+fmtDT(s.ts)+(s.die_ts?' (died '+fmtDT(s.die_ts)+')':''),
+      '- Container: '+s.container+(s.image?' · image '+s.image:''),
+      '- Uptime before death: '+s.uptime_sec+'s · restart count '+s.restart_count,
+      '- Memory limit: '+(s.mem_limit?mib(s.mem_limit):'none'),
+      s.restarts_window>=2?'- ⚠ Restart loop: '+s.restarts_window+' deaths in window':'',
+      s.deploy?'- Last deploy: '+(s.deploy.version||'')+' at '+fmtDT(s.deploy.ts)+' ('+Math.round((s.ts-s.deploy.ts)/60000)+'m before crash)':'',
+      s.error?'- Docker error: '+s.error:'',
+      '',s.summary,'','```',...s.logs.map(l=>`${fmtTime(l.ts)} ${l.stream==='e'?'err':'out'} ${l.line}`),'```',
+      location.origin+location.pathname+'#crash='+s.id
+    ].filter(x=>x!=='').join('\n');
+    try{await navigator.clipboard.writeText(md);cm.textContent='Copied ✓';toast('Incident copied as Markdown','ok');setTimeout(()=>cm.textContent='Copy as Markdown',1500);}
+    catch(e){prompt('Copy the incident Markdown:',md);}
+  };
+  ibar.append(back,cp,cm,dl,link);
   const h=document.createElement('h2');h.textContent=`${s.app}: ${s.kind.replace('_',' ')} (exit ${s.exit_code})`;
   const sum=document.createElement('div');sum.className='sum';sum.textContent=s.summary;
   const kv=document.createElement('div');kv.className='kv';
@@ -1214,11 +1341,12 @@ async function openCrash(id){
     cells.push(['Last deploy',(s.deploy.version||'')+' · '+fmtDT(s.deploy.ts)+(gap>=0?' ('+gap+'m before crash)':'')+(near?' — ⚠ recent deploy':'')]);
   }
   cells.forEach(([k,v])=>{const a=document.createElement('b'),b=document.createElement('span');a.textContent=k;b.textContent=v;kv.append(a,b);});
-  const card=document.createElement('div');card.className='card';card.innerHTML='<h3>Memory before death</h3><canvas id="cs"></canvas>';
+  const chart=document.createElement('div');chart.className='card';chart.innerHTML='<h3>Memory before death</h3><canvas id="cs"></canvas>';
   const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
   const pre=document.createElement('pre');pre.className='logbox';
   pre.textContent=s.logs.map(l=>`${fmtTime(l.ts)} ${l.stream==='e'?'err':'out'} ${l.line}`).join('\n');
-  box.append(back,dl,link,cp,h,sum,kv,card,lh,pre);pre.scrollTop=pre.scrollHeight;
+  card.append(ibar,h,sum,kv,chart,lh,pre);
+  box.append(card);pre.scrollTop=pre.scrollHeight;
   draw($('#cs'),s.metrics,'mem',v=>mib(v),'mem_limit');
 }
 async function loadCrashCounts(){

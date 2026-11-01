@@ -317,7 +317,9 @@ type LogQuery struct {
 	Regex                     *regexp.Regexp // when set, Q is ignored and matching happens in Go
 	SinceMs, UntilMs          int64
 	AfterID, BeforeID         int64
-	Limit                     int
+	// Asc orders results by id ascending (used for "context after this line").
+	Asc   bool
+	Limit int
 }
 
 const maxRegexScan = 200000
@@ -434,7 +436,7 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	}
 	where, args := q.where()
 	order := "DESC"
-	if q.AfterID > 0 {
+	if q.AfterID > 0 || q.Asc {
 		order = "ASC"
 	}
 	query := "SELECT id, ts, container_id, container, app, stream, level, line FROM logs" + where + " ORDER BY id " + order
