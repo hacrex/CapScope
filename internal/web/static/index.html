@@ -861,8 +861,11 @@ function createPane(host,container,split){
   const vl=makeVList(pane.scroller);
   vl.renderRow=lineEl;
   pane.vl=vl;
+  // v0.7 fix: fw (follow button) only exists in split panes; look it up per-pane
+  // instead of referencing the out-of-scope closure variable (ReferenceError).
+  const followBtn=split?pane.el.querySelector('.ph .bx:nth-child(2)'):null;
   const followOff=()=>{
-    if(!vl.atBottom()&&pane.follow){pane.follow=false;if(fw)fw.textContent='🙈';}
+    if(!vl.atBottom()&&pane.follow){pane.follow=false;if(followBtn)followBtn.textContent='🙈';}
     jumpLiveWatch();
   };
   pane.scroller.addEventListener('scroll',followOff);
@@ -1211,7 +1214,7 @@ async function loadMetrics(){
   const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('range',$('#range').value);if($('#mcont').value)p.set('container',$('#mcont').value);
   const d=await api('/api/metrics?'+p);
   const deploys=await loadDeploys($('#range').value);
-  const crashes=await loadCrashes($('#range').value);
+  const crashes=await loadCrashMarkers($('#range').value);
   draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys,crashes);
   draw($('#cmem'),d.points,'mem',v=>mib(v),'mem_limit',deploys,crashes);
   renderDeployList(deploys);
@@ -1227,7 +1230,7 @@ async function loadDeploys(range,sinceMs){
   try{const d=await api('/api/deploys?'+p);return (d.deploys||[]).slice().reverse();} // oldest→newest for drawing
   catch(e){console.warn('capscope: deploys load failed',e);return [];}
 }
-async function loadCrashes(range,sinceMs){
+async function loadCrashMarkers(range,sinceMs){
   const ms=RANGE_MS[range]||3600e3;const since=sinceMs||(Date.now()-ms);
   const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('since',since);p.set('limit','200');
   try{const d=await api('/api/snapshots?'+p);return (d.snapshots||[]).slice().reverse();} // oldest→newest for drawing
@@ -1287,6 +1290,7 @@ async function loadCrashes(){
   const box=$('#view-crashes');box.innerHTML='';
   const only=S.crashOnlyApp&&S.app;
   const d=await api('/api/snapshots?limit=100'+(only?'&app='+encodeURIComponent(S.app):''));
+  if(!d||!Array.isArray(d.snapshots)){console.warn('capscope: unexpected /api/snapshots shape',d);return;}
   const bar=document.createElement('div');bar.style.marginBottom='12px';
   const lab=document.createElement('label');lab.className='chk';
   const cb=document.createElement('input');cb.type='checkbox';cb.id='onlyapp';cb.checked=!!only;cb.onchange=()=>{S.crashOnlyApp=cb.checked;loadCrashes();};
