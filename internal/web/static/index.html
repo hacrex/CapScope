@@ -186,7 +186,7 @@ h2{font-weight:600;letter-spacing:-.02em}
   <aside><h2>Apps</h2><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
-      <button data-t="dashboard">Dashboard</button><button data-t="logs" class="sel">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
+      <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
     </nav>
     <div id="view-dashboard" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -257,7 +257,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -456,7 +456,7 @@ $('#tabs').onclick=e=>{const t=e.target.dataset.t;if(t)setTab(t);};
 $('#crashchip').onclick=()=>setTab('crashes');
 function syncURL(){
   const p=new URLSearchParams();
-  if(S.tab&&S.tab!=='logs')p.set('tab',S.tab);
+  if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
   if(S.app)p.set('app',S.app); // empty string = All apps → omit
   if(S.range&&S.range!=='1h')p.set('range',S.range);
   const qs=p.toString();
@@ -1426,7 +1426,7 @@ addEventListener('DOMContentLoaded',()=>{
       setInterval(refreshApps,10000);setInterval(crashChip,60000);
       if(s.authEnabled)setInterval(sessionWarning,60000);
       if(s.authEnabled)sessionWarning();
-      if(S.tab!=='logs')show(); // restore permalinked tab (e.g. dashboard or #crash deep link)
+      show(); // dashboard is the default landing view; logs tab needs no restore
     }else{
       showLogin();
     }
