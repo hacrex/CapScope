@@ -1275,11 +1275,18 @@ async function loadAlerts(){
   if(!hist.alerts.length){
     const p=document.createElement('div');p.className='empty';p.textContent='No alerts have fired yet.';ac.append(p);
   }else{
-    const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>Rule</th><th>App</th><th>Kind</th><th>Message</th></tr>';
+    const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>Rule</th><th>App</th><th>Kind</th><th>Message</th><th>Delivery</th></tr>';
     hist.alerts.forEach(a=>{
       const tr=document.createElement('tr');
       const cells=[fmtDT(a.ts)+' ('+ago(a.ts)+')',a.rule,a.app,ALERT_KIND[a.kind]||a.kind,a.message];
       cells.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      // v0.7: delivery status recorded by the alert engine after notify().
+      const dTd=document.createElement('td');
+      const dmap={sent:['✓ sent','var(--ok)'],failed:['✗ failed','var(--err)']};
+      const dv=dmap[a.delivery];
+      if(dv){dTd.textContent=dv[0];dTd.style.color=dv[1];dTd.style.fontWeight='600';dTd.title=a.delivery==='sent'?'At least one channel accepted the message':'All channels errored — nobody was notified';}
+      else{dTd.textContent='—';dTd.style.color='var(--muted)';dTd.title='No notification channels configured for this firing (or recorded before v0.7)';}
+      tr.append(dTd);
       tb.append(tr);
     });
     ac.append(tb);

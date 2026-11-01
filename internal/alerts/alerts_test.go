@@ -3,6 +3,7 @@ package alerts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -549,5 +550,50 @@ func TestChannelsExposedForAPI(t *testing.T) {
 	}
 	if len(e.Channels()) != 1 || e.Channels()[0] != "webhook" {
 		t.Fatalf("channels = %v", e.Channels())
+	}
+}
+
+// ---- delivery status (v0.7) ----
+
+type stubChan struct {
+	name string
+	err  error
+}
+
+func (c stubChan) Send(ctx context.Context, msg string) error { return c.err }
+
+func TestEvaluateRecordsDeliveryStatus(t *testing.T) {
+	cases := []struct {
+		name  string
+		chans []Channel
+		want  string
+	}{
+		{"no channels records nothing", nil, ""},
+		{"one ok channel is sent", []Channel{stubChan{name: "webhook"}}, "sent"},
+		{"all failing channels is failed", []Channel{stubChan{name: "a", err: errors.New("boom")}}, "failed"},
+		{"partial success still sent", []Channel{stubChan{name: "a", err: errors.New("boom")}, stubChan{name: "b"}}, "sent"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := testStore(t)
+			seedApp(t, st, "api")
+			now := time.Now()
+			seedLogs(t, st, "api", "x", now.Add(-time.Hour).UnixMilli())
+			e := newEngine(t, st, []Rule{{Name: "silent", Kind: KindDeadman, Apps: []string{"api"}, For: Dur(5 * time.Minute)}}, now, tc.chans...)
+			fired := e.Evaluate(context.Background())
+			if len(fired) != 1 {
+				t.Fatalf("want 1 fired alert, got %d", len(fired))
+			}
+			if fired[0].Delivery != tc.want {
+				t.Errorf("fired.Delivery = %q, want %q", fired[0].Delivery, tc.want)
+			}
+			list, err := st.ListAlerts(context.Background(), "api", 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list) != 1 || list[0].Delivery != tc.want {
+				t.Errorf("stored delivery = %+v, want %q", list, tc.want)
+			}
+		})
 	}
 }

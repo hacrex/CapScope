@@ -116,6 +116,12 @@ var migrations = []string{
 	 CREATE INDEX idx_alerts_app_ts ON alerts(app, ts);
 	 CREATE INDEX idx_alerts_rule_app_ts ON alerts(rule, app, ts);`,
 
+	// Delivery status (v0.7): notify() records per-channel outcomes so the
+	// alert history table can show whether each firing actually reached
+	// someone. "sent" = at least one channel succeeded, "failed" = all
+	// attempted channels errored, "" = not yet recorded (older rows).
+	`ALTER TABLE alerts ADD COLUMN delivery TEXT NOT NULL DEFAULT '';`,
+
 	// Deploy markers (V9): a user (or CI) records a release so the charts and
 	// the log timeline can show it, and a crash can be correlated with the
 	// deploy that preceded it.
@@ -1109,12 +1115,13 @@ func (s *Store) EnforcePerAppSize(ctx context.Context, budgets map[string]int64)
 
 // Alert is one recorded alert firing.
 type Alert struct {
-	ID      int64  `json:"id"`
-	TS      int64  `json:"ts"` // unix ms
-	Rule    string `json:"rule"`
-	App     string `json:"app"`
-	Kind    string `json:"kind"`
-	Message string `json:"message"`
+	ID       int64  `json:"id"`
+	TS       int64  `json:"ts"` // unix ms
+	Rule     string `json:"rule"`
+	App      string `json:"app"`
+	Kind     string `json:"kind"`
+	Message  string `json:"message"`
+	Delivery string `json:"delivery"` // "sent" | "failed" | "" (older rows)
 }
 
 func (s *Store) InsertAlert(a Alert) (int64, error) {
@@ -1122,7 +1129,21 @@ func (s *Store) InsertAlert(a Alert) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	// Delivery is filled by SetAlertDelivery once notify() has run; the
+	// column defaults to '' so older rows stay readable.
+	return id, nil
+}
+
+// SetAlertDelivery records the outcome of notifying about one alert:
+// "sent" when at least one channel accepted the message, "failed" when
+// every attempted channel errored. An unknown id is a silent no-op.
+func (s *Store) SetAlertDelivery(id int64, status string) error {
+	_, err := s.w.Exec(`UPDATE alerts SET delivery=? WHERE id=?`, status, id)
+	return err
 }
 
 // ListAlerts returns fired alerts newest first; app filters to one app.
@@ -1134,7 +1155,7 @@ func (s *Store) ListAlerts(ctx context.Context, app string, limit int) ([]Alert,
 	if app != "" {
 		cl, args = append(cl, "app = ?"), append(args, app)
 	}
-	rows, err := s.r.QueryContext(ctx, `SELECT id,ts,rule,app,kind,message FROM alerts WHERE `+strings.Join(cl, " AND ")+` ORDER BY id DESC LIMIT ?`, append(args, limit)...)
+	rows, err := s.r.QueryContext(ctx, `SELECT id,ts,rule,app,kind,message,delivery FROM alerts WHERE `+strings.Join(cl, " AND ")+` ORDER BY id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1142,7 +1163,7 @@ func (s *Store) ListAlerts(ctx context.Context, app string, limit int) ([]Alert,
 	out := []Alert{}
 	for rows.Next() {
 		var a Alert
-		if err := rows.Scan(&a.ID, &a.TS, &a.Rule, &a.App, &a.Kind, &a.Message); err != nil {
+		if err := rows.Scan(&a.ID, &a.TS, &a.Rule, &a.App, &a.Kind, &a.Message, &a.Delivery); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
