@@ -1103,10 +1103,15 @@ async function loadAlerts(){
   bar.append(t);box.append(bar);
 
   const rc=document.createElement('div');rc.className='card';
-  rc.innerHTML='<h3>Rules</h3>';
+  const h3=document.createElement('h3');h3.textContent='Rules';
+  const addBtn=document.createElement('button');addBtn.className='b';addBtn.style.cssText='float:right;font-size:11px;padding:2px 8px';addBtn.textContent='+ New rule';
+  addBtn.disabled=!meta.enabled&&!meta.rules.length;
+  addBtn.title='Create an alert rule in the browser (writes ALERTS_FILE via the API)';
+  addBtn.onclick=()=>openRuleBuilder(meta,hist,loadAlerts);
+  h3.append(addBtn);rc.append(h3);
   if(!meta.rules.length){
     const p=document.createElement('div');p.className='empty';
-    p.textContent=meta.enabled?'No rules loaded. Create a JSON rules file (ALERTS_FILE) with deadman, restart_loop, metric or log_pattern rules.':'Alerting is off: no rules file found.';
+    p.textContent=meta.enabled?'No rules loaded. Click "+ New rule" to create one, or edit the JSON rules file (ALERTS_FILE) directly.':'Alerting is off: no rules file found. Click "+ New rule" to create the first one.';
     rc.append(p);
   }else{
     const tb=document.createElement('table');tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th><th>Status</th><th>Mute</th></tr>';
@@ -1131,6 +1136,10 @@ async function loadAlerts(){
       un.onclick=()=>{S.alertMuted.delete(r.name);loadAlerts();};
       muTd.append(m1,m24,un);if(muted){m1.style.display='none';m24.style.display='none';}
       tr.append(muTd);
+      const edTd=document.createElement('td');
+      const ed=document.createElement('button');ed.className='b';ed.style.cssText='font-size:10px;padding:2px 6px';ed.textContent='edit';ed.title='Edit '+r.name+' in the rule builder';
+      ed.onclick=()=>openRuleBuilder(meta,hist,loadAlerts,meta.rules.indexOf(r));
+      edTd.append(ed);tr.append(edTd);
       tb.append(tr);
     });
     rc.append(tb);
@@ -1155,6 +1164,93 @@ async function loadAlerts(){
   }
   box.append(ac);
 }
+
+/* ---------- alert rule builder (writes ALERTS_FILE via the API) ---------- */
+function ruleToForm(r){return{name:r.name||'',kind:r.kind||'deadman',apps:(r.apps||[]).join(', '),
+  for:r.for||'',count:r.count??'',window:r.window||'',metric:r.metric||'cpu',op:r.op||'gt',value:r.value??'',
+  pattern:r.pattern||'',hits:r.hits??'',repeat:r.repeat||''};}
+function formToRule(f){
+  const r={name:f.name.trim(),kind:f.kind};
+  if(f.apps.trim())r.apps=f.apps.split(',').map(s=>s.trim()).filter(Boolean);
+  const dur=['for','window','repeat'];dur.forEach(k=>{if(f[k]&&f[k].trim())r[k]=f[k].trim();});
+  if(r.kind==='restart_loop'){if(f.count!=='')r.count=+f.count;}
+  if(r.kind==='metric'){r.metric=f.metric;r.op=f.op;if(f.value!=='')r.value=+f.value;}
+  if(r.kind==='log_pattern'){if(f.pattern)r.pattern=f.pattern;if(f.hits!=='')r.hits=+f.hits;}
+  return r;}
+function openRuleBuilder(meta,hist,onSaved,editIdx){
+  document.getElementById('ruleModal')?.remove();
+  const rules=(meta.rules||[]).map(ruleToForm);
+  let idx=(editIdx==null)?rules.length:editIdx;
+  let form=idx<rules.length?Object.assign({},rules[idx]):ruleToForm({kind:'deadman'});
+  const overlay=document.createElement('div');overlay.id='ruleModal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000';
+  const box=document.createElement('div');box.className='card';
+  box.style.cssText='width:min(680px,92vw);max-height:88vh;overflow:auto;border-width:3px;box-shadow:6px 6px 0 rgba(0,0,0,.35)';
+  const mk=(tag,attrs,...kids)=>{const e=document.createElement(tag);Object.assign(e,attrs);kids.forEach(k=>e.append(k));return e;};
+  const field=(label,input)=>mk('label',{style:'display:block;margin:8px 0;font-size:12px'},mk('span',{textContent:label,style:'display:block;margin-bottom:3px;color:var(--muted)'}),input);
+  const inp=(key,val,ph)=>mk('input',{value:val??'',placeholder:ph||'',oninput:e=>form[key]=e.target.value,style:'width:100%'});
+  const kindSel=mk('select',{style:'width:100%',onchange:e=>{form.kind=e.target.value;drawFields();}});
+  [['deadman','Dead man — app goes silent'],['restart_loop','Restart loop — too many deaths'],['metric','Metric — cpu/mem threshold'],['log_pattern','Log pattern — regex hits']].forEach(([v,l])=>kindSel.append(mk('option',{value:v,textContent:l})));
+  kindSel.value=form.kind;
+  const condWrap=mk('div',{});
+  function drawFields(){
+    condWrap.innerHTML='';
+    const grid=mk('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:0 12px'});
+    if(form.kind==='deadman'){grid.append(field('Silence duration that fires (e.g. 5m)',inp('for',form.for,'5m')));}
+    else if(form.kind==='restart_loop'){
+      grid.append(field('Deaths (>N)',inp('count',form.count,'3')),field('Window (e.g. 10m)',inp('window',form.window,'10m')));
+    }else if(form.kind==='metric'){
+      const msel=mk('select',{style:'width:100%',onchange:e=>form.metric=e.target.value});[['cpu','cpu %'],['mem','memory bytes'],['mem_pct','memory % of limit']].forEach(([v,l])=>msel.append(mk('option',{value:v,textContent:l})));msel.value=form.metric;
+      const osel=mk('select',{style:'width:100%',onchange:e=>form.op=e.target.value});[['gt','> above'],['lt','< below']].forEach(([v,l])=>osel.append(mk('option',{value:v,textContent:l})));osel.value=form.op;
+      grid.append(field('Metric',msel),field('Operator',osel),field('Threshold',inp('value',form.value,'80')),field('Hold for (e.g. 2m)',inp('for',form.for,'5m')));
+    }else{
+      grid.append(field('Regex pattern',inp('pattern',form.pattern,'panic|fatal')),field('Hits (≥N)',inp('hits',form.hits,'1')),field('Window (e.g. 10m)',inp('window',form.window,'10m')));
+    }
+    grid.append(field('Notify again after (silence)',inp('repeat',form.repeat,'30m')));
+    condWrap.append(grid);
+  }
+  drawFields();
+  const head=mk('h3',{style:'margin:0 0 4px'},idx<rules.length?'Edit rule':'New alert rule');
+  const nameRow=field('Rule name (unique)',mk('input',{value:form.name,style:'width:100%',oninput:e=>form.name=e.target.value}));
+  // JSON preview + live validation
+  const pre=mk('pre',{style:'background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;font-size:11px;min-height:44px;white-space:pre-wrap;margin:8px 0'});
+  const status=mk('div',{style:'font-size:12px;min-height:18px;margin:4px 0'});
+  let vT;
+  function refreshPreview(){
+    try{pre.textContent=JSON.stringify([formToRule(form)],null,2);}catch(e){pre.textContent='// invalid: '+e;}
+    clearTimeout(vT);vT=setTimeout(async()=>{
+      try{await api('/api/alerts/rules/validate',{method:'POST',body:JSON.stringify({rules:[formToRule(form)]})});
+        status.textContent='✓ valid';status.style.color='var(--ok,#22a06b)';saveBtn.disabled=false;}
+      catch(e){status.textContent='✗ '+(e.message||e);status.style.color='#d33';saveBtn.disabled=true;}
+    },350);
+  }
+  box.oninput=refreshPreview;
+  const listRow=mk('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px'});
+  (rules.length?rules.map((r,i)=>mk('button',{className:'b',style:'font-size:11px;padding:2px 8px'+(i===idx?';outline:2px solid var(--accent)':''),textContent:r.name||'(unnamed)',onclick:()=>{idx=i;form=Object.assign({},rules[i]);kindSel.value=form.kind;nameRow.querySelector('input').value=form.name;drawFields();refreshPreview();}})):[]).forEach(b=>listRow.append(b));
+  listRow.append(mk('button',{className:'b',style:'font-size:11px;padding:2px 8px',textContent:'+ blank',onclick:()=>{idx=rules.length;form=ruleToForm({kind:'deadman'});kindSel.value='deadman';nameRow.querySelector('input').value='';drawFields();refreshPreview();}}));
+  const saveBtn=mk('button',{className:'b',style:'font-weight:700',textContent:'Save rules'});
+  saveBtn.onclick=async()=>{
+    const next=rules.slice();next[idx]=form;
+    const doc={rules:next.map(formToRule)};
+    try{
+      await api('/api/alerts/rules',{method:'POST',body:JSON.stringify(doc)});
+      overlay.remove();onSaved&&onSaved();
+    }catch(e){status.textContent='✗ save failed: '+(e.message||e);status.style.color='#d33';}
+  };
+  const delBtn=idx<rules.length?mk('button',{className:'b',textContent:'Delete',style:'color:#d33',onclick:async()=>{
+    const next=rules.filter((_,i)=>i!==idx);
+    try{await api('/api/alerts/rules',{method:'POST',body:JSON.stringify({rules:next.map(formToRule)})});overlay.remove();onSaved&&onSaved();}
+    catch(e){status.textContent='✗ delete failed: '+(e.message||e);status.style.color='#d33';}
+  }}):null;
+  const cancel=mk('button',{className:'b',textContent:'Cancel',onclick:()=>overlay.remove()});
+  box.append(head,mk('div',{style:'font-size:11px;color:var(--muted)',textContent:'Saved rules replace the ALERTS_FILE contents and hot-reload into the engine.'}),listRow,nameRow,field('Kind',kindSel),condWrap,pre,status,
+    mk('div',{style:'display:flex;gap:8px;margin-top:8px'},saveBtn,cancel,...(delBtn?[delBtn]:[])));
+  overlay.append(box);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  document.body.append(overlay);
+  refreshPreview();
+}
+
 function muteRule(name,forMs){
   S.alertMuted.set(name,Date.now()+forMs);
   loadAlerts();

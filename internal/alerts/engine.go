@@ -88,6 +88,27 @@ func (e *Engine) Channels() []string {
 // TestChannels exposes the channels for the /api/alerts/test endpoint.
 func (e *Engine) TestChannels() []Channel { return e.chans }
 
+// Path returns the rules file location (used by the rule-builder API).
+func (e *Engine) Path() string { return e.path }
+
+// SaveRules validates and atomically writes the full rule set to the rules
+// file, then forces a reload so the engine state matches disk immediately.
+func (e *Engine) SaveRules(rules []Rule) error {
+	f := File{Rules: rules}
+	if err := f.Validate(); err != nil {
+		return err
+	}
+	if err := Save(e.path, f); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.rules = rules
+	e.rmt = mtime(e.path)
+	e.mu.Unlock()
+	e.log.Info("alerts: rules saved via API", "count", len(rules))
+	return nil
+}
+
 // Run evaluates on a ticker until ctx is done.
 func (e *Engine) Run(ctx context.Context) {
 	t := time.NewTicker(e.interval)

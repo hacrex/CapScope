@@ -124,6 +124,37 @@ type File struct {
 	Rules []Rule `json:"rules"`
 }
 
+// Validate applies defaults and checks every rule in the document.
+func (f *File) Validate() error {
+	for i := range f.Rules {
+		if err := f.Rules[i].validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Save atomically writes the rules document to path (temp file + rename), so
+// a crash mid-write can never leave a half-written rules file behind. The
+// engine picks the new file up on its next reload tick.
+func Save(path string, doc File) error {
+	if path == "" {
+		return errors.New("alerts: no rules file configured")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // Load reads and validates a rules file. A missing file yields no rules and
 // no error, so CapScope still runs before the user writes one.
 func Load(path string) ([]Rule, error) {

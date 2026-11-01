@@ -169,3 +169,88 @@ func TestAlertsDisabledWithoutEngine(t *testing.T) {
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
+
+// TestAlertsRuleBuilder covers POST /api/alerts/rules (save) and
+// POST /api/alerts/rules/validate (dry-run) — the alert rule builder API.
+func TestAlertsRuleBuilder(t *testing.T) {
+	rulesPath := filepath.Join(t.TempDir(), "alerts.json")
+	if err := writeFile(rulesPath, `{"rules":[{"name":"silent","kind":"deadman","apps":["web"],"for":"5m"}]}`); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := setupAlerts(t, rulesPath)
+	token := loginToken(t, srv.URL)
+
+	post := func(path, body string) (int, string) {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+
+	// Unauthenticated save must be rejected.
+	req, _ := http.NewRequest("POST", srv.URL+"/api/alerts/rules", strings.NewReader(`{"rules":[]}`))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 401 {
+		t.Fatalf("want 401 anonymous save, got %d", resp.StatusCode)
+	}
+
+	// Validate: good document passes, bad kind fails with a helpful message.
+	if code, _ := post("/api/alerts/rules/validate", `{"rules":[{"name":"hot","kind":"metric","metric":"cpu","op":"gt","value":80,"for":"2m"}]}`); code != 200 {
+		t.Fatalf("validate good rules: want 200, got %d", code)
+	}
+	if code, body := post("/api/alerts/rules/validate", `{"rules":[{"name":"x","kind":"bogus"}]}`); code != 400 || !strings.Contains(body, "bogus") {
+		t.Fatalf("validate bad kind: want 400 mentioning kind, got %d %s", code, body)
+	}
+	if code, body := post("/api/alerts/rules/validate", `{"rules":[{"name":"y","kind":"deadman","for":"5 parsecs"}]}`); code != 400 || !strings.Contains(body, "bad duration") {
+		t.Fatalf("validate bad duration: want 400, got %d %s", code, body)
+	}
+
+	// Save replaces the file; on-disk content round-trips through Load.
+	newDoc := `{"rules":[{"name":"hot","kind":"metric","apps":["api","web"],"metric":"mem_pct","op":"gt","value":90,"for":"3m","repeat":"1h"},{"name":"crashloop","kind":"restart_loop","count":4,"window":"15m"}]}`
+	if code, body := post("/api/alerts/rules", newDoc); code != 200 {
+		t.Fatalf("save: want 200, got %d %s", code, body)
+	}
+	got, err := alerts.Load(rulesPath)
+	if err != nil {
+		t.Fatalf("saved file does not load: %v", err)
+	}
+	if len(got) != 2 || got[0].Name != "hot" || got[1].Kind != "restart_loop" || got[1].Count != 4 {
+		t.Fatalf("unexpected saved rules: %+v", got)
+	}
+	if got[0].For.D() != 3*time.Minute || got[0].Repeat.D() != time.Hour {
+		t.Fatalf("durations not persisted: %+v", got[0])
+	}
+
+	// GET /api/alerts/rules now reflects the newly saved rules immediately.
+	r := get(t, srv.URL+"/api/alerts/rules", true)
+	defer r.Body.Close()
+	var meta struct {
+		Rules []struct {
+			Name string `json:"name"`
+		} `json:"rules"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&meta); err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Rules) != 2 || meta.Rules[0].Name != "hot" {
+		t.Fatalf("API did not pick up saved rules: %+v", meta.Rules)
+	}
+
+	// Saving an invalid document is rejected and leaves the file untouched.
+	if code, _ := post("/api/alerts/rules", `{"rules":[{"name":"","kind":"deadman"}]}`); code != 400 {
+		t.Fatalf("save invalid: want 400, got %d", code)
+	}
+	if again, _ := alerts.Load(rulesPath); len(again) != 2 {
+		t.Fatalf("file changed after rejected save: %+v", again)
+	}
+}

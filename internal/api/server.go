@@ -70,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/alerts", s.alertsList)
 	mux.HandleFunc("GET /api/alerts/rules", s.alertsRules)
 	mux.HandleFunc("POST /api/alerts/test", s.alertsTest)
+	mux.HandleFunc("POST /api/alerts/rules", s.alertsRulesSave)
+	mux.HandleFunc("POST /api/alerts/rules/validate", s.alertsRulesValidate)
 	mux.HandleFunc("GET /api/deploys", s.deploysList)
 	mux.HandleFunc("POST /api/deploys", s.deploysCreate)
 	sub, _ := fs.Sub(web.FS, "static")
