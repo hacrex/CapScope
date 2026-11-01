@@ -317,7 +317,9 @@ type LogQuery struct {
 	Regex                     *regexp.Regexp // when set, Q is ignored and matching happens in Go
 	SinceMs, UntilMs          int64
 	AfterID, BeforeID         int64
-	Limit                     int
+	// Asc orders results by id ascending (used for "context after this line").
+	Asc   bool
+	Limit int
 }
 
 const maxRegexScan = 200000
@@ -434,7 +436,7 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	}
 	where, args := q.where()
 	order := "DESC"
-	if q.AfterID > 0 {
+	if q.AfterID > 0 || q.Asc {
 		order = "ASC"
 	}
 	query := "SELECT id, ts, container_id, container, app, stream, level, line FROM logs" + where + " ORDER BY id " + order
@@ -700,17 +702,45 @@ func scanSnap(sc interface{ Scan(...any) error }, extra ...any) (Snapshot, error
 
 // ListSnapshots returns light rows (no logs or metrics), newest first.
 func (s *Store) ListSnapshots(ctx context.Context, app string, limit int) ([]Snapshot, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 100
+	return s.listSnapshots(ctx, app, 0, limit)
+}
+
+// SnapshotsSince is like ListSnapshots but bounded to ts >= sinceMs, which lets
+// the dashboard aggregate a 24h window without scanning the whole table.
+func (s *Store) SnapshotsSince(ctx context.Context, sinceMs int64) ([]Snapshot, error) {
+	return s.listSnapshots(ctx, "", sinceMs, 0)
+}
+
+func (s *Store) listSnapshots(ctx context.Context, app string, sinceMs int64, limit int) ([]Snapshot, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > 500 {
+		limit = 500
 	}
 	q := `SELECT ` + snapCols + ` FROM snapshots`
+	var where []string
 	var args []any
 	if app != "" {
-		q += ` WHERE app = ?`
+		where = append(where, `app = ?`)
 		args = append(args, app)
 	}
-	q += ` ORDER BY ts DESC LIMIT ?`
-	args = append(args, limit)
+	if sinceMs > 0 {
+		where = append(where, `ts >= ?`)
+		args = append(args, sinceMs)
+	}
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, ` AND `)
+	}
+	if limit == 0 && sinceMs == 0 {
+		limit = 100 // unbounded scans still need a cap
+	}
+	if limit > 0 {
+		q += ` ORDER BY ts DESC LIMIT ?`
+		args = append(args, limit)
+	} else {
+		q += ` ORDER BY ts DESC`
+	}
 	rows, err := s.r.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err

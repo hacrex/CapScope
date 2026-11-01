@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"capscope/internal/alerts"
@@ -25,6 +26,49 @@ import (
 	"capscope/internal/web"
 )
 
+// dashTTL is how long an assembled /api/dashboard payload stays fresh. The UI
+// polls on its own cadence; this only prevents overlapping requests from each
+// re-running every aggregation query.
+const dashTTL = 15 * time.Second
+
+// dashCache is a tiny single-entry TTL cache for the dashboard payload, with a
+// generation counter so data written after an assembly started cannot be
+// cached stale (self-healing: a miss simply rebuilds).
+type dashCache struct {
+	mu     sync.Mutex
+	value  map[string]any
+	expiry time.Time
+	gen    int64
+}
+
+func (c *dashCache) begin() (int64, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.value != nil && time.Now().Before(c.expiry) {
+		return 0, true // fresh hit; caller serves c.value via get()
+	}
+	c.gen++
+	return c.gen, false
+}
+
+func (c *dashCache) get() (map[string]any, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.value != nil && time.Now().Before(c.expiry) {
+		return c.value, true
+	}
+	return nil, false
+}
+
+func (c *dashCache) store(gen int64, v map[string]any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if gen == c.gen { // no newer assembly superseded this one
+		c.value = v
+		c.expiry = time.Now().Add(dashTTL)
+	}
+}
+
 type Server struct {
 	cfg      config.Config
 	st       *store.Store
@@ -33,6 +77,7 @@ type Server struct {
 	log      *slog.Logger
 	eng      *alerts.Engine       // nil when alerting is disabled
 	sessions *auth.SessionManager // session manager (nil when auth is off)
+	dash     dashCache            // short-lived /api/dashboard payload cache
 }
 
 // WithAlerts attaches the alert engine so /api/alerts works.
@@ -232,6 +277,7 @@ func parseLogQuery(r *http.Request) (store.LogQuery, error) {
 	q.UntilMs, _ = strconv.ParseInt(v.Get("until"), 10, 64)
 	q.AfterID, _ = strconv.ParseInt(v.Get("after_id"), 10, 64)
 	q.BeforeID, _ = strconv.ParseInt(v.Get("before_id"), 10, 64)
+	q.Asc = v.Get("asc") == "1"
 	q.Limit, _ = strconv.Atoi(v.Get("limit"))
 	if q.Limit <= 0 || q.Limit > 5000 {
 		q.Limit = 500 // mirror store.QueryLogs so paging math is exact here too
