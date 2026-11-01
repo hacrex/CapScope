@@ -151,7 +151,16 @@ func (e *Engine) Evaluate(ctx context.Context) []store.Alert {
 			}
 			a.ID = id
 			fired = append(fired, a)
-			e.notify(ctx, a)
+			status := e.notify(ctx, a)
+			a.Delivery = status
+			for i := range fired {
+				if fired[i].ID == id {
+					fired[i].Delivery = status
+				}
+			}
+			if err := e.st.SetAlertDelivery(id, status); err != nil {
+				e.log.Error("alerts: cannot record delivery status", "rule", r.Name, "app", app, "err", err)
+			}
 		}
 	}
 	return fired
@@ -286,18 +295,29 @@ func expandApps(want, known []string) []string {
 	return known
 }
 
-// notify sends the alert to every channel; one bad channel never blocks the rest.
-func (e *Engine) notify(ctx context.Context, a store.Alert) {
+// notify sends the alert to every configured channel and returns the
+// delivery status recorded in history: "sent" when at least one channel
+// accepted the message, "failed" when all attempted channels errored, or
+// "" when no channels are configured (nothing was attempted).
+func (e *Engine) notify(ctx context.Context, a store.Alert) string {
 	if len(e.chans) == 0 {
-		return
+		return ""
 	}
 	msg := fmt.Sprintf("CapScope alert [%s] %s", a.Rule, a.Message)
+	ok, attempted := false, 0
 	for _, c := range e.chans {
 		cctx, cancel := context.WithTimeout(ctx, notifyTimeout)
 		err := c.Send(cctx, msg)
 		cancel()
+		attempted++
 		if err != nil {
 			e.log.Error("alerts: channel failed", "channel", c.Name, "rule", a.Rule, "err", err)
+		} else {
+			ok = true
 		}
 	}
+	if attempted > 0 && !ok {
+		return "failed"
+	}
+	return "sent"
 }

@@ -198,3 +198,27 @@ func TestMetricSamples(t *testing.T) {
 		t.Errorf("nosuch samples = %d", len(got))
 	}
 }
+
+func TestSetAlertDelivery(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	id, err := s.InsertAlert(Alert{TS: time.Now().UnixMilli(), Rule: "r1", App: "blog", Kind: "deadman", Message: "quiet"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.ListAlerts(ctx, "", 10)
+	if len(list) != 1 || list[0].Delivery != "" {
+		t.Fatalf("fresh alert delivery = %q, want empty", list[0].Delivery)
+	}
+	if err := s.SetAlertDelivery(id, "sent"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.ListAlerts(ctx, "", 10)
+	if list[0].Delivery != "sent" {
+		t.Fatalf("delivery = %q, want sent", list[0].Delivery)
+	}
+	// unknown id must be a silent no-op
+	if err := s.SetAlertDelivery(999999, "failed"); err != nil {
+		t.Fatalf("unknown id: %v", err)
+	}
+}

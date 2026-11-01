@@ -131,11 +131,31 @@ Snapshot fields of note: `die_ts` is the death time taken from the Docker event 
 
 Alerting evaluates the rules in `ALERTS_FILE` every `ALERTS_INTERVAL` (default `1m`) and records every firing; the most recent firing per rule and app is also the silence window that prevents re-notifying on every tick. A `repeat` on the rule (default `30m`) sets that silence.
 
-`GET /api/alerts?app=shop&limit=100` returns the firing history, newest first. Each row is `{id, ts, rule, app, kind, message}`; `ts` is unix milliseconds and `kind` is the rule kind (`deadman`, `restart_loop`, `metric`, `log_pattern`).
+`GET /api/alerts?app=shop&limit=100` returns the firing history, newest first. Each row is `{id, ts, rule, app, kind, message, delivery}`; `ts` is unix milliseconds, `kind` is the rule kind (`deadman`, `restart_loop`, `metric`, `log_pattern`), and `delivery` (v0.7) is the notify outcome recorded after the alert fired: `"sent"` when at least one channel accepted the message, `"failed"` when every attempted channel errored, or `""` when no channels are configured (nothing was attempted).
 
 `GET /api/alerts/rules` returns the armed configuration without secrets: `{rules: [{name, kind, apps, for, count, window, metric, op, value, pattern, hits, repeat}], channels: ["webhook", ...], enabled}`. `enabled` is `false` when no rules file exists.
 
+`POST /api/alerts/rules/validate` (v0.7) accepts a full rules payload `{"rules":[...]}` and returns `200 {"ok":true}` or `400 {"errors":["rule 0 (name): field: reason", ...]}` without touching the rules file. The rule-builder modal calls it live as you edit.
+
+`POST /api/alerts/rules` (v0.7) atomically writes the rules payload to `ALERTS_FILE` and hot-reloads the engine. Same body as validate; rejects invalid payloads with `400` and leaves the previous file intact.
+
 `POST /api/alerts/test` sends a test message through every configured channel and returns `{results: {webhook: "sent" | "failed: ...", ...}}`. Use it to verify a webhook before an incident. It returns `400` when no channels are configured or alerting is off.
+
+## Dashboard & crash loops (v0.7)
+
+`GET /api/crashloops` returns containers exiting repeatedly inside a short window: `{loops: [{app, service, container, count, last_exit}]}`, newest-last first. The Dashboard badge strip and the Crashes timeline LOOP chips read from it.
+
+The Dashboard view itself is assembled client-side from `/api/apps`, `/api/containers`, `/api/crashloops`, `/api/snapshots` and `/api/deploys`; heavy joins are cached server-side for 15 s and invalidated automatically when the collector restarts.
+
+## Prometheus export (v0.7)
+
+`GET /metrics` serves Prometheus text format (unauthenticated by design so scrapers don't need the session cookie — put it behind your reverse proxy if exposed):
+
+- `capscope_containers_total`, `capscope_containers_running{app=...}`
+- `capscope_restarts_24h{app=...}`, `capscope_crashloops{app=...,service=...}`
+- `capscope_container_cpu_percent{container=...,app=...}`, `capscope_container_memory_bytes{...}`
+- `capscope_db_size_bytes`, `capscope_logs_total`, `capscope_snapshots_total`
+- `capscope_http_requests_total{path=...,status=...}`, `capscope_alerts_fired_total{rule=...}`
 
 ## Deploys
 

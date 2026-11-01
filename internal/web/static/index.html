@@ -186,8 +186,9 @@ h2{font-weight:600;letter-spacing:-.02em}
   <aside><h2>Apps</h2><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
-      <button data-t="logs" class="sel">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
+      <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
     </nav>
+    <div id="view-dashboard" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
       <button class="b" id="jumpLive" title="Jump to live logs">↓ New logs</button>
       <div class="bar">
@@ -256,7 +257,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'logs',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sessionExpires:0};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -382,6 +383,7 @@ function selectApp(n){
   document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===n));
   document.querySelectorAll('.cont').forEach(e=>e.classList.remove('sel'));
   fillReplicas();fillMetricsContainers();
+  syncURL();
   show();
   updateContainerStat();
 }
@@ -441,16 +443,40 @@ function fillReplicas(){
 $('#replicas').onclick=e=>{e.stopPropagation();const p=$('#repPop');p.style.display=p.style.display==='none'?'':'none';};
 document.addEventListener('click',e=>{if(!e.target.closest('#replicas')&&!e.target.closest('#repPop'))$('#repPop').style.display='none';});
 
-/* ---------- tabs ---------- */
-$('#tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;S.tab=t;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));show();};
-$('#crashchip').onclick=()=>{S.tab='crashes';document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t==='crashes'));show();};
+/* ---------- tabs (v0.7: tab/app/range mirrored into the URL for permalinks) ---------- */
+const TABS=['dashboard','logs','metrics','access','crashes','alerts'];
+function setTab(t){
+  if(!TABS.includes(t))t='logs';
+  S.tab=t;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));
+  syncURL();
+  show();
+}
+$('#tabs').onclick=e=>{const t=e.target.dataset.t;if(t)setTab(t);};
+$('#crashchip').onclick=()=>setTab('crashes');
+function syncURL(){
+  const p=new URLSearchParams();
+  if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
+  if(S.app)p.set('app',S.app); // empty string = All apps → omit
+  if(S.range&&S.range!=='1h')p.set('range',S.range);
+  const qs=p.toString();
+  history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+}
+addEventListener('popstate',()=>{const q=new URLSearchParams(location.search);applyURL(q);});
+function applyURL(q){
+  const t=q.get('tab');if(t&&TABS.includes(t)){S.tab=t;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));}
+  const a=q.get('app');if(a!==null&&a!==S.app){S.app=a;document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===a));fillReplicas();fillMetricsContainers();updateContainerStat();}
+  const r=q.get('range');if(r&&(RANGE_MS[r]||r==='5m')){S.range=r;setRangeChip();}
+}
 function show(){
+  $('#view-dashboard').style.display=S.tab==='dashboard'?'block':'none';
   $('#view-logs').style.display=S.tab==='logs'?'flex':'none';
   $('#view-metrics').style.display=S.tab==='metrics'?'flex':'none';
   $('#view-access').style.display=S.tab==='access'?'flex':'none';
   $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
   $('#view-alerts').style.display=S.tab==='alerts'?'block':'none';
   if(S.tab==='logs')restartLogs();else stopStreams();
+  if(S.tab==='dashboard')loadDashboard();
   if(S.tab==='metrics')loadMetrics();
   if(S.tab==='access')loadAccess();
   if(S.tab==='crashes')loadCrashes();
@@ -701,7 +727,7 @@ $('#pause').onclick=()=>{const np=!S.panes.some(p=>p.paused);for(const p of S.pa
 function setRangeChip(){document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
 function setStatusChip(){document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.classList.toggle('on',b.dataset.status===S.accStatus));}
 setRangeChip();setStatusChip();
-document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();restartLogs();});
+document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();syncURL();restartLogs();});
 document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.onclick=()=>{S.accStatus=b.dataset.status;setStatusChip();loadAccess();});
 $('#jsonBtn').onclick=()=>{S.jsonPretty=!S.jsonPretty;$('#jsonBtn').classList.toggle('on',S.jsonPretty);restartLogs();};
 $('#older').onclick=()=>{for(const p of S.panes)loadOlder(p);};
@@ -1018,6 +1044,9 @@ function insertLiveDeployMarkers(created){
 
 /* ---------- crashes ---------- */
 async function loadCrashes(){
+  // incident permalink: #crash=<id> opens that snapshot directly
+  const m=location.hash.match(/^#crash=(\d+)$/);
+  if(m){await openCrash(m[1]);return;}
   const box=$('#view-crashes');box.innerHTML='';
   const only=S.crashOnlyApp&&S.app;
   const d=await api('/api/snapshots?limit=100'+(only?'&app='+encodeURIComponent(S.app):''));
@@ -1039,8 +1068,12 @@ async function loadCrashes(){
 }
 async function openCrash(id){
   const s=await api('/api/snapshots/'+id);const box=$('#view-crashes');box.innerHTML='';
-  const back=document.createElement('button');back.className='b';back.textContent='Back to list';back.onclick=loadCrashes;
+  const back=document.createElement('button');back.className='b';back.textContent='Back to list';back.onclick=()=>{location.hash='';loadCrashes();};
   const dl=document.createElement('a');dl.href='/api/snapshots/'+id+'/export';dl.textContent='Download as Markdown';dl.style.marginLeft='12px';
+  // v0.7: shareable incident permalink + copy-link
+  const link=document.createElement('a');link.href='#crash='+s.id;link.textContent='Permalink';link.style.marginLeft='12px';
+  const cp=document.createElement('button');cp.className='b';cp.textContent='Copy link';cp.style.marginLeft='8px';
+  cp.onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+location.pathname+'#crash='+s.id);cp.textContent='Copied ✓';setTimeout(()=>cp.textContent='Copy link',1500);}catch(e){prompt('Copy this incident link:',location.origin+location.pathname+'#crash='+s.id);}};
   const h=document.createElement('h2');h.textContent=`${s.app}: ${s.kind.replace('_',' ')} (exit ${s.exit_code})`;
   const sum=document.createElement('div');sum.className='sum';sum.textContent=s.summary;
   const kv=document.createElement('div');kv.className='kv';
@@ -1057,7 +1090,7 @@ async function openCrash(id){
   const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
   const pre=document.createElement('pre');pre.className='logbox';
   pre.textContent=s.logs.map(l=>`${fmtTime(l.ts)} ${l.stream==='e'?'err':'out'} ${l.line}`).join('\n');
-  box.append(back,dl,h,sum,kv,card,lh,pre);pre.scrollTop=pre.scrollHeight;
+  box.append(back,dl,link,cp,h,sum,kv,card,lh,pre);pre.scrollTop=pre.scrollHeight;
   draw($('#cs'),s.metrics,'mem',v=>mib(v),'mem_limit');
 }
 async function loadCrashCounts(){
@@ -1079,6 +1112,95 @@ function sessionWarning(){
     if(!el){el=document.createElement('div');el.id='sessionWarn';el.className='callout warn';el.style.margin='8px 16px';el.style.fontSize='12px';document.querySelector('#view-logs .bar').parentElement.insertBefore(el,document.querySelector('#view-logs .bar'));const btn=document.createElement('button');btn.className='b';btn.style.fontSize='11px';btn.style.marginLeft='8px';btn.textContent='Log in again';btn.onclick=showLogin;el.append(btn);}
     el.textContent='Session expires in '+mins+' min — ';
   }else if(el){el.remove();el=null;}
+}
+
+/* ---------- global dashboard (v0.7) ---------- */
+let dashTimer=0;
+async function loadDashboard(){
+  clearTimeout(dashTimer);
+  const box=$('#view-dashboard');
+  if(S.tab!=='dashboard')return;
+  box.innerHTML='<div class="empty">Loading dashboard…</div>';
+  let d;
+  try{d=await api('/api/dashboard');}
+  catch(e){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);return;}
+  box.innerHTML='';
+  const st=d.stats||{},apps=d.apps||[];
+  // stat row
+  const row=document.createElement('div');row.className='grid';row.style.gridTemplateColumns='repeat(auto-fit,minmax(160px,1fr))';row.style.marginBottom='16px';
+  const gb=(v,lbl,title)=>{const c=document.createElement('div');c.className='card';c.title=title||'';
+    const b=document.createElement('div');b.style.fontSize='26px';b.style.fontWeight='700';b.textContent=v;
+    const l=document.createElement('div');l.className='chip';l.style.marginTop='6px';l.textContent=lbl;
+    c.append(b,l);return c;};
+  row.append(
+    gb(st.containers+' running','containers','Live containers reported by Docker'),
+    gb(String(st.restarts_24h||0),'restarts / 24h','Crash snapshots recorded in the last 24 hours'),
+    gb(String(st.crash_loops||0),'crash loops','Apps with ≥3 deaths inside a restart-loop window'),
+    gb(mib(st.db_bytes||0),'db size','SQLite storage in use'),
+  );
+  box.append(row);
+  // per-app health cards
+  const grid=document.createElement('div');grid.className='grid';
+  for(const a of apps){
+    const c=document.createElement('div');c.className='card';
+    const h=document.createElement('h3');
+    h.textContent=a.app;
+    if(a.crash_loop){const badge=document.createElement('span');badge.className='k loop';badge.textContent='↻ crash loop';badge.style.marginLeft='8px';h.append(badge);}
+    const hdr=document.createElement('div');hdr.style.display='flex';hdr.style.justifyContent='space-between';hdr.style.alignItems='center';
+    const open=document.createElement('button');open.className='b';open.style.fontSize='11px';open.textContent='Open logs →';
+    open.onclick=()=>{selectApp(a.app);setTab('logs');};
+    hdr.append(h,open);
+    const meta=document.createElement('div');meta.className='chip';meta.style.margin='4px 0 8px';
+    meta.textContent=`${a.running}/${a.containers} running · ${a.errors_1h} err/h · ${a.warns_1h} warn/h · ${a.restarts_24h} restarts/24h`;
+    const cv=document.createElement('canvas');cv.style.height='90px';c.append(hdr,meta,cv);
+    drawSpark(cv,a.spark||[]);
+    if(a.last_crash){
+      const lc=document.createElement('div');lc.style.fontSize='12px';lc.style.color='var(--muted)';lc.style.marginTop='6px';lc.style.cursor='pointer';
+      lc.textContent='Last crash: '+ago(a.last_crash)+' — view incident';
+      lc.onclick=()=>{S.crashOnlyApp=true;setTab('crashes');};
+      c.append(lc);
+    }
+    grid.append(c);
+  }
+  if(!apps.length){const e=document.createElement('div');e.className='empty';e.textContent='No apps yet. CapScope needs at least one container it can see.';grid.append(e);}
+  box.append(grid);
+  // recent crashes strip
+  const snaps=await loadCrashes('24h').catch(()=>[]);
+  if(snaps.length){
+    const strip=document.createElement('div');strip.className='card';strip.style.marginTop='16px';
+    const t=document.createElement('h3');t.textContent='Recent crashes (24h) — click to deep-link';strip.append(t);
+    const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.marginTop='8px';
+    snaps.slice().reverse().slice(0,15).forEach(s=>{
+      const chip=document.createElement('span');chip.className='k '+s.kind;chip.style.cursor='pointer';
+      chip.textContent=`${s.app} · ${s.kind.replace('_',' ')} · exit ${s.exit_code}${s.restarts_window>=2?' ↻'+s.restarts_window:''}`;
+      chip.title=fmtDT(s.ts)+' — open incident permalink';
+      chip.onclick=()=>{location.hash='crash='+s.id;setTab('crashes');};
+      line.append(chip);
+    });
+    strip.append(line);box.append(strip);
+  }
+  // auto-refresh while visible
+  dashTimer=setTimeout(()=>{if(S.tab==='dashboard')loadDashboard();},15000);
+}
+function drawSpark(canvas,pts){
+  const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
+  canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
+  const css=getComputedStyle(document.documentElement());const col=n=>css.getPropertyValue(n).trim();
+  g.clearRect(0,0,w,h);
+  if(pts.length<2){g.fillStyle=col('--muted');g.font='11px system-ui';g.fillText('no metric samples yet',6,h/2);return;}
+  const L=4,R=4,T=6,B=6,x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1;
+  const max=Math.max(...pts.map(p=>p.mem),1);
+  const X=t=>L+(t-x0)/(x1-x0||1)*(w-L-R),Y=v=>T+(1-v/max)*(h-T-B);
+  // memory area
+  g.beginPath();g.moveTo(X(pts[0].ts),h-B);
+  pts.forEach(p=>g.lineTo(X(p.ts),Y(p.mem)));
+  g.lineTo(X(x1),h-B);g.closePath();
+  g.fillStyle=col('--accent')+'33';g.fill();
+  g.beginPath();pts.forEach((p,i)=>i?g.lineTo(X(p.ts),Y(p.mem)):g.moveTo(X(p.ts),Y(p.mem)));
+  g.strokeStyle=col('--accent');g.lineWidth=1.5;g.stroke();
+  // cpu line (scaled 0..100 → same box)
+  g.beginPath();pts.forEach((p,i)=>i?g.lineTo(X(p.ts),Y(p.cpu/100*max)):g.moveTo(X(p.ts),Y(p.cpu/100*max)));
+  g.strokeStyle=col('--ok');g.lineWidth=1;g.setLineDash([3,3]);g.stroke();g.setLineDash([]);
 }
 
 /* ---------- alerts ---------- */
@@ -1153,11 +1275,18 @@ async function loadAlerts(){
   if(!hist.alerts.length){
     const p=document.createElement('div');p.className='empty';p.textContent='No alerts have fired yet.';ac.append(p);
   }else{
-    const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>Rule</th><th>App</th><th>Kind</th><th>Message</th></tr>';
+    const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>Rule</th><th>App</th><th>Kind</th><th>Message</th><th>Delivery</th></tr>';
     hist.alerts.forEach(a=>{
       const tr=document.createElement('tr');
       const cells=[fmtDT(a.ts)+' ('+ago(a.ts)+')',a.rule,a.app,ALERT_KIND[a.kind]||a.kind,a.message];
       cells.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      // v0.7: delivery status recorded by the alert engine after notify().
+      const dTd=document.createElement('td');
+      const dmap={sent:['✓ sent','var(--ok)'],failed:['✗ failed','var(--err)']};
+      const dv=dmap[a.delivery];
+      if(dv){dTd.textContent=dv[0];dTd.style.color=dv[1];dTd.style.fontWeight='600';dTd.title=a.delivery==='sent'?'At least one channel accepted the message':'All channels errored — nobody was notified';}
+      else{dTd.textContent='—';dTd.style.color='var(--muted)';dTd.title='No notification channels configured for this firing (or recorded before v0.7)';}
+      tr.append(dTd);
       tb.append(tr);
     });
     ac.append(tb);
@@ -1291,6 +1420,9 @@ addEventListener('DOMContentLoaded',()=>{
     location.reload();
   };
   (async()=>{
+    const q=new URLSearchParams(location.search);
+    if(q.get('app')!==null)S.app=q.get('app'); // honour permalinks before first paint
+    applyURL(q);
     const s=await checkSession();
     if(s.ok){
       S.sessionExpires=s.expiresAt;
@@ -1301,10 +1433,12 @@ addEventListener('DOMContentLoaded',()=>{
       setInterval(refreshApps,10000);setInterval(crashChip,60000);
       if(s.authEnabled)setInterval(sessionWarning,60000);
       if(s.authEnabled)sessionWarning();
+      show(); // dashboard is the default landing view; logs tab needs no restore
     }else{
       showLogin();
     }
   })();
+  addEventListener('hashchange',()=>{if(S.tab==='crashes')loadCrashes();});
   document.addEventListener('keydown',e=>{
     if(e.key==='/'&&!e.target.matches('input,textarea,select,button,[contenteditable]')){
       e.preventDefault();$('#q').focus();
