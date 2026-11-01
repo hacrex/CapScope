@@ -313,6 +313,85 @@ $('#themeBtn').onclick=()=>{
   applyTheme(S.theme);
 };
 
+/* ---------- ⌘K command palette ---------- */
+/* Fuzzy-ish subsequence matcher: every query char must appear in order. */
+function fuzzyMatch(text,q){
+  const t=text.toLowerCase(),s=q.toLowerCase();
+  if(!s)return 0;
+  let i=0,score=0,prev=-1;
+  for(let j=0;j<t.length&&i<s.length;j++){
+    if(t[j]===s[i]){score+=(j===prev+1?2:1);if(j===i)score+=3;prev=j;i++;}
+  }
+  return i===s.length?score:-1;
+}
+let paletteOpen=false,paletteSel=0,paletteItems=[];
+/* TABS/RANGE_MS are declared later in the script; paletteActions() runs only on
+   keypress (after full parse), so referencing them lazily is safe. */
+function paletteActions(){
+  const acts=[
+    ...TABS.map(t=>({grp:'Tabs',label:'Go to '+t.charAt(0).toUpperCase()+t.slice(1),run:()=>setTab(t)})),
+    ...Object.keys(RANGE_MS).map(r=>({grp:'Range',label:'Time range: '+r,run:()=>{S.range=r;setRangeChip();syncURL();show();}})),
+    {grp:'View',label:'Toggle wrap lines',run:()=>{$('#wrap')?.click();}},
+    {grp:'View',label:(S.theme==='dark'?'Switch to light theme':'Switch to dark theme'),run:()=>{S.theme=S.theme==='dark'?'light':'dark';localStorage.setItem('theme',S.theme);applyTheme(S.theme);toast('Theme: '+THEME_LABEL[S.theme]);}},
+    {grp:'Alerts',label:'New alert rule',run:()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}},
+  ];
+  for(const a of S.apps)acts.push({grp:'Apps',label:'Open app: '+a.app,run:()=>selectApp(a.app)});
+  return acts;
+}
+function renderPalette(){
+  const q=$('#paletteInput').value.trim();
+  const scored=paletteActions()
+    .map(a=>({a,score:fuzzyMatch(a.label,q)}))
+    .filter(x=>x.score>=0)
+    .sort((x,y)=>y.score-x.score)
+    .slice(0,40)
+    .map(x=>x.a);
+  paletteItems=scored;paletteSel=0;
+  const list=$('#paletteList');list.innerHTML='';
+  if(!scored.length){const e=document.createElement('div');e.className='empty';e.style.padding='16px';e.textContent='No matches';list.append(e);return;}
+  scored.forEach((a,i)=>{
+    const it=document.createElement('div');it.className='pitem'+(i===0?' sel':'');
+    const d=document.createElement('span');d.className='dot';d.style.background=a.grp==='Apps'?'var(--accent)':a.grp==='Tabs'?'var(--ok)':'var(--muted)';
+    const l=document.createElement('span');l.textContent=a.label;
+    const g=document.createElement('span');g.className='grp';g.textContent=a.grp;
+    it.append(d,l,g);
+    it.onmouseenter=()=>{paletteSel=i;highlightPalette();};
+    it.onclick=()=>runPalette();
+    list.append(it);
+  });
+}
+function highlightPalette(){
+  document.querySelectorAll('#paletteList .pitem').forEach((el,i)=>el.classList.toggle('sel',i===paletteSel));
+  const selEl=document.querySelector('#paletteList .pitem.sel');
+  if(selEl)selEl.scrollIntoView({block:'nearest'});
+}
+function runPalette(){
+  const a=paletteItems[paletteSel];
+  closePalette();
+  if(a)try{a.run();}catch(e){console.warn('palette action failed',e);}
+}
+function openPalette(){
+  paletteOpen=true;
+  $('#paletteOverlay').style.display='flex';
+  $('#paletteInput').value='';
+  renderPalette();
+  $('#paletteInput').focus();
+}
+function closePalette(){paletteOpen=false;$('#paletteOverlay').style.display='none';}
+$('#paletteInput').oninput=renderPalette;
+$('#paletteInput').onkeydown=e=>{
+  if(e.key==='ArrowDown'){e.preventDefault();paletteSel=Math.min(paletteSel+1,paletteItems.length-1);highlightPalette();}
+  else if(e.key==='ArrowUp'){e.preventDefault();paletteSel=Math.max(paletteSel-1,0);highlightPalette();}
+  else if(e.key==='Enter'){e.preventDefault();runPalette();}
+};
+$('#paletteOverlay').onclick=e=>{if(e.target.id==='paletteOverlay')closePalette();};
+$('#paletteBtn').onclick=openPalette;
+addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();paletteOpen?closePalette():openPalette();return;}
+  if(!paletteOpen)return;
+  if(e.key==='Escape'){e.preventDefault();closePalette();}
+});
+
 async function api(path,init){
   const opts=Object.assign({cache:'no-store'},init||{});
   const h=new Headers(opts.headers||{});
@@ -351,6 +430,15 @@ function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ag
 /* Surface a transient failure on the connection chip; refreshApps restores the real state. */
 let badT;
 function connBad(msg){const c=$('#conn');c.textContent=msg;c.className='chip bad';clearTimeout(badT);badT=setTimeout(refreshApps,4000);}
+/* ---------- toasts ---------- */
+/* Non-blocking feedback for saves/records; replaces inline status text on success. */
+function toast(msg,kind){
+  const box=$('#toasts');if(!box)return;
+  const t=document.createElement('div');t.className='toast'+(kind?' '+kind:'');t.textContent=msg;
+  box.append(t);
+  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),350);},4000);
+}
+
 /* Keep the Logs-tab CSV download in step with the current filters. */
 function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);}
 function escCsv(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
@@ -1068,10 +1156,11 @@ async function recordDeploy(){
   if(version===null)return;
   try{
     const created=await api('/api/deploys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:S.app,version:version.trim()})});
+    toast('Deploy "'+created.version+'" recorded for '+S.app,'ok');
     if(S.tab==='metrics')loadMetrics();
     if(S.tab==='logs')insertLiveDeployMarkers(created);
     if(S.tab==='crashes')loadCrashes();
-  }catch(e){alert('Record failed: '+(e.message||e));}
+  }catch(e){toast('Deploy record failed: '+(e.message||e),'err');}
 }
 /* Append a freshly recorded deploy as a marker row to the visible log pane. */
 function insertLiveDeployMarkers(created){
@@ -1159,10 +1248,14 @@ async function loadDashboard(){
   clearTimeout(dashTimer);
   const box=$('#view-dashboard');
   if(S.tab!=='dashboard')return;
-  box.innerHTML='<div class="empty">Loading dashboard…</div>';
+  // First paint: shimmer skeleton. Background refreshes (15s poll) keep the
+  // existing content on screen and swap it in atomically when data arrives,
+  // so re-renders never flash "Loading…".
+  const hasContent=box.childElementCount>0&&!box.firstElementChild?.classList.contains('sk-row');
+  if(!hasContent)box.innerHTML='<div class="sk-row"><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div></div><div class="sk-grid"><div class="sk sk-tile"></div><div class="sk sk-tile"></div><div class="sk sk-tile"></div></div>';
   let d;
   try{d=await api('/api/dashboard');}
-  catch(e){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);return;}
+  catch(e){if(!hasContent){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);}return;}
   box.innerHTML='';
   const st=d.stats||{},apps=d.apps||[];
   // stat row
@@ -1222,6 +1315,7 @@ async function loadDashboard(){
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard')loadDashboard();},15000);
 }
 function drawSpark(canvas,pts){
+  if(!canvas||!canvas.getContext)return; // guard: canvas detached mid-render
   const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
   canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
   const css=getComputedStyle(document.documentElement());const col=n=>css.getPropertyValue(n).trim();
@@ -1402,12 +1496,13 @@ function openRuleBuilder(meta,hist,onSaved,editIdx){
     const doc={rules:next.map(formToRule)};
     try{
       await api('/api/alerts/rules',{method:'POST',body:JSON.stringify(doc)});
+      toast('Alert rules saved — engine hot-reloaded','ok');
       overlay.remove();onSaved&&onSaved();
     }catch(e){status.textContent='✗ save failed: '+(e.message||e);status.style.color='#d33';}
   };
   const delBtn=idx<rules.length?mk('button',{className:'b',textContent:'Delete',style:'color:#d33',onclick:async()=>{
     const next=rules.filter((_,i)=>i!==idx);
-    try{await api('/api/alerts/rules',{method:'POST',body:JSON.stringify({rules:next.map(formToRule)})});overlay.remove();onSaved&&onSaved();}
+    try{await api('/api/alerts/rules',{method:'POST',body:JSON.stringify({rules:next.map(formToRule)})});toast('Rule deleted','ok');overlay.remove();onSaved&&onSaved();}
     catch(e){status.textContent='✗ delete failed: '+(e.message||e);status.style.color='#d33';}
   }}):null;
   const cancel=mk('button',{className:'b',textContent:'Cancel',onclick:()=>overlay.remove()});
