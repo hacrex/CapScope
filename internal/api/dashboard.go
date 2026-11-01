@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"capscope/internal/store"
@@ -51,6 +52,17 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
+	// The whole payload is assembled in parallel and cached briefly: the first
+	// paint on a big database used to serialize dozens of sparkline queries and
+	// made the dashboard take many seconds to appear.
+	gen, fresh := s.dash.begin()
+	if fresh {
+		if v, ok := s.dash.get(); ok {
+			writeJSON(w, v)
+			return
+		}
+	}
+
 	summaries, err := s.st.AppSummaries(ctx)
 	if err != nil {
 		fail(w, 500, err)
@@ -59,20 +71,23 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	since24 := time.Now().Add(-24 * time.Hour).UnixMilli()
 
-	// Deaths per app over 24h, plus the crash-loop set, come from snapshots.
-	snaps, err := s.st.ListSnapshots(ctx, "", 0)
+	// Deaths per app over 24h, plus the crash-loop set, come from snapshots —
+	// bounded by ts so we never scan the full table here.
+	snaps, err := s.st.SnapshotsSince(ctx, since24)
 	if err != nil {
 		fail(w, 500, err)
 		return
 	}
 	deathsByApp := map[string]int64{}
 	loopApps := map[string]bool{}
+	lastCrash := map[string]int64{} // snaps are newest-first: first hit wins
 	var restarts24, snaps24 int64
 	for _, sn := range snaps {
-		if sn.TS >= since24 {
-			restarts24++
-			deathsByApp[sn.App]++
-			snaps24++
+		restarts24++
+		deathsByApp[sn.App]++
+		snaps24++
+		if _, seen := lastCrash[sn.App]; !seen {
+			lastCrash[sn.App] = sn.TS
 		}
 		if sn.RestartsWindow >= 3 {
 			loopApps[sn.App] = true
@@ -87,29 +102,48 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sparkSince := time.Now().Add(-time.Hour).UnixMilli()
+	type sparkResult struct {
+		idx int
+		pts []store.MetricPoint
+		err error
+	}
 	cards := make([]AppCard, 0, len(summaries))
-	for _, a := range summaries {
+	sparkCh := make(chan sparkResult, len(summaries))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4) // bound concurrent readers; SQLite handles them fine but keep it sane
+	for i, a := range summaries {
 		card := AppCard{
 			App: a.App, Containers: a.Containers, Running: runByApp[a.App],
 			Errors1h: a.Errors1h, Warns1h: a.Warns1h,
 			Restarts24: deathsByApp[a.App], CrashLoop: loopApps[a.App],
+			LastCrash: lastCrash[a.App],
 		}
-		for _, sn := range snaps { // ListSnapshots is newest-first
-			if sn.App == a.App {
-				card.LastCrash = sn.TS
-				break
-			}
-		}
-		pts, err := s.st.QueryMetrics(ctx, a.App, "", sparkSince, 0, 60_000)
-		if err != nil {
-			fail(w, 500, err)
-			return
-		}
-		if pts == nil {
-			pts = []store.MetricPoint{}
-		}
-		card.Spark = pts
 		cards = append(cards, card)
+		wg.Add(1)
+		go func(i int, app string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			pts, err := s.st.QueryMetrics(ctx, app, "", sparkSince, 0, 60_000)
+			sparkCh <- sparkResult{i, pts, err}
+		}(i, a.App)
+	}
+	wg.Wait()
+	close(sparkCh)
+	var sparkErr error
+	for res := range sparkCh {
+		if res.err != nil {
+			sparkErr = res.err
+			continue
+		}
+		if res.pts == nil {
+			res.pts = []store.MetricPoint{}
+		}
+		cards[res.idx].Spark = res.pts
+	}
+	if sparkErr != nil {
+		fail(w, 500, sparkErr)
+		return
 	}
 
 	dbBytes, _ := s.st.UsedBytes(ctx)
@@ -120,7 +154,9 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		DBBytes:      dbBytes,
 		Snapshots24h: snaps24,
 	}
-	writeJSON(w, map[string]any{"stats": stats, "apps": cards})
+	payload := map[string]any{"stats": stats, "apps": cards}
+	s.dash.store(gen, payload)
+	writeJSON(w, payload)
 }
 
 func (s *Server) crashLoops(w http.ResponseWriter, r *http.Request) {
