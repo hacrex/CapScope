@@ -326,6 +326,10 @@ $('#themeBtn').onclick=()=>{
 };
 
 /* ---------- ⌘K command palette ---------- */
+// v0.7 fix: TABS/RANGE_MS/selectApp are declared later (const TDZ / function
+// hoisting) — paletteActions() can run on Ctrl+K before the whole script has
+// executed. Guard with try/catch so opening the palette never throws.
+function safeAct(grp,label,run){return {grp,label,run:()=>{try{run();}catch(e){console.warn('palette action not ready:',e.message);}}};}
 /* Fuzzy-ish subsequence matcher: every query char must appear in order. */
 function fuzzyMatch(text,q){
   const t=text.toLowerCase(),s=q.toLowerCase();
@@ -341,15 +345,15 @@ let paletteOpen=false,paletteSel=0,paletteItems=[];
    keypress (after full parse), so referencing them lazily is safe. */
 function paletteActions(){
   const acts=[
-    ...TABS.map(t=>({grp:'Tabs',label:'Go to '+t.charAt(0).toUpperCase()+t.slice(1),run:()=>setTab(t)})),
-    ...Object.keys(RANGE_MS).map(r=>({grp:'Range',label:'Time range: '+r,run:()=>{S.range=r;setRangeChip();syncURL();show();}})),
-    {grp:'View',label:'Toggle wrap lines',run:()=>{$('#wrap')?.click();}},
-    {grp:'View',label:(S.theme==='dark'?'Switch to light theme':'Switch to dark theme'),run:()=>{S.theme=S.theme==='dark'?'light':'dark';localStorage.setItem('theme',S.theme);applyTheme(S.theme);toast('Theme: '+THEME_LABEL[S.theme]);}},
-    {grp:'View',label:'Collapse duplicate log lines: '+(S.collapseDupes?'on':'off'),run:()=>{S.collapseDupes=!S.collapseDupes;localStorage.setItem('collapseDupes',S.collapseDupes?'1':'0');toast('Pattern collapse '+(S.collapseDupes?'enabled':'disabled'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);}},
-    {grp:'View',label:'Toggle sidebar: '+(S.sideNarrow?'collapsed':'expanded'),run:()=>setSidebar(!S.sideNarrow)},
-    {grp:'Alerts',label:'New alert rule',run:()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}},
+    ...TABS.map(t=>safeAct('Tabs','Go to '+t.charAt(0).toUpperCase()+t.slice(1),()=>setTab(t))),
+    ...Object.keys(RANGE_MS).map(r=>safeAct('Range','Time range: '+r,()=>{S.range=r;setRangeChip();syncURL();show();})),
+    safeAct('View','Toggle wrap lines',()=>{$('#wrap')?.click();}),
+    safeAct('View',(S.theme==='dark'?'Switch to light theme':'Switch to dark theme'),()=>{S.theme=S.theme==='dark'?'light':'dark';localStorage.setItem('theme',S.theme);applyTheme(S.theme);toast('Theme: '+THEME_LABEL[S.theme]);}),
+    safeAct('View','Collapse duplicate log lines: '+(S.collapseDupes?'on':'off'),()=>{S.collapseDupes=!S.collapseDupes;localStorage.setItem('collapseDupes',S.collapseDupes?'1':'0');toast('Pattern collapse '+(S.collapseDupes?'enabled':'disabled'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);}),
+    safeAct('View','Toggle sidebar: '+(S.sideNarrow?'collapsed':'expanded'),()=>setSidebar(!S.sideNarrow)),
+    safeAct('Alerts','New alert rule',()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}),
   ];
-  for(const a of S.apps)acts.push({grp:'Apps',label:'Open app: '+a.app,run:()=>selectApp(a.app)});
+  for(const a of S.apps)acts.push(safeAct('Apps','Open app: '+a.app,()=>selectApp(a.app)));
   return acts;
 }
 function renderPalette(){
@@ -1446,7 +1450,7 @@ function drawSpark(canvas,pts){
   if(!canvas||!canvas.getContext)return; // guard: canvas detached mid-render
   const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
   canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
-  const css=getComputedStyle(document.documentElement());const col=n=>css.getPropertyValue(n).trim();
+  const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
   g.clearRect(0,0,w,h);
   if(pts.length<2){g.fillStyle=col('--muted');g.font='11px system-ui';g.fillText('no metric samples yet',6,h/2);return;}
   const L=4,R=4,T=6,B=6,x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1;
