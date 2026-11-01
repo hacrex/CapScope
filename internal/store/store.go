@@ -179,6 +179,18 @@ func migrate(db *sql.DB) error {
 		}
 		if _, err := tx.Exec(migrations[i]); err != nil {
 			tx.Rollback()
+			// Heal a half-applied upgrade: an earlier build may already have
+			// created this migration's objects (e.g. the deploys table) while
+			// user_version lagged behind — a crash between exec and commit, or
+			// an intermediate image that shipped the schema early. Instead of
+			// fatal-looping on "already exists", skip past the migration once
+			// we've confirmed its objects really are present.
+			if isDuplicateSchemaErr(err) && migrationObjectsExist(db, i) {
+				if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d", i+1)); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", i+1)); err != nil {
@@ -1323,4 +1335,83 @@ func (s *Store) DeployBefore(ctx context.Context, app string, beforeMs int64) (D
 		return Deploy{}, nil
 	}
 	return d, err
+}
+
+// isDuplicateSchemaErr reports whether err is SQLite complaining that an
+// object being created already exists ("table X already exists",
+// "index X already exists", or a duplicate ALTER TABLE column). migrate()
+// uses this to distinguish a half-applied upgrade from a real failure.
+func isDuplicateSchemaErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate column name")
+}
+
+// migrationObjectsExist verifies the schema objects a migration creates are
+// actually present in sqlite_master (and, for ALTER ADD COLUMN, on the live
+// table). Only used after isDuplicateSchemaErr, so it must answer strictly:
+// every object named by a CREATE statement in mig must exist; otherwise the
+// "already exists" error came from something unexpected and the migration
+// should still fail loudly.
+func migrationObjectsExist(db *sql.DB, i int) bool {
+	seen := 0
+	for _, line := range strings.Split(migrations[i], "\n") {
+		line = strings.TrimSpace(line)
+		upper := strings.ToUpper(line)
+		var kind, name string
+		switch {
+		case strings.HasPrefix(upper, "CREATE VIRTUAL TABLE"):
+			kind, name = "table", extractIdent(line[len("CREATE VIRTUAL TABLE"):])
+		case strings.HasPrefix(upper, "CREATE TABLE"):
+			kind, name = "table", extractIdent(line[len("CREATE TABLE"):])
+		case strings.HasPrefix(upper, "CREATE INDEX"), strings.HasPrefix(upper, "CREATE UNIQUE INDEX"):
+			kind, name = "index", extractIdent(strings.TrimPrefix(strings.TrimPrefix(line, "CREATE UNIQUE INDEX"), "CREATE INDEX"))
+		case strings.HasPrefix(upper, "CREATE TRIGGER"):
+			kind, name = "trigger", extractIdent(line[len("CREATE TRIGGER"):])
+		default:
+			continue
+		}
+		if name == "" {
+			return false
+		}
+		var n int
+		q := `SELECT count(*) FROM sqlite_master WHERE type=? AND name=?`
+		if err := db.QueryRow(q, kind, name).Scan(&n); err != nil || n == 0 {
+			return false
+		}
+		// Indexes and triggers live inside the same migration as their table;
+		// a half-applied run can have the table but not its index/trigger, so
+		// require every object in the migration to be present before skipping.
+		seen++
+	}
+	if seen > 0 {
+		return true
+	}
+	// No CREATE statements: the duplicate must be an ALTER TABLE ... ADD
+	// COLUMN. Confirm every added column exists on its table.
+	cols := 0
+	for _, m := range regexp.MustCompile(`(?i)ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)`).FindAllStringSubmatch(migrations[i], -1) {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name=?`, m[1], m[2]).Scan(&n); err != nil || n == 0 {
+			return false
+		}
+		cols++
+	}
+	return cols > 0
+}
+
+// extractIdent pulls the first token of a CREATE clause, stripping IF NOT
+// EXISTS and any quoting/backticks or trailing punctuation (SQLite lets you
+// write "CREATE TABLE t(" with no space before the paren).
+func extractIdent(s string) string {
+	s = strings.TrimSpace(s)
+	if idx := strings.Index(strings.ToUpper(s), "IF NOT EXISTS "); idx >= 0 {
+		s = s[idx+len("IF NOT EXISTS "):]
+	}
+	s = strings.TrimSpace(s)
+	s = strings.Fields(s)[0]
+	return strings.Trim(s, "`\"[]();,")
 }
