@@ -113,11 +113,12 @@ func TestAlertsTestEndpointSendsAndReports(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := collector.NewManager(cfg, dk, st, h, log)
 	eng := alerts.New(st, rulesPath, time.Minute, alerts.BuildChannels(capture.URL, "", "", "", ""), log)
-	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng)).Handler())
+	as := auth.NewSessionManager(log)
+	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
 
 	req, _ := http.NewRequest("POST", srv.URL+"/api/alerts/test", nil)
-	loginIfNeeded(t)
+	loginIfNeeded(t, srv.URL)
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -152,7 +153,7 @@ func TestAlertsDisabledWithoutEngine(t *testing.T) {
 		t.Error("alerts should report disabled without an engine")
 	}
 	req, _ := http.NewRequest("POST", srv.URL+"/api/alerts/test", nil)
-	loginIfNeeded(t)
+	loginIfNeeded(t, srv.URL)
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

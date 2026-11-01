@@ -47,14 +47,12 @@ func setup(t *testing.T) (*httptest.Server, *store.Store, *hub.Hub) {
 	return srv, st, h
 }
 
-// loginIfNeeded obtains a bearer token from /api/login and caches it for the
-// current test server.
-func loginIfNeeded(t *testing.T) {
+// loginToken returns a bearer token obtained from /api/login on the given
+// server. Each call creates an independent session so tests that run their own
+// httptest servers never depend on package-level state left behind by others.
+func loginToken(t *testing.T, baseURL string) string {
 	t.Helper()
-	if testToken != "" {
-		return
-	}
-	req, _ := http.NewRequest("POST", testServerURL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
+	req, _ := http.NewRequest("POST", baseURL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -71,14 +69,36 @@ func loginIfNeeded(t *testing.T) {
 	if out.Token == "" {
 		t.Fatal("login response missing token")
 	}
-	testToken = out.Token
+	return out.Token
+}
+
+// loginIfNeeded keeps the legacy call sites working: it refreshes the cached
+// token against testServerURL. Prefer loginToken(srv.URL) in new tests.
+func loginIfNeeded(t *testing.T, baseURL ...string) {
+	t.Helper()
+	url := testServerURL
+	if len(baseURL) > 0 && baseURL[0] != "" {
+		url = baseURL[0]
+	}
+	testServerURL = url
+	testToken = loginToken(t, url)
+}
+
+// serverForURL derives the httptest server base (scheme://host) from a request
+// URL so get() can authenticate against whichever server the caller targets.
+func serverForURL(u string) string {
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Host == "" {
+		return testServerURL
+	}
+	return parsed.Scheme + "://" + parsed.Host
 }
 
 func get(t *testing.T, url string, auth bool) *http.Response {
 	t.Helper()
 	req, _ := http.NewRequest("GET", url, nil)
 	if auth {
-		loginIfNeeded(t)
+		loginIfNeeded(t, serverForURL(url))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
