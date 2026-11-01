@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### v0.7 — Dashboard, alert rule builder & operations
+- **Global Dashboard tab** (default landing view): stat row (healthy containers, restarts/24h, crash loops, DB size), per-app health cards with CPU/mem sparklines, recent-crash strip; cached 15 s server-side and self-healing on collector restarts
+- **Alert rule builder UI**: modal form on the Alerts tab with live `alerts.json` preview, server-side validation (`POST /api/alerts/rules/validate`), save-and-reload (`POST /api/alerts/rules`, atomic write) and test-fire
+- **Alert history delivery status**: engine records `sent` / `failed` / unset per fired alert after notifying channels; shown as a colored Delivery column in the history table with hover explanation
+- **Crash-loop endpoint**: `GET /api/crashloops` groups repeated exits for dashboard badges and the Crashes timeline
+- **Prometheus export**: `GET /metrics` exposes container health, restart counts, crash loops, DB size and HTTP metrics for external scraping
+- **Shareable incident permalinks**: tab, app, time range, query and crash-snapshot id are synced to the URL; crash detail rows get a copy-link button that deep-links straight into an incident
+- **Session fix**: `/api/session` returns 200 with `auth_enabled:false` when running with `ALLOW_NO_AUTH=true`; login overlay starts hidden so it can never block interactions in no-auth mode
+- Playwright smoke coverage: rule-builder modal (open → edit → validate → block-invalid-save → close) and dashboard render checks all green
+
 ## v0.6
 
 ### UI/UX

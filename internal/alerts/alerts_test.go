@@ -555,12 +555,11 @@ func TestChannelsExposedForAPI(t *testing.T) {
 
 // ---- delivery status (v0.7) ----
 
-type stubChan struct {
-	name string
-	err  error
+// stubChannel builds a Channel whose Send returns err, recording calls.
+func stubChannel(t *testing.T, name string, err error) Channel {
+	t.Helper()
+	return Channel{Name: name, Send: func(ctx context.Context, msg string) error { return err }}
 }
-
-func (c stubChan) Send(ctx context.Context, msg string) error { return c.err }
 
 func TestEvaluateRecordsDeliveryStatus(t *testing.T) {
 	cases := []struct {
@@ -569,9 +568,9 @@ func TestEvaluateRecordsDeliveryStatus(t *testing.T) {
 		want  string
 	}{
 		{"no channels records nothing", nil, ""},
-		{"one ok channel is sent", []Channel{stubChan{name: "webhook"}}, "sent"},
-		{"all failing channels is failed", []Channel{stubChan{name: "a", err: errors.New("boom")}}, "failed"},
-		{"partial success still sent", []Channel{stubChan{name: "a", err: errors.New("boom")}, stubChan{name: "b"}}, "sent"},
+		{"one ok channel is sent", []Channel{stubChannel(t, "webhook", nil)}, "sent"},
+		{"all failing channels is failed", []Channel{stubChannel(t, "a", errors.New("boom"))}, "failed"},
+		{"partial success still sent", []Channel{stubChannel(t, "a", errors.New("boom")), stubChannel(t, "b", nil)}, "sent"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
