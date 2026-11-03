@@ -13,6 +13,8 @@ import (
 
 // Engine periodically evaluates rules and notifies channels. It is idle when
 // no rules file exists; editing the file is picked up without a restart.
+// Collector events (A6) reach it through a bounded channel: FeedEvent never
+// blocks the collector.
 type Engine struct {
 	st       *store.Store
 	path     string
@@ -20,6 +22,8 @@ type Engine struct {
 	chans    []Channel
 	log      *slog.Logger
 	now      func() time.Time // injectable clock for tests
+
+	evCh chan ContainerEvent
 
 	mu    sync.Mutex // guards rules (reloaded on disk change, read by the API)
 	rules []Rule
@@ -39,7 +43,7 @@ func New(st *store.Store, path string, interval time.Duration, chans []Channel, 
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	e := &Engine{st: st, path: path, interval: interval, chans: chans, log: log, now: time.Now}
+	e := &Engine{st: st, path: path, interval: interval, chans: chans, log: log, now: time.Now, evCh: make(chan ContainerEvent, 64)}
 	for _, o := range opts {
 		o(e)
 	}
@@ -109,7 +113,8 @@ func (e *Engine) SaveRules(rules []Rule) error {
 	return nil
 }
 
-// Run evaluates on a ticker until ctx is done.
+// Run evaluates on a ticker until ctx is done. Collector events (A6) are
+// handled out-of-band so event rules fire the moment Docker emits them.
 func (e *Engine) Run(ctx context.Context) {
 	t := time.NewTicker(e.interval)
 	defer t.Stop()
@@ -122,8 +127,72 @@ func (e *Engine) Run(ctx context.Context) {
 			if err := e.Evaluate(ctx); err != nil {
 				e.log.Error("alerts: evaluation failed", "err", err)
 			}
+		case ev := <-e.evCh:
+			e.handleEvent(ctx, ev)
 		}
 	}
+}
+
+// FeedEvent fans one collector event into the engine. Non-blocking: alerting
+// must never slow (or duplicate decisions in) the collector, so a full buffer
+// drops the event and says so in the log.
+func (e *Engine) FeedEvent(ev ContainerEvent) {
+	select {
+	case e.evCh <- ev:
+	default:
+		e.log.Warn("alerts: event dropped (engine busy), buffer full", "action", ev.Action, "app", ev.App)
+	}
+}
+
+// handleEvent evaluates every event rule against one fanned-in event.
+// Firing reuses the same silence window (repeat/cooldown), the same insert
+// and the same notification path as the ticker rules.
+func (e *Engine) handleEvent(ctx context.Context, ev ContainerEvent) {
+	for _, r := range e.Rules() {
+		if r.Kind != KindEvent || !r.eventMatches(ev) {
+			continue
+		}
+		msg, ok := r.eventFiring(ev)
+		if !ok {
+			continue
+		}
+		if _, firing := e.mayFire(ctx, r, ev.App); !firing {
+			continue
+		}
+		ts := ev.TS
+		if ts.IsZero() {
+			ts = e.now()
+		}
+		e.record(ctx, r, ev.App, store.Alert{TS: ts.UnixMilli(), Rule: r.Name, App: ev.App, Kind: r.Kind, Message: msg})
+	}
+}
+
+// mayFire checks the rule+app silence window: GD-style repeat/cooldown
+// suppresses duplicate notifications (identical for ticker and event paths).
+func (e *Engine) mayFire(ctx context.Context, r Rule, app string) (time.Time, bool) {
+	now := e.now()
+	if last := e.st.LastAlertTS(ctx, r.Name, app); last > 0 && now.Sub(time.UnixMilli(last)) < r.Repeat.D() {
+		return now, false
+	}
+	return now, true
+}
+
+// record inserts one fired alert and notifies the channels, recording the
+// delivery status. Returns the stored alert (id + delivery) so callers can
+// report it; the zero value when the insert failed.
+func (e *Engine) record(ctx context.Context, r Rule, app string, a store.Alert) store.Alert {
+	id, err := e.st.InsertAlert(a)
+	if err != nil {
+		e.log.Error("alerts: cannot record alert", "rule", r.Name, "app", app, "err", err)
+		return store.Alert{}
+	}
+	a.ID = id
+	status := e.notify(ctx, a)
+	a.Delivery = status
+	if err := e.st.SetAlertDelivery(id, status); err != nil {
+		e.log.Error("alerts: cannot record delivery status", "rule", r.Name, "app", app, "err", err)
+	}
+	return a
 }
 
 // Evaluate runs every rule once. It returns the alerts it fired.
@@ -144,23 +213,11 @@ func (e *Engine) Evaluate(ctx context.Context) []store.Alert {
 			if !ok {
 				continue
 			}
-			id, err := e.st.InsertAlert(a)
-			if err != nil {
-				e.log.Error("alerts: cannot record alert", "rule", r.Name, "app", app, "err", err)
-				continue
+			got := e.record(ctx, r, app, a)
+			if got.ID == 0 {
+				continue // insert failed
 			}
-			a.ID = id
-			fired = append(fired, a)
-			status := e.notify(ctx, a)
-			a.Delivery = status
-			for i := range fired {
-				if fired[i].ID == id {
-					fired[i].Delivery = status
-				}
-			}
-			if err := e.st.SetAlertDelivery(id, status); err != nil {
-				e.log.Error("alerts: cannot record delivery status", "rule", r.Name, "app", app, "err", err)
-			}
+			fired = append(fired, got)
 		}
 	}
 	return fired
@@ -210,7 +267,7 @@ func (e *Engine) evalOne(ctx context.Context, r Rule, app string) (store.Alert, 
 		return store.Alert{}, false
 	}
 	// Silence: the last firing of this rule+app is recent enough to stay quiet.
-	if last := e.st.LastAlertTS(ctx, r.Name, app); last > 0 && now.Sub(time.UnixMilli(last)) < r.Repeat.D() {
+	if _, firing := e.mayFire(ctx, r, app); !firing {
 		return store.Alert{}, false
 	}
 	return store.Alert{TS: now.UnixMilli(), Rule: r.Name, App: app, Kind: r.Kind, Message: msg}, true
@@ -218,8 +275,12 @@ func (e *Engine) evalOne(ctx context.Context, r Rule, app string) (store.Alert, 
 
 // evalMetric implements A3: the threshold must hold over the whole "for"
 // window, so one cold sample inside it stops the alert. Only samples newer
-// than the window count, so a stale app cannot fire it.
+// than the window count, so a stale app cannot fire it. When the rule sets
+// Window, the smoothing variant is used instead.
 func (e *Engine) evalMetric(ctx context.Context, r Rule, app string, now time.Time) (string, bool) {
+	if r.Window.D() > 0 {
+		return e.evalMetricSmoothed(ctx, r, app, now)
+	}
 	since := now.Add(-r.For.D()).UnixMilli()
 	pts, err := e.st.MetricSamples(ctx, app, since, now.UnixMilli(), 2000)
 	if err != nil || len(pts) == 0 {
@@ -266,6 +327,53 @@ func (e *Engine) evalMetric(ctx context.Context, r Rule, app string, now time.Ti
 	return fmt.Sprintf("%s: %s %s%s for %s (limit %s%s)", app, r.Metric, trimNum(worst), unit, r.For.D(), trimNum(r.Value), unit), true
 }
 
+// evalMetricSmoothed is the smoothing variant of evalMetric: the value
+// compared is the MEAN of every sample inside the rule's window, so a single
+// spiky (or spotty) sample can no longer flip the alert. Freshness is judged
+// against the same window.
+func (e *Engine) evalMetricSmoothed(ctx context.Context, r Rule, app string, now time.Time) (string, bool) {
+	since := now.Add(-r.Window.D()).UnixMilli()
+	pts, err := e.st.MetricSamples(ctx, app, since, now.UnixMilli(), 2000)
+	if err != nil || len(pts) == 0 {
+		return "", false
+	}
+	if newest := time.UnixMilli(pts[len(pts)-1].TS); now.Sub(newest) > 2*r.Window.D() {
+		return "", false // the app is gone; averages of stale data say nothing
+	}
+	var sum float64
+	seen := 0
+	for _, p := range pts {
+		switch r.Metric {
+		case "cpu":
+			sum += p.CPU
+		case "mem":
+			sum += float64(p.Mem)
+		case "mem_pct":
+			if p.MemLimit <= 0 {
+				continue // percentage undefined without a limit
+			}
+			sum += float64(p.Mem) / float64(p.MemLimit) * 100
+		}
+		seen++
+	}
+	if seen == 0 {
+		return "", false
+	}
+	avg := sum / float64(seen)
+	fire := avg > r.Value
+	if r.Op == "lt" {
+		fire = avg < r.Value
+	}
+	if !fire {
+		return "", false
+	}
+	unit := "%"
+	if r.Metric == "mem" {
+		unit = " B"
+	}
+	return fmt.Sprintf("%s: %s avg %s%s over %d samples in %s (limit %s%s)", app, r.Metric, trimNum(avg), unit, seen, r.Window.D(), trimNum(r.Value), unit), true
+}
+
 func trimNum(v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%d", int64(v))
@@ -275,7 +383,7 @@ func trimNum(v float64) string {
 
 // knownApps lists every app the store has seen.
 func (e *Engine) knownApps(ctx context.Context) ([]string, error) {
-	sums, err := e.st.AppSummaries(ctx)
+	sums, err := e.st.AppSummaries(ctx, "")
 	if err != nil {
 		return nil, err
 	}

@@ -103,7 +103,7 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | V7 | Merge several apps into one timeline; search by request id across apps | P1 | Done (All-apps mode in the sidebar: one merged timeline; search runs across every app when it is selected) |
 | V8 | Pretty-print JSON log lines | P1 | Done (click a JSON line: it opens in a pretty-printed overlay) |
 | V9 | Deploy markers on charts and log timeline | P1 | Done (record via `POST /api/deploys` or the "Record deploy" button; markers on CPU/mem charts, inline in the log timeline, and the last deploy is shown on each crash) |
-| V10 | Shareable expiring permalinks to a time range | P2 | Not done |
+| V10 | Shareable expiring permalinks to a time range | P2 | Done (POST /api/share mints /s/<token> capability links with server-side TTL; unknown/expired answer 410; UI Share button + Ctrl+K palette action) |
 
 ### 6.4 Crash snapshots
 
@@ -134,7 +134,7 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 |---|---|---|---|
 | Z1 | Basic auth, refuse to start without a password unless explicitly allowed | M | Done |
 | Z2 | Read-only use of the Docker API; works through a socket proxy over TCP | M | Done |
-| Z3 | Single shared credential | M | Done |
+| Z3 | Single shared credential | M | Done (plus `AUTH_PROVIDER=proxy` forward-proxy identity header mode for Authelia/Authentik/Cloudflare Access) |
 | Z4 | Per-app permissions and an audit trail of who viewed or downloaded what | P2 | Not done |
 | Z5 | OIDC single sign-on | P2 | Not done |
 
@@ -177,7 +177,10 @@ Priority: **M** = MVP (implemented), **P1** = next release, **P2** = later.
 | **v0.1 (this MVP)** | Collection, SQLite history, live view, search, metrics, crash snapshots, auth, redaction, Docker and CapRover packaging |
 | **v0.2** | Alerts (A1 to A5), deploy markers (V9); shipped early: FTS5 search (S5), crash catch-up (C8), restart-loop detection (X7) |
 | **v0.3** | Row normalization (S6), per-app budgets (S7); shipped early: JSON pretty-print (V8), all-apps merged timeline (V7) |
-| **v0.4** | GoAccess-style access-log pipeline: parser, auto-detection, access table, dashboard panels (`/api/access` + Access tab), anonymized IPs, CSV exports of logs and parsed requests (C9.1 to C9.6). Still open: Prometheus `/metrics`, self-contained HTML incident export, any-range JSON export |
+| **v0.4** | GoAccess-style access-log pipeline: parser, auto-detection, access table, dashboard panels (`/api/access` + Access tab), anonymized IPs, CSV exports of logs and parsed requests (C9.1 to C9.6). Still open: self-contained HTML incident export, any-range JSON export |
+| **v0.7 (done)** | Global dashboard, alert rule builder + delivery status, crash-loop endpoint, Prometheus `/metrics` (C10-prep), shareable incident permalinks |
+| **v0.8 (done)** | Live-tail hardening: gapless SSE resume (`id:` per row, `Last-Event-ID`, `since_id` cursor), backoff reconnect + SQLite catch-up, stack-trace grouping, sidebar app filter, cookie sessions so `EventSource` works with auth on |
+| **v0.9 (done)** | Forward-proxy header authentication (`AUTH_PROVIDER=proxy`, `PROXY_USER_HEADER`) for Authelia/Authentik/Cloudflare Access deployments |
 | **v1.0** | Agent mode for multi-node (C10), per-app permissions and audit (Z4), OIDC (Z5), access-log app attribution and GeoIP (C9.7) |
 
 ## 11. Acceptance checklist for v0.1

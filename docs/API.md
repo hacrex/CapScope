@@ -2,6 +2,10 @@
 
 All endpoints except `/healthz` require Basic auth when `AUTH_PASS` is set. Responses are JSON unless noted. Timestamps named `ts` are Unix milliseconds.
 
+Auth: `POST /api/login` returns a bearer token and also sets an HttpOnly `capscope_token` cookie (SameSite=Strict) — every endpoint accepts the `Authorization: Bearer …` header or the cookie. The cookie makes Server-Sent Events endpoints (`/api/logs/stream`) usable from `EventSource`, which cannot set custom headers.
+
+With `AUTH_PROVIDER=proxy`, all of the above is replaced: the reverse proxy owns authentication and declares the caller in `PROXY_USER_HEADER` (default `Remote-User`). Requests without that header are 401; Bearer tokens and cookies are ignored; `POST /api/login` answers 400; `GET /api/session` reports the header identity with a nominal expiry. The header is trusted from anyone reaching the port directly, so publish only the proxy.
+
 ## Health
 
 `GET /healthz` returns `ok`.
@@ -36,6 +40,7 @@ All endpoints except `/healthz` require Basic auth when `AUTH_PASS` is set. Resp
 | `since` | Relative (`15m`, `2h`, `1d`) or epoch milliseconds |
 | `until` | Epoch milliseconds |
 | `after_id` | Only rows with a larger id, ascending (use for catching up) |
+| `since_id` | Alias for `after_id` (what the UI speaks); same semantics |
 | `before_id` | Only rows with a smaller id (use for paging back) |
 | `limit` | Default 500, max 5000. Without `after_id` you get the newest `limit` rows |
 
@@ -47,9 +52,17 @@ Row shape:
 
 `stream` is `o` for stdout and `e` for stderr. `level` may be empty.
 
-`GET /api/logs/stream` is a Server-Sent Events stream of new rows matching the same filters (except paging and time params). Each `data:` line is one row. A `dropped` event reports how many rows this client lost to back-pressure. Comment lines (`: ping`) keep the connection alive.
+`GET /api/logs/stream` is a Server-Sent Events stream of new rows matching the same filters (except paging and time params). Each event carries both an `id:` line (the row id) and a `data:` line with one row. When a client reconnects, it sends its last seen id as the `Last-Event-ID` header (or the `since_id` query param, treated the same); rows up to that cursor are not re-delivered, so reconnection is gapless. A `dropped` event reports how many rows this client lost to back-pressure. Comment lines (`: ping`) keep the connection alive.
 
 `GET /api/logs/export[&app=...&q=...&level=...&since=...]` streams the matching rows as CSV (`capscope-logs.csv`), honoring the same filters as `/api/logs`. It paginates internally, so exports reach up to 200,000 lines regardless of the normal 5000-row cap.
+
+`GET /api/logs/raw[&app=...&q=...]` streams only the raw `line` values as `capscope-logs.txt` — one line per row, no CSV quoting or headers, ready for piping into grep/awk/jq. Filters, pagination ceiling and behavior otherwise match the CSV export.
+
+`GET /api/logs/export?fmt=json[&app=...&q=...]` streams the same rows as one JSON document (`{"logs":[...]}`), same filters, ceiling and paging — any range fits for jq or BI pipelines.
+
+## Share links (V10, v0.12)
+
+`POST /api/share` with body `{"qs": "...", "hash": "...", "ttl": "7d"}` mints a capability token and returns `{url: "/s/<token>", expires_at: <ms>}`. `qs` is a view query string (`tab=logs&app=web&range=1d`), `hash` an optional fragment (`#crash=42`); `ttl` defaults to 7 days (min 1 minute, max 90 days). `GET /s/<token>` redirects to the saved view while the link is alive; unknown and expired tokens both answer 410 with no way to tell them apart. The link itself is the capability — views opened from it still require a normal session.
 
 ## Access logs (GoAccess-style dashboard)
 
@@ -123,6 +136,8 @@ The UI exposes this as the `SQL` option in the search-mode select.
 
 `GET /api/snapshots/{id}/export` returns a Markdown crash report suitable for pasting into an incident channel.
 
+`GET /api/snapshots/{id}/incident.html` returns a self-contained HTML incident report: inline CSS, inline SVG resource sparklines, no network fetches or external assets — for attaching to a ticket.
+
 Snapshot `kind` is one of `oom`, `crash`, `killed`, `clean_exit`.
 
 Snapshot fields of note: `die_ts` is the death time taken from the Docker event (a snapshot rebuilt after CapScope was down keeps that time, not the time it was assembled); `restarts_window` is how many times that container had died inside the restart-loop window at that moment (0 when the detection is disabled), and the UI marks rows at or above the threshold with a `↻` badge. Deaths that happened while CapScope was down are replayed from the persisted event cursor on startup and snapshotted like live ones, as long as the container still exists and the gap is under 24 hours.
@@ -131,9 +146,9 @@ Snapshot fields of note: `die_ts` is the death time taken from the Docker event 
 
 Alerting evaluates the rules in `ALERTS_FILE` every `ALERTS_INTERVAL` (default `1m`) and records every firing; the most recent firing per rule and app is also the silence window that prevents re-notifying on every tick. A `repeat` on the rule (default `30m`) sets that silence.
 
-`GET /api/alerts?app=shop&limit=100` returns the firing history, newest first. Each row is `{id, ts, rule, app, kind, message, delivery}`; `ts` is unix milliseconds, `kind` is the rule kind (`deadman`, `restart_loop`, `metric`, `log_pattern`), and `delivery` (v0.7) is the notify outcome recorded after the alert fired: `"sent"` when at least one channel accepted the message, `"failed"` when every attempted channel errored, or `""` when no channels are configured (nothing was attempted).
+`GET /api/alerts?app=shop&limit=100` returns the firing history, newest first. Each row is `{id, ts, rule, app, kind, message, delivery}`; `ts` is unix milliseconds, `kind` is the rule kind (`deadman`, `restart_loop`, `metric`, `log_pattern`, `event`), and `delivery` (v0.7) is the notify outcome recorded after the alert fired: `"sent"` when at least one channel accepted the message, `"failed"` when every attempted channel errored, or `""` when no channels are configured (nothing was attempted).
 
-`GET /api/alerts/rules` returns the armed configuration without secrets: `{rules: [{name, kind, apps, for, count, window, metric, op, value, pattern, hits, repeat}], channels: ["webhook", ...], enabled}`. `enabled` is `false` when no rules file exists.
+`GET /api/alerts/rules` returns the armed configuration without secrets: `{rules: [{name, kind, apps, for, count, window, metric, op, value, pattern, hits, repeat, event, status, exclude, cooldown}], channels: ["webhook", ...], enabled}`. `enabled` is `false` when no rules file exists. Event rules (v0.11) additionally carry `event` (`die` | `oom` | `health_status` | `update_available`), `exclude` (die exit-code filter; the default list is `[0,130,143,137]` when unset) and, for `health_status`, the `status` value that fires; `cooldown` is a `repeat` alias competing for the same silence window.
 
 `POST /api/alerts/rules/validate` (v0.7) accepts a full rules payload `{"rules":[...]}` and returns `200 {"ok":true}` or `400 {"errors":["rule 0 (name): field: reason", ...]}` without touching the rules file. The rule-builder modal calls it live as you edit.
 

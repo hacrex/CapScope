@@ -25,9 +25,9 @@ No external database. No Prometheus stack. One container, one volume, one passwo
 | **Restart-loop detection** | Counts deaths per container in a sliding window; flags loops with a `↻` badge in the UI |
 | **Access-log dashboard** | GoAccess-style panels from your reverse proxy's access logs: status codes, top paths, client IPs (anonymized by default), referrers, hits/errors timeline, CSV export |
 | **Deploy markers** | Record deploys from CI or the UI; markers appear on CPU/memory charts, inline in the log timeline, and on crash details ("Last deploy: v1.4") |
-| **Alerts** | Dead-man (silence), restart loop, metric threshold (with duration), and log-pattern rules; webhook, Telegram, Slack, and Discord channels |
+| **Alerts** | Dead-man (silence), restart loop, metric threshold (with duration), log-pattern rules, and live container-event rules (die/OOM/health/update-available); webhook, Telegram, Slack, Discord, and ntfy channels; `${ENV}` placeholders in channel endpoints |
 | **Secret redaction** | Masks JWTs, bearer tokens, `password=`/`token=` values, URL credentials, AWS keys, and PEM keys before storage |
-| **Auth** | Basic auth required by default; refuses to start without a password unless you explicitly opt out |
+| **Auth** | Basic auth by default; `AUTH_PROVIDER=proxy` trusts a reverse proxy identity header (Authelia/Authentik/Cloudflare Access). Refuses to start without a password unless you explicitly opt out or use proxy auth |
 
 ---
 
@@ -110,6 +110,8 @@ make test       # full test suite
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | `unix://` socket or `tcp://host:port` (socket proxy) |
 | `AUTH_USER` / `AUTH_PASS` | `admin` / none | Basic auth. Server refuses to start without `AUTH_PASS` |
 | `ALLOW_NO_AUTH` | `false` | Set `true` to run without auth (local testing only) |
+| `AUTH_PROVIDER` | `local` | `local` = shared password above; `proxy` = trust `PROXY_USER_HEADER` set by your reverse proxy (Authelia/Authentik/Cloudflare Access). Never expose CapScope's port directly in this mode |
+| `PROXY_USER_HEADER` | `Remote-User` | Which header carries the identity in `proxy` mode (`X-WebAuth-User` works too) |
 | `LOG_RETENTION` | `7d` | Delete logs older than this (`d`, `h`, `m`) |
 | `METRICS_RETENTION` | `7d` | Same for CPU/memory samples |
 | `SNAPSHOT_RETENTION` | `30d` | Same for crash snapshots |
@@ -128,12 +130,54 @@ make test       # full test suite
 | `APP_RETENTION` | none | Per-app retention: `web=3d,api=1d` |
 | `APP_MAX_MB` | none | Per-app size budget: `web=500,api=200` |
 | `ALERTS_FILE` | `/data/alerts.json` | JSON alert-rules file, hot-reloaded |
-| `ALERTS_INTERVAL` | `1m` | Alert evaluation interval |
+| `ALERTS_INTERVAL` | `1m` | Alert evaluation interval (event rules fire immediately instead) |
 | `ALERT_WEBHOOK_URL` | none | Generic JSON webhook |
 | `ALERT_TELEGRAM_TOKEN` / `ALERT_TELEGRAM_CHAT_ID` | none | Telegram Bot API |
 | `ALERT_SLACK_URL` | none | Slack incoming webhook |
 | `ALERT_DISCORD_URL` | none | Discord webhook |
+| `ALERT_NTFY_URL` | none | ntfy topic URL, e.g. `https://ntfy.sh/capscope` |
+| `ALERT_NTFY_TOKEN` | none | Optional ntfy access token (Bearer) |
+| `UPDATE_CHECK` | `true` | Daily registry check for newer images; feeds `update_available` alert events |
+| `UPDATE_CHECK_INTERVAL` | `24h` | Update-check cadence (min 1h) |
+| `AGENT_HOST_ID` | hostname | Stable host identity; tags collected rows with `host_id` for multi-host filtering |
+| `AGENT_HUB_LISTEN` | none | Host:port to listen for agent connections (multi-node hub mode) |
+| `AGENT_HUB_PINNED_FINGERPRINTS` | none | Comma-separated SHA-256 fingerprints of allowed agent client certs |
+| `AGENT_HUB_CERT` / `AGENT_HUB_KEY` | none | Hub server certificate/key PEM for mTLS |
+| `AGENT_HUB_CA_CERT` | none | CA certificate PEM used to verify agent client certs |
+| `AUTH_PROVIDER` | `local` | `local` = shared password; `proxy` = reverse-proxy header; `oidc` = OpenID Connect |
+| `OIDC_ISSUER` | none | OIDC issuer URL (required for `oidc` provider) |
+| `OIDC_CLIENT_ID` | none | OAuth 2.0 client ID (required for `oidc` provider) |
+| `OIDC_CLIENT_SECRET` | none | OAuth 2.0 client secret (required for `oidc` provider) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+
+---
+
+## Behind an auth proxy (Authelia, Authentik, Cloudflare Access)
+
+If you already run a forward-auth proxy, let it own authentication:
+
+```yaml
+services:
+  capscope:
+    image: ghcr.io/hacrex/capscope:latest
+    environment:
+      AUTH_PROVIDER: proxy            # no AUTH_PASS needed
+      PROXY_USER_HEADER: Remote-User  # the header your proxy sets after auth
+    volumes:
+      - capscope-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+```
+
+CapScope then trusts `Remote-User` as the caller identity and serves the UI
+without a password prompt. Two rules:
+
+- **Never expose CapScope's port directly in this mode.** The header is trusted
+  from anyone who connects directly, so publish only the proxy and keep
+  CapScope on an internal network (`expose`, not `ports`).
+- Fields like `X-WebAuth-User` work too — set `PROXY_USER_HEADER` to match
+  whatever your proxy sends. Live log streaming (SSE) works through the proxy
+  as usual.
 
 ---
 
@@ -160,13 +204,35 @@ Alerts are driven by a JSON file (`ALERTS_FILE`), hot-reloaded without restart.
     { "name": "api-silent", "kind": "deadman", "apps": ["api"], "for": "5m" },
     { "name": "api-looping", "kind": "restart_loop", "apps": ["api"], "count": 3, "window": "10m" },
     { "name": "api-mem", "kind": "metric", "apps": ["api"], "metric": "mem_pct", "op": "gt", "value": 85, "for": "5m" },
-    { "name": "api-5xx", "kind": "log_pattern", "apps": ["api"], "pattern": "status=5\\d\\d", "hits": 5, "window": "5m" }
-  ]
+    { "name": "api-5xx", "kind": "log_pattern", "apps": ["api"], "pattern": "status=5\\d\\d", "hits": 5, "window": "5m" },
+  { "name": "api-crash", "kind": "event", "apps": ["api"], "event": "die" },
+  { "name": "any-oom", "kind": "event", "event": "oom" },
+  { "name": "api-sick", "kind": "event", "event": "health_status", "status": "unhealthy" }
+]
 }
 ```
 
-Rule kinds: `deadman`, `restart_loop`, `metric` (cpu / mem / mem_pct), `log_pattern`.  
-Channels: webhook, Telegram, Slack, Discord. Use the **Send test alert** button in the UI to verify before an incident.
+Rule kinds: `deadman`, `restart_loop`, `metric` (cpu / mem / mem_pct),
+`log_pattern`, `event` (Docker lifecycle: `die` / `oom` / `health_status` /
+`update_available`).
+
+Extras on the rules:
+
+- `event: die` skips graceful/OOM stops by default (`exclude: [0,130,143,137]`;
+  override with your own list, or `"exclude": []` to keep everything).
+- `event: health_status` fires when the status equals `status` (default
+  `unhealthy`).
+- `event` rules fire the moment the collector sees the Docker event.
+- Adding `window` to a `metric` rule switches to smoothing: the mean of all
+  samples in the window is compared, so one spiky or spotty sample cannot
+  flip the alert (default `window` absent = every sample must hold).
+- `cooldown` is a Dozzle-compatible alias for `repeat` (silence between
+  notifications of the same rule+app).
+- Channel URLs/tokens accept `${ENV}` placeholders, expanded at send time;
+  names starting with `AWS_`, `DOCKER_`, `KUBERNETES_` or `DOZZLE_` are
+  refused so a committed rules file cannot leak host secrets.
+
+Channels: webhook, Telegram, Slack, Discord, ntfy. Use the **Send test alert** button in the UI to verify before an incident.
 
 ---
 
@@ -220,9 +286,16 @@ Issues and pull requests are welcome. See `docs/` for the PRD, architecture note
 ## Roadmap
 
 - **v0.2** — Alerts (done), deploy markers (done), FTS5 search (done), crash catch-up (done)
-- **v0.3** — Row normalization, per-app budgets, login screen UI
-- **v0.4** — Prometheus `/metrics` endpoint, agent mode for multi-node
-- **v1.0** — Per-app permissions, OIDC, access-log app attribution + GeoIP
+- **v0.6 / v0.7** — access-log dashboard, crash history, deploy markers, dashboard + alert rule builder, Prometheus `/metrics` (all done)
+- **v0.8** — live-tail hardening: gapless SSE resume (`Last-Event-ID`), stack-trace grouping, sidebar filter, cookie sessions for `EventSource` (done)
+- **v0.9** — `AUTH_PROVIDER=proxy` forward-proxy header auth for Authelia / Authentik / Cloudflare Access (done)
+- **v0.10** — OTel severityNumber/`severityText` + Pino numeric level parsing, raw `.txt` log export, Local/UTC time display, CI pipeline + UI syntax gate (done)
+- **v0.11** — Alerts to Dozzle parity: container-event rules (die/OOM/health/update-available), metric smoothing + `cooldown`, ntfy channel, `${ENV}` channel placeholders, daily update-available registry checks (done)
+- **v0.12** — Persistent login sessions across restarts, expiring share links/permalinks (`POST /api/share`, `/s/<token>`), any-range JSON export (`fmt=json`), self-contained HTML incident export (done)
+- **v0.13** — Multi-host visibility: host selector chip, per-host views (containers/crashes/metrics/dashboard filtered by `host_id`), `?host=` permalinks, `GET /api/hosts` (done)
+- **v0.14** — Multi-user auth: OIDC SSO (`AUTH_PROVIDER=oidc`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`), users table with `admin`/`viewer` roles, user management API, audit trail on `access` rows (done)
+- **v0.15** — MCP server over SQLite (Phase 6.4): `cmd/capscope mcp` runs an MCP server over stdio with tools `query_logs`, `list_snapshots`, `get_snapshot`, `run_sql`. Session-token authenticated.
+- **v1.0** — Agent mode for multi-node, per-app permissions, OIDC, access-log app attribution + GeoIP
 
 ---
 

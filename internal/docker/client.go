@@ -99,6 +99,19 @@ type Event struct {
 	TimeNano int64 `json:"timeNano"`
 }
 
+// ImageInfo is the subset of GET /images/{name}/json the update checker
+// needs; both fields are also present on the container inspect call.
+type ImageInfo struct {
+	ID          string   `json:"Id"`
+	RepoDigests []string `json:"RepoDigests"` // "repo@sha256:..." entries
+}
+
+// ImageInspect reads an image's metadata. Read-only, like every call here.
+func (c *Client) ImageInspect(ctx context.Context, image string) (ImageInfo, error) {
+	var ii ImageInfo
+	return ii, c.getJSON(ctx, "/images/"+image+"/json", &ii)
+}
+
 type LogLine struct {
 	TS     time.Time // zero when the daemon gave no timestamp
 	Stream string    // "stdout" | "stderr"

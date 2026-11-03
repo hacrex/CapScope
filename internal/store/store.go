@@ -133,6 +133,47 @@ var migrations = []string{
 	   note TEXT NOT NULL DEFAULT ''
 	 );
 	 CREATE INDEX idx_deploys_app_ts ON deploys(app, ts);`,
+
+	// Expiring share links (V10): capability links "/s/<token>" that restore a
+	// saved view (query string + optional crash hash) until they expire.
+	`CREATE TABLE shares(
+	   token TEXT PRIMARY KEY,
+	   created_ms INTEGER NOT NULL,
+	   expires_ms INTEGER NOT NULL,
+	   qs TEXT NOT NULL,
+	   hash TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX idx_shares_expiry ON shares(expires_ms);`,
+
+	// Agent host ingestion (Phase 4.4): every stored row carries host_id so
+	// the hub can merge data from many agents and the UI can filter per host.
+	`ALTER TABLE logs ADD COLUMN host_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE metrics ADD COLUMN host_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE containers ADD COLUMN host_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE snapshots ADD COLUMN host_id TEXT NOT NULL DEFAULT '';
+	 CREATE INDEX idx_logs_host ON logs(host_id);
+	 CREATE INDEX idx_metrics_host ON metrics(host_id);
+	 CREATE INDEX idx_containers_host ON containers(host_id);
+	 CREATE INDEX idx_snapshots_host ON snapshots(host_id);
+	 CREATE TABLE hosts(
+	   host_id TEXT PRIMARY KEY,
+	   labels_json TEXT NOT NULL DEFAULT '',
+	   first_seen INTEGER NOT NULL,
+	   last_seen INTEGER NOT NULL
+	 );
+	 CREATE INDEX idx_hosts_last_seen ON hosts(last_seen);`,
+
+	// Multi-user (Phase 3.3): users table replaces the single shared
+	// credential, and access rows record who made each request for audit.
+	`CREATE TABLE users(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   name TEXT NOT NULL UNIQUE,
+	   password_hash TEXT NOT NULL,
+	   role TEXT NOT NULL DEFAULT 'viewer',
+	   created_ms INTEGER NOT NULL
+	 );
+	 CREATE INDEX idx_users_name ON users(name);
+	 ALTER TABLE access ADD COLUMN user TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open creates or migrates the database at path.
@@ -213,32 +254,38 @@ type LogRow struct {
 	ContainerID string `json:"container_id"`
 	Container   string `json:"container"`
 	App         string `json:"app"`
-	Stream      string `json:"stream"` // "o" | "e"
+	HostID      string `json:"host_id,omitempty"` // agent host that collected the row (Phase 4.4)
+	Stream      string `json:"stream"`            // "o" | "e"
 	Level       string `json:"level"`
 	Line        string `json:"line"`
 }
 
 type MetricPoint struct {
-	TS       int64   `json:"ts"` // unix ms
-	CPU      float64 `json:"cpu"`
-	Mem      int64   `json:"mem"`
-	MemLimit int64   `json:"mem_limit"`
-	NetRx    int64   `json:"net_rx"`
-	NetTx    int64   `json:"net_tx"`
-	BlkR     int64   `json:"blk_r"`
-	BlkW     int64   `json:"blk_w"`
-	Pids     int64   `json:"pids"`
+	TS        int64   `json:"ts"`                  // unix ms
+	HostID    string  `json:"host_id,omitempty"`   // agent host that collected the sample (Phase 4.4)
+	Container string  `json:"container,omitempty"` // container id the sample came from
+	App       string  `json:"app,omitempty"`       // app the sample came from
+	CPU       float64 `json:"cpu"`
+	Mem       int64   `json:"mem"`
+	MemLimit  int64   `json:"mem_limit"`
+	NetRx     int64   `json:"net_rx"`
+	NetTx     int64   `json:"net_tx"`
+	BlkR      int64   `json:"blk_r"`
+	BlkW      int64   `json:"blk_w"`
+	Pids      int64   `json:"pids"`
 }
 
 type ContainerRow struct {
 	ID, Name, App, Image, Replica, State string
+	HostID                               string // agent host that runs the container (Phase 4.4)
 	FirstSeen, LastSeen                  int64
 }
 
 type Snapshot struct {
 	ID             int64           `json:"id"`
 	TS             int64           `json:"ts"`
-	DieTS          int64           `json:"die_ts"` // death time from the Docker event (0 when unknown)
+	HostID         string          `json:"host_id,omitempty"` // agent host the container ran on (Phase 4.4)
+	DieTS          int64           `json:"die_ts"`            // death time from the Docker event (0 when unknown)
 	Kind           string          `json:"kind"`
 	ContainerID    string          `json:"container_id"`
 	Container      string          `json:"container"`
@@ -266,6 +313,15 @@ type AppSummary struct {
 	Warns1h    int64  `json:"warns_1h"`
 }
 
+// User is one multi-user account (Phase 3.3). Role is "admin" or "viewer".
+type User struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	PasswordHash string `json:"-"`    // never sent to the client
+	Role         string `json:"role"` // "admin" or "viewer"
+	CreatedMs    int64  `json:"created_ms"`
+}
+
 // AccessRow is one parsed access-log request, keyed by the container that
 // emitted it (App is the reverse proxy's app, not the route's target).
 type AccessRow struct {
@@ -280,6 +336,7 @@ type AccessRow struct {
 	Bytes       int64  `json:"bytes"`
 	Referer     string `json:"referer,omitempty"`
 	UA          string `json:"ua,omitempty"`
+	User        string `json:"user,omitempty"` // authenticated user who made the request (Phase 3.3)
 }
 
 // ---- logs ----
@@ -293,7 +350,7 @@ func (s *Store) InsertLogs(rows []LogRow) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO logs(ts,container_id,container,app,stream,level,line) VALUES(?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(`INSERT INTO logs(ts,container_id,container,app,host_id,stream,level,line) VALUES(?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -301,7 +358,7 @@ func (s *Store) InsertLogs(rows []LogRow) error {
 	defer stmt.Close()
 	for i := range rows {
 		r := &rows[i]
-		res, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.Stream, r.Level, r.Line)
+		res, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.HostID, r.Stream, r.Level, r.Line)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -320,6 +377,8 @@ type LogQuery struct {
 	// Asc orders results by id ascending (used for "context after this line").
 	Asc   bool
 	Limit int
+	// HostID filters rows to one agent host (empty = all hosts).
+	HostID string
 }
 
 const maxRegexScan = 200000
@@ -339,6 +398,9 @@ func (q LogQuery) whereOpts(withQ bool) (string, []any) {
 	var args []any
 	if q.App != "" {
 		cl, args = append(cl, "app = ?"), append(args, q.App)
+	}
+	if q.HostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, q.HostID)
 	}
 	if q.Container != "" {
 		cl = append(cl, "(container = ? OR container_id LIKE ?)")
@@ -379,7 +441,15 @@ func (q LogQuery) Match(r LogRow) bool {
 	if q.App != "" && r.App != q.App {
 		return false
 	}
+	if q.HostID != "" && r.HostID != q.HostID {
+		return false
+	}
 	if q.Container != "" && r.Container != q.Container && !strings.HasPrefix(r.ContainerID, q.Container) {
+		return false
+	}
+	// Live-tail resume: an SSE subscriber that reconnects with since_id (or the
+	// browser's Last-Event-ID header) only wants rows it has not seen yet.
+	if q.AfterID > 0 && r.ID <= q.AfterID {
 		return false
 	}
 	if q.Stream != "" && r.Stream != q.Stream {
@@ -439,7 +509,7 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	if q.AfterID > 0 || q.Asc {
 		order = "ASC"
 	}
-	query := "SELECT id, ts, container_id, container, app, stream, level, line FROM logs" + where + " ORDER BY id " + order
+	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs" + where + " ORDER BY id " + order
 	if q.Regex == nil {
 		query += " LIMIT ?"
 		args = append(args, q.Limit)
@@ -453,7 +523,7 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	scanned := 0
 	for rows.Next() {
 		var r LogRow
-		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.Stream, &r.Level, &r.Line); err != nil {
+		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.HostID, &r.Stream, &r.Level, &r.Line); err != nil {
 			return nil, err
 		}
 		r.TSMs = r.TS / 1_000_000
@@ -498,7 +568,7 @@ func (s *Store) queryLogsFTS(ctx context.Context, q LogQuery) ([]LogRow, error) 
 	if q.AfterID > 0 {
 		order = "ASC"
 	}
-	query := "SELECT id, ts, container_id, container, app, stream, level, line FROM logs" + where + " ORDER BY id " + order + " LIMIT ?"
+	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs" + where + " ORDER BY id " + order + " LIMIT ?"
 	args = append(args, q.Limit)
 	rows, err := s.r.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -508,7 +578,7 @@ func (s *Store) queryLogsFTS(ctx context.Context, q LogQuery) ([]LogRow, error) 
 	out := make([]LogRow, 0, 64)
 	for rows.Next() {
 		var r LogRow
-		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.Stream, &r.Level, &r.Line); err != nil {
+		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.HostID, &r.Stream, &r.Level, &r.Line); err != nil {
 			return nil, err
 		}
 		r.TSMs = r.TS / 1_000_000
@@ -532,14 +602,14 @@ func flipAsc(out []LogRow) {
 // ---- metrics ----
 
 func (s *Store) InsertMetric(containerID, app string, p MetricPoint) error {
-	_, err := s.w.Exec(`INSERT INTO metrics(ts,container_id,app,cpu,mem,mem_limit,net_rx,net_tx,blk_r,blk_w,pids) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		p.TS, containerID, app, p.CPU, p.Mem, p.MemLimit, p.NetRx, p.NetTx, p.BlkR, p.BlkW, p.Pids)
+	_, err := s.w.Exec(`INSERT INTO metrics(ts,container_id,app,host_id,cpu,mem,mem_limit,net_rx,net_tx,blk_r,blk_w,pids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		p.TS, containerID, app, p.HostID, p.CPU, p.Mem, p.MemLimit, p.NetRx, p.NetTx, p.BlkR, p.BlkW, p.Pids)
 	return err
 }
 
 // QueryMetrics buckets samples. For an app it averages per container inside each bucket,
 // then sums across containers, so the chart shows total app usage.
-func (s *Store) QueryMetrics(ctx context.Context, app, containerID string, sinceMs, untilMs, bucketMs int64) ([]MetricPoint, error) {
+func (s *Store) QueryMetrics(ctx context.Context, app, containerID, hostID string, sinceMs, untilMs, bucketMs int64) ([]MetricPoint, error) {
 	if bucketMs < 1000 {
 		bucketMs = 1000
 	}
@@ -548,6 +618,9 @@ func (s *Store) QueryMetrics(ctx context.Context, app, containerID string, since
 	args = append(args, bucketMs, bucketMs)
 	if app != "" {
 		cl, args = append(cl, "app = ?"), append(args, app)
+	}
+	if hostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, hostID)
 	}
 	if containerID != "" {
 		cl, args = append(cl, "container_id LIKE ?"), append(args, containerID+"%")
@@ -578,9 +651,9 @@ func (s *Store) QueryMetrics(ctx context.Context, app, containerID string, since
 // ---- containers and apps ----
 
 func (s *Store) UpsertContainer(c ContainerRow) error {
-	_, err := s.w.Exec(`INSERT INTO containers(id,name,app,image,replica,state,first_seen,last_seen) VALUES(?,?,?,?,?,?,?,?)
-	  ON CONFLICT(id) DO UPDATE SET state=excluded.state, last_seen=excluded.last_seen, name=excluded.name, app=excluded.app, image=excluded.image`,
-		c.ID, c.Name, c.App, c.Image, c.Replica, c.State, c.FirstSeen, c.LastSeen)
+	_, err := s.w.Exec(`INSERT INTO containers(id,name,app,image,replica,host_id,state,first_seen,last_seen) VALUES(?,?,?,?,?,?,?,?,?)
+	  ON CONFLICT(id) DO UPDATE SET state=excluded.state, last_seen=excluded.last_seen, name=excluded.name, app=excluded.app, image=excluded.image, host_id=excluded.host_id`,
+		c.ID, c.Name, c.App, c.Image, c.Replica, c.HostID, c.State, c.FirstSeen, c.LastSeen)
 	return err
 }
 
@@ -604,8 +677,23 @@ func (s *Store) StateSet(ctx context.Context, key string, v int64) error {
 	return err
 }
 
-func (s *Store) AppSummaries(ctx context.Context) ([]AppSummary, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN state='running' THEN 1 ELSE 0 END), MAX(last_seen) FROM containers GROUP BY app ORDER BY app`)
+// whereClause builds a SQL WHERE fragment from condition strings. Returns ""
+// when there are no conditions, otherwise " AND cond1 AND cond2 ...".
+func whereClause(conds []string) string {
+	if len(conds) == 0 {
+		return ""
+	}
+	return " WHERE " + strings.Join(conds, " AND ")
+}
+
+// AppSummaries returns per-app aggregates, optionally filtered to one host.
+func (s *Store) AppSummaries(ctx context.Context, hostID string) ([]AppSummary, error) {
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, hostID)
+	}
+	rows, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN state='running' THEN 1 ELSE 0 END), MAX(last_seen) FROM containers`+whereClause(cl)+` GROUP BY app ORDER BY app`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -625,7 +713,12 @@ func (s *Store) AppSummaries(ctx context.Context) ([]AppSummary, error) {
 	}
 	rows.Close()
 	since := time.Now().Add(-time.Hour).UnixNano()
-	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs WHERE ts >= ? GROUP BY app`, since)
+	var lc []string
+	var la []any
+	if hostID != "" {
+		lc, la = append(lc, "host_id = ?"), append(la, hostID)
+	}
+	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs WHERE ts >= ?`+whereClause(lc)+` GROUP BY app`, append([]any{since}, la...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -643,6 +736,72 @@ func (s *Store) AppSummaries(ctx context.Context) ([]AppSummary, error) {
 	return out, r2.Err()
 }
 
+// Host is one agent host registered with the hub (Phase 4.4).
+type Host struct {
+	HostID    string            `json:"host_id"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	FirstSeen int64             `json:"first_seen"`
+	LastSeen  int64             `json:"last_seen"`
+}
+
+// ListContainers returns known containers, optionally filtered to one host.
+func (s *Store) ListContainers(ctx context.Context, hostID string) ([]ContainerRow, error) {
+	var q string
+	var args []any
+	if hostID != "" {
+		q = `SELECT id,name,app,image,replica,host_id,state,first_seen,last_seen FROM containers WHERE host_id=? ORDER BY app, name`
+		args = append(args, hostID)
+	} else {
+		q = `SELECT id,name,app,image,replica,host_id,state,first_seen,last_seen FROM containers ORDER BY app, name`
+	}
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ContainerRow{}
+	for rows.Next() {
+		var c ContainerRow
+		if err := rows.Scan(&c.ID, &c.Name, &c.App, &c.Image, &c.Replica, &c.HostID, &c.State, &c.FirstSeen, &c.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UpsertHost registers or touches an agent host (called on Hello from an agent).
+func (s *Store) UpsertHost(hostID string, labels map[string]string) error {
+	labelsJSON, _ := json.Marshal(labels)
+	now := time.Now().UnixMilli()
+	_, err := s.w.Exec(`INSERT INTO hosts(host_id,labels_json,first_seen,last_seen) VALUES(?,?,?,?)
+	  ON CONFLICT(host_id) DO UPDATE SET labels_json=excluded.labels_json, last_seen=excluded.last_seen`,
+		hostID, string(labelsJSON), now, now)
+	return err
+}
+
+// ListHosts returns all registered agent hosts, newest first.
+func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT host_id,labels_json,first_seen,last_seen FROM hosts ORDER BY last_seen DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Host{}
+	for rows.Next() {
+		var h Host
+		var labelsJSON string
+		if err := rows.Scan(&h.HostID, &labelsJSON, &h.FirstSeen, &h.LastSeen); err != nil {
+			return nil, err
+		}
+		if labelsJSON != "" {
+			_ = json.Unmarshal([]byte(labelsJSON), &h.Labels)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // ---- snapshots ----
 
 func (s *Store) InsertSnapshot(sn Snapshot) (int64, error) {
@@ -656,9 +815,9 @@ func (s *Store) InsertSnapshot(sn Snapshot) (int64, error) {
 	if sn.OOMKilled {
 		oom = 1
 	}
-	res, err := s.w.Exec(`INSERT INTO snapshots(ts,kind,container_id,container,app,image,exit_code,oom_killed,error,restart_count,restarts_window,mem_limit,uptime_sec,die_ts,summary,logs_json,metrics_json,inspect_json)
-	  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		sn.TS, sn.Kind, sn.ContainerID, sn.Container, sn.App, sn.Image, sn.ExitCode, oom, sn.Error, sn.RestartCount, sn.RestartsWindow, sn.MemLimit, sn.UptimeSec, sn.DieTS, sn.Summary, string(logs), string(metrics), insp)
+	res, err := s.w.Exec(`INSERT INTO snapshots(ts,kind,container_id,container,app,host_id,image,exit_code,oom_killed,error,restart_count,restarts_window,mem_limit,uptime_sec,die_ts,summary,logs_json,metrics_json,inspect_json)
+	  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		sn.TS, sn.Kind, sn.ContainerID, sn.Container, sn.App, sn.HostID, sn.Image, sn.ExitCode, oom, sn.Error, sn.RestartCount, sn.RestartsWindow, sn.MemLimit, sn.UptimeSec, sn.DieTS, sn.Summary, string(logs), string(metrics), insp)
 	if err != nil {
 		return 0, err
 	}
@@ -668,12 +827,12 @@ func (s *Store) InsertSnapshot(sn Snapshot) (int64, error) {
 // SnapshotExists reports whether a snapshot for this death was already stored.
 // It deduplicates die events replayed from the Docker event buffer after a
 // restart (C8). dieMs 0 (older rows, unknown death time) never deduplicates.
-func (s *Store) SnapshotExists(ctx context.Context, containerID string, dieMs int64) (bool, error) {
+func (s *Store) SnapshotExists(ctx context.Context, containerID, hostID string, dieMs int64) (bool, error) {
 	if dieMs <= 0 {
 		return false, nil
 	}
 	var one int
-	err := s.r.QueryRowContext(ctx, `SELECT 1 FROM snapshots WHERE container_id=? AND die_ts=? LIMIT 1`, containerID, dieMs).Scan(&one)
+	err := s.r.QueryRowContext(ctx, `SELECT 1 FROM snapshots WHERE container_id=? AND host_id=? AND die_ts=? LIMIT 1`, containerID, hostID, dieMs).Scan(&one)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -689,29 +848,29 @@ func (s *Store) CountDeathsSince(ctx context.Context, containerID string, sinceM
 	return n, err
 }
 
-const snapCols = `id,ts,kind,container_id,container,app,image,exit_code,oom_killed,error,restart_count,restarts_window,mem_limit,uptime_sec,die_ts,summary`
+const snapCols = `id,ts,kind,container_id,container,app,host_id,image,exit_code,oom_killed,error,restart_count,restarts_window,mem_limit,uptime_sec,die_ts,summary`
 
 func scanSnap(sc interface{ Scan(...any) error }, extra ...any) (Snapshot, error) {
 	var sn Snapshot
 	var oom int
-	dest := append([]any{&sn.ID, &sn.TS, &sn.Kind, &sn.ContainerID, &sn.Container, &sn.App, &sn.Image, &sn.ExitCode, &oom, &sn.Error, &sn.RestartCount, &sn.RestartsWindow, &sn.MemLimit, &sn.UptimeSec, &sn.DieTS, &sn.Summary}, extra...)
+	dest := append([]any{&sn.ID, &sn.TS, &sn.Kind, &sn.ContainerID, &sn.Container, &sn.App, &sn.HostID, &sn.Image, &sn.ExitCode, &oom, &sn.Error, &sn.RestartCount, &sn.RestartsWindow, &sn.MemLimit, &sn.UptimeSec, &sn.DieTS, &sn.Summary}, extra...)
 	err := sc.Scan(dest...)
 	sn.OOMKilled = oom == 1
 	return sn, err
 }
 
 // ListSnapshots returns light rows (no logs or metrics), newest first.
-func (s *Store) ListSnapshots(ctx context.Context, app string, limit int) ([]Snapshot, error) {
-	return s.listSnapshots(ctx, app, 0, limit)
+func (s *Store) ListSnapshots(ctx context.Context, app, hostID string, limit int) ([]Snapshot, error) {
+	return s.listSnapshots(ctx, app, hostID, 0, limit)
 }
 
 // SnapshotsSince is like ListSnapshots but bounded to ts >= sinceMs, which lets
 // the dashboard aggregate a 24h window without scanning the whole table.
-func (s *Store) SnapshotsSince(ctx context.Context, sinceMs int64) ([]Snapshot, error) {
-	return s.listSnapshots(ctx, "", sinceMs, 0)
+func (s *Store) SnapshotsSince(ctx context.Context, sinceMs int64, hostID string) ([]Snapshot, error) {
+	return s.listSnapshots(ctx, "", hostID, sinceMs, 0)
 }
 
-func (s *Store) listSnapshots(ctx context.Context, app string, sinceMs int64, limit int) ([]Snapshot, error) {
+func (s *Store) listSnapshots(ctx context.Context, app, hostID string, sinceMs int64, limit int) ([]Snapshot, error) {
 	if limit < 0 {
 		limit = 0
 	}
@@ -724,6 +883,10 @@ func (s *Store) listSnapshots(ctx context.Context, app string, sinceMs int64, li
 	if app != "" {
 		where = append(where, `app = ?`)
 		args = append(args, app)
+	}
+	if hostID != "" {
+		where = append(where, `host_id = ?`)
+		args = append(args, hostID)
 	}
 	if sinceMs > 0 {
 		where = append(where, `ts >= ?`)
@@ -780,7 +943,7 @@ func (s *Store) InsertAccess(rows []AccessRow) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO access(ts,container_id,container,app,ip,method,path,status,bytes,referer,ua) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(`INSERT INTO access(ts,container_id,container,app,ip,method,path,status,bytes,referer,ua,user) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -788,12 +951,143 @@ func (s *Store) InsertAccess(rows []AccessRow) error {
 	defer stmt.Close()
 	for i := range rows {
 		r := rows[i]
-		if _, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.IP, r.Method, r.Path, r.Status, r.Bytes, r.Referer, r.UA); err != nil {
+		if _, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.IP, r.Method, r.Path, r.Status, r.Bytes, r.Referer, r.UA, r.User); err != nil {
 			tx.Rollback()
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// ---- users (Phase 3.3: multi-user) ----
+
+// CreateUser inserts a new user. Returns an error if the name already exists.
+func (s *Store) CreateUser(name, passwordHash, role string) (int64, error) {
+	if role != "admin" && role != "viewer" {
+		role = "viewer"
+	}
+	res, err := s.w.Exec(`INSERT INTO users(name,password_hash,role,created_ms) VALUES(?,?,?,?)`,
+		name, passwordHash, role, time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// GetUserByName returns the user with the given name, or nil if not found.
+func (s *Store) GetUserByName(name string) (*User, error) {
+	row := s.r.QueryRow(`SELECT id,name,password_hash,role,created_ms FROM users WHERE name=?`, name)
+	var u User
+	if err := row.Scan(&u.ID, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedMs); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// GetUserByID returns the user with the given id, or nil if not found.
+func (s *Store) GetUserByID(id int64) (*User, error) {
+	row := s.r.QueryRow(`SELECT id,name,password_hash,role,created_ms FROM users WHERE id=?`, id)
+	var u User
+	if err := row.Scan(&u.ID, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedMs); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// ListUsers returns all users.
+func (s *Store) ListUsers() ([]User, error) {
+	rows, err := s.r.Query(`SELECT id,name,password_hash,role,created_ms FROM users ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedMs); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// SeedFirstUser creates the first user from AUTH_USER/AUTH_PASS if no users
+// exist yet. Returns true if a user was created.
+func (s *Store) SeedFirstUser(name, passwordHash string) (bool, error) {
+	var n int64
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
+	_, err := s.CreateUser(name, passwordHash, "admin")
+	return err == nil, err
+}
+
+// UpdateUserRole changes a user's role. Refuses to demote the last admin.
+func (s *Store) UpdateUserRole(id int64, role string) error {
+	if role != "admin" && role != "viewer" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	if role == "viewer" {
+		var n int64
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n); err != nil {
+			return err
+		}
+		if n <= 1 {
+			// Check if this user is an admin
+			var currentRole string
+			if err := s.r.QueryRow(`SELECT role FROM users WHERE id=?`, id).Scan(&currentRole); err != nil {
+				return err
+			}
+			if currentRole == "admin" {
+				return fmt.Errorf("cannot demote the last admin")
+			}
+		}
+	}
+	_, err := s.w.Exec(`UPDATE users SET role=? WHERE id=?`, role, id)
+	return err
+}
+
+// DeleteUser removes a user. Refuses to delete the last admin.
+// Uses a transaction to avoid TOCTOU between counting and deleting.
+func (s *Store) DeleteUser(id int64) error {
+	tx, err := s.w.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	u, err := s.getUserByIDTx(tx, id)
+	if err != nil {
+		return err
+	}
+	if u.Role == "admin" {
+		var n int64
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n); err != nil {
+			return err
+		}
+		if n <= 1 {
+			return fmt.Errorf("cannot delete the last admin")
+		}
+	}
+	_, err = tx.Exec(`DELETE FROM users WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// getUserByIDTx returns the user with the given id within a transaction.
+func (s *Store) getUserByIDTx(tx *sql.Tx, id int64) (*User, error) {
+	row := tx.QueryRow(`SELECT id,name,password_hash,role,created_ms FROM users WHERE id=?`, id)
+	var u User
+	if err := row.Scan(&u.ID, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedMs); err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 // AccessSummary holds overall counts for one window.

@@ -146,7 +146,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	if err != nil || !sn.OOMKilled || len(sn.Logs) != 1 || sn.Logs[0].Line != "last words" || len(sn.Metrics) != 1 {
 		t.Fatalf("round trip failed: %+v err=%v", sn, err)
 	}
-	list, _ := s.ListSnapshots(ctx, "web", 10)
+	list, _ := s.ListSnapshots(ctx, "web", "", 10)
 	if len(list) != 1 || len(list[0].Logs) != 0 {
 		t.Fatalf("list should be light: %+v", list)
 	}
@@ -160,7 +160,7 @@ func TestMetricsBucketAndSum(t *testing.T) {
 		_ = s.InsertMetric("c1", "web", MetricPoint{TS: ts, CPU: 10, Mem: 100, MemLimit: 1000})
 		_ = s.InsertMetric("c2", "web", MetricPoint{TS: ts, CPU: 20, Mem: 300, MemLimit: 1000})
 	}
-	pts, err := s.QueryMetrics(context.Background(), "web", "", base-1000, 0, 60_000)
+	pts, err := s.QueryMetrics(context.Background(), "web", "", "", base-1000, 0, 60_000)
 	if err != nil || len(pts) == 0 {
 		t.Fatalf("pts=%v err=%v", pts, err)
 	}
@@ -222,14 +222,14 @@ func TestSnapshotCatchUpColumns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// dedupe key: same container and death time
-	if ok, err := s.SnapshotExists(ctx, "c1", base+60_000); err != nil || !ok {
+	// dedupe key: same container and death time (host_id defaults to '')
+	if ok, err := s.SnapshotExists(ctx, "c1", "", base+60_000); err != nil || !ok {
 		t.Fatalf("SnapshotExists = %v err=%v, want true", ok, err)
 	}
-	if ok, _ := s.SnapshotExists(ctx, "c1", base+999_000); ok {
+	if ok, _ := s.SnapshotExists(ctx, "c1", "", base+999_000); ok {
 		t.Fatal("SnapshotExists true for a death that was never stored")
 	}
-	if ok, _ := s.SnapshotExists(ctx, "c1", 0); ok {
+	if ok, _ := s.SnapshotExists(ctx, "c1", "", 0); ok {
 		t.Fatal("die_ts 0 (unknown) must never deduplicate")
 	}
 	// restart-loop counting
@@ -243,7 +243,7 @@ func TestSnapshotCatchUpColumns(t *testing.T) {
 		t.Fatalf("another container must not be counted: %d", n)
 	}
 	// the new columns reach both the light list and the detail read
-	list, _ := s.ListSnapshots(ctx, "", 10)
+	list, _ := s.ListSnapshots(ctx, "", "", 10)
 	if len(list) != 3 || list[0].DieTS != base+120_000 || list[0].RestartsWindow != 3 {
 		t.Fatalf("light rows lost new columns: %+v", list[0])
 	}

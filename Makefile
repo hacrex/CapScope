@@ -6,6 +6,7 @@ build:
 	CGO_ENABLED=1 go build -trimpath -tags "$(TAGS)" -o bin/capscope ./cmd/capscope
 
 test:
+	node scripts/check-ui.js
 	go vet ./... && go test -race -count=1 -tags "$(TAGS)" ./...
 
 # Run against the local Docker daemon with auth off (local testing only).

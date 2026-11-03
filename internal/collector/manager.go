@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"capscope/internal/access"
+	"capscope/internal/alerts"
 	"capscope/internal/config"
 	"capscope/internal/docker"
 	"capscope/internal/hub"
@@ -41,6 +42,23 @@ type Manager struct {
 
 	curMu    sync.Mutex
 	curSaved int64 // last Docker event cursor persisted to the store (ns)
+
+	// A6: fan-out target for alert-relevant container events. Set with
+	// SetEventSink (main wires it to the alerts engine); nil disables it.
+	evSink func(alerts.ContainerEvent)
+
+	// sink routes collected rows (serve: SQLite+hub; agent: transport stream).
+	sink Sink
+
+	// trackIf, when set, filters which discovered containers get tracked
+	// (agent mode: DockerFilter label selector).
+	trackIf func(docker.Container) bool
+
+	// hostID is this CapScope instance's host identifier. Trackers created by
+	// this manager inherit it so Containers(hostID) can filter by host. Empty
+	// in serve mode unless AGENT_HOST_ID is set; set to the agent's host ID in
+	// agent mode.
+	hostID string
 }
 
 // pendingEv is an event flag waiting for its container's die event.
@@ -56,7 +74,7 @@ const (
 )
 
 func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hub, log *slog.Logger) *Manager {
-	return &Manager{
+	m := &Manager{
 		cfg: cfg, dk: dk, st: st, hub: h, log: log,
 		lines:      make(chan store.LogRow, 8192),
 		accessRows: make(chan store.AccessRow, 4096),
@@ -64,7 +82,82 @@ func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hu
 		tracked:    map[string]*tracker{},
 		lastTS:     map[string]int64{},
 		pending:    map[string]pendingEv{},
+		hostID:     cfg.AgentHostID,
 	}
+	m.sink = storeSink{st: st, h: h}
+	return m
+}
+
+// Sink is where collected rows go. serve mode writes to SQLite + the hub;
+// agent mode streams them over the transport to a remote hub. The manager
+// routes every write path through the sink so the same collection logic
+// (log following, stats, events) serves both modes.
+type Sink interface {
+	UpsertContainer(c store.ContainerRow) error
+	InsertLogs(rows []store.LogRow) error
+	InsertMetric(containerID, app string, p store.MetricPoint) error
+	InsertAccess(rows []store.AccessRow) error
+	Publish(rows []store.LogRow)
+}
+
+// storeSink persists to SQLite and publishes live rows to the hub (serve mode).
+type storeSink struct {
+	st *store.Store
+	h  *hub.Hub
+}
+
+func (s storeSink) UpsertContainer(c store.ContainerRow) error {
+	return s.st.UpsertContainer(c)
+}
+
+func (s storeSink) InsertLogs(rows []store.LogRow) error {
+	return s.st.InsertLogs(rows)
+}
+
+func (s storeSink) InsertMetric(containerID, app string, p store.MetricPoint) error {
+	return s.st.InsertMetric(containerID, app, p)
+}
+
+func (s storeSink) InsertAccess(rows []store.AccessRow) error {
+	return s.st.InsertAccess(rows)
+}
+
+func (s storeSink) Publish(rows []store.LogRow) {
+	s.h.Publish(rows)
+}
+
+// NewManagerWithSink is like NewManager but takes an explicit sink. A nil
+// store is valid (agent mode): snapshot/state persistence is skipped and all
+// rows flow through the sink.
+func NewManagerWithSink(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hub, sink Sink, log *slog.Logger) *Manager {
+	if sink == nil {
+		sink = storeSink{st: st, h: h}
+	}
+	m := NewManager(cfg, dk, st, h, log)
+	m.sink = sink
+	return m
+}
+
+// SetEventSink wires the fan-out callback for container lifecycle events
+// (A6). main connects it to the alerts engine after both are built; the
+// callback must be cheap and non-blocking (the engine's is).
+func (m *Manager) SetEventSink(fn func(alerts.ContainerEvent)) { m.evSink = fn }
+
+// SetTrackIf restricts which discovered containers get tracked. Used by agent
+// mode for Docker label filtering (DOCKER_FILTER).
+func (m *Manager) SetTrackIf(fn func(docker.Container) bool) { m.trackIf = fn }
+
+// CurrentImages implements alerts.ImageLister for the update checker (A7):
+// the image of every tracked container, one entry per container. The updater
+// deduplicates replicas itself.
+func (m *Manager) CurrentImages(ctx context.Context) []alerts.ImageRef {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]alerts.ImageRef, 0, len(m.tracked))
+	for _, t := range m.tracked {
+		out = append(out, alerts.ImageRef{App: t.app, Container: t.name, Image: t.image})
+	}
+	return out
 }
 
 // ContainerInfo is the live view returned by the API.
@@ -74,6 +167,7 @@ type ContainerInfo struct {
 	App      string  `json:"app"`
 	Replica  string  `json:"replica"`
 	Image    string  `json:"image"`
+	HostID   string  `json:"host_id"`
 	Started  int64   `json:"started"`
 	CPU      float64 `json:"cpu"`
 	Mem      int64   `json:"mem"`
@@ -81,18 +175,21 @@ type ContainerInfo struct {
 	SampleTS int64   `json:"sample_ts"`
 }
 
-func (m *Manager) Containers() []ContainerInfo {
+func (m *Manager) Containers(hostID string) []ContainerInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]ContainerInfo, 0, len(m.tracked))
 	for _, t := range m.tracked {
+		if hostID != "" && t.hostID != hostID {
+			continue
+		}
 		// Prefer the container's real Docker start time; fall back to when
 		// tracking began (e.g. rebuilt trackers for already-exited containers).
 		startedMS := t.created.UnixMilli()
 		if !t.started.IsZero() && t.started.Before(t.created) {
 			startedMS = t.started.UnixMilli()
 		}
-		ci := ContainerInfo{ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image, Started: startedMS}
+		ci := ContainerInfo{ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image, HostID: t.hostID, Started: startedMS}
 		if p, ok := t.lastMetric(); ok {
 			ci.CPU, ci.Mem, ci.MemLimit, ci.SampleTS = p.CPU, p.Mem, p.MemLimit, p.TS
 		}
@@ -139,6 +236,9 @@ func (m *Manager) reconcile(ctx context.Context) {
 	seen := map[string]bool{}
 	for _, c := range cs {
 		seen[c.ID] = true
+		if m.trackIf != nil && !m.trackIf(c) {
+			continue
+		}
 		m.ensure(ctx, c.ID)
 	}
 	// Drop trackers for containers that vanished without a die event (missed
@@ -158,7 +258,7 @@ func (m *Manager) reconcile(ctx context.Context) {
 	for _, t := range stale {
 		t.markExited()
 		t.cancel()
-		if !t.accessOnly {
+		if !t.accessOnly && m.st != nil {
 			_ = m.st.MarkContainerState(t.id, "exited")
 		}
 		m.log.Info("tracker dropped (no die event seen)", "container", t.name)
@@ -190,7 +290,7 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 	}
 	now := time.Now()
 	return &tracker{
-		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
+		id: id, name: name, app: app, replica: replica, image: insp.Config.Image, hostID: m.hostID,
 		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone:    make(chan struct{}),
 		accessOnly: m.excluded(name, app),
@@ -231,7 +331,9 @@ func (m *Manager) ensure(ctx context.Context, id string) {
 	if t.accessOnly {
 		m.log.Info("tracking container (access logs only)", "container", t.name)
 	} else {
-		_ = m.st.UpsertContainer(store.ContainerRow{ID: id, Name: t.name, App: t.app, Image: t.image, Replica: t.replica, State: "running", FirstSeen: now, LastSeen: now})
+		if err := m.sink.UpsertContainer(store.ContainerRow{ID: id, Name: t.name, App: t.app, Image: t.image, Replica: t.replica, HostID: t.hostID, State: "running", FirstSeen: now, LastSeen: now}); err != nil {
+			m.log.Error("upsert container failed", "container", t.name, "err", err)
+		}
 		m.log.Info("tracking container", "app", t.app, "container", t.name)
 	}
 	go m.logLoop(tctx, t)
@@ -365,7 +467,7 @@ func (m *Manager) accessWriter(ctx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		if err := m.st.InsertAccess(batch); err != nil {
+		if err := m.sink.InsertAccess(batch); err != nil {
 			m.log.Error("insert access failed", "err", err, "rows", len(batch))
 		}
 		batch = batch[:0]
@@ -405,10 +507,10 @@ func (m *Manager) writer(ctx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		if err := m.st.InsertLogs(batch); err != nil {
+		if err := m.sink.InsertLogs(batch); err != nil {
 			m.log.Error("insert logs failed", "err", err, "rows", len(batch))
 		} else {
-			m.hub.Publish(batch)
+			m.sink.Publish(batch)
 		}
 		batch = batch[:0]
 	}
@@ -455,7 +557,7 @@ func (m *Manager) statsLoop(ctx context.Context, t *tracker) {
 				NetRx: int64(sm.NetRx), NetTx: int64(sm.NetTx), BlkR: int64(sm.BlkR), BlkW: int64(sm.BlkW), Pids: int64(sm.Pids),
 			}
 			t.pushMetric(p)
-			if err := m.st.InsertMetric(t.id, t.app, p); err != nil {
+			if err := m.sink.InsertMetric(t.id, t.app, p); err != nil {
 				m.log.Error("insert metric failed", "err", err)
 			}
 			return nil
@@ -504,7 +606,10 @@ func (m *Manager) eventLoop(ctx context.Context) {
 // snapshotted like live ones, so a restart no longer loses crash evidence.
 func (m *Manager) catchUpStart(ctx context.Context) time.Time {
 	now := time.Now()
-	ns := m.st.StateGet(ctx, "event_cursor_ns")
+	var ns int64
+	if m.st != nil {
+		ns = m.st.StateGet(ctx, "event_cursor_ns")
+	}
 	if ns <= 0 {
 		return now
 	}
@@ -532,9 +637,11 @@ func (m *Manager) saveCursor(ns int64, force bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := m.st.StateSet(ctx, "event_cursor_ns", ns); err != nil {
-		m.log.Debug("save event cursor failed", "err", err)
-		return
+	if m.st != nil {
+		if err := m.st.StateSet(ctx, "event_cursor_ns", ns); err != nil {
+			m.log.Debug("save event cursor failed", "err", err)
+			return
+		}
 	}
 	m.curSaved = ns
 }
@@ -544,6 +651,34 @@ func (m *Manager) handleEvent(ctx context.Context, ev docker.Event) {
 		return
 	}
 	id := ev.Actor.ID
+	// A6: fan alert-relevant lifecycle events into the collector sink (if
+	// wired by main; an event rule decides about firing). The app name comes
+	// from the live tracker when there is one, otherwise from the event's own
+	// name attribute and the same AppName rules the tracker uses.
+	if m.evSink != nil {
+		switch ev.Action {
+		case "die", "oom", "health_status":
+			ce := alerts.ContainerEvent{
+				Action: ev.Action,
+				ID:     id,
+				Attr:   ev.Actor.Attributes,
+				TS:     time.Unix(0, ev.TimeNano),
+			}
+			if t := m.get(id); t != nil {
+				ce.Container, ce.App = t.name, t.app
+			}
+			if ce.Container == "" {
+				ce.Container = strings.TrimPrefix(ev.Actor.Attributes["name"], "/")
+			}
+			if ce.App == "" && ce.Container != "" {
+				ce.App, _ = AppName(ce.Container, nil)
+			}
+			if ev.Action == "die" {
+				ce.ExitCode, _ = strconv.Atoi(ev.Actor.Attributes["exitCode"])
+			}
+			m.evSink(ce)
+		}
+	}
 	switch ev.Action {
 	case "start":
 		go m.ensure(ctx, id)
@@ -654,7 +789,9 @@ func (m *Manager) finishDie(ctx context.Context, t *tracker, id string, exit int
 	}
 	insp, ierr := m.dk.Inspect(ctx, id)
 	if ierr != nil || !insp.State.Running {
-		_ = m.st.MarkContainerState(id, "exited")
+		if m.st != nil {
+			_ = m.st.MarkContainerState(id, "exited")
+		}
 	}
 	oomFlag, sig := t.flags()
 	pOOM, pSig := m.takePending(id, dieNs)
@@ -664,7 +801,12 @@ func (m *Manager) finishDie(ctx context.Context, t *tracker, id string, exit int
 	}
 	kind := classify(exit, oom, sig)
 	dieMs := dieNs / 1_000_000
-	if ok, _ := m.st.SnapshotExists(ctx, id, dieMs); ok {
+	if m.st == nil {
+		// Agent mode: no local storage; death events are streamed to the hub
+		// via the transport sink instead of snapshotted locally.
+		return
+	}
+	if ok, _ := m.st.SnapshotExists(ctx, id, "", dieMs); ok {
 		return // this death was already snapshotted (replayed event)
 	}
 	loop := m.deathLoop(ctx, id, dieMs)
@@ -700,12 +842,15 @@ func (m *Manager) rebuildTracker(ctx context.Context, id string) *tracker {
 	app, replica := AppName(name, insp.Config.Labels)
 	now := time.Now()
 	t := &tracker{
-		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
+		id: id, name: name, app: app, replica: replica, image: insp.Config.Image, hostID: m.hostID,
 		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone: make(chan struct{}), cancel: func() {},
 		maxLogs: m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
 	}
-	rows, _ := m.st.QueryLogs(ctx, store.LogQuery{Container: id, Limit: m.cfg.SnapshotLogLines})
+	var rows []store.LogRow
+	if m.st != nil {
+		rows, _ = m.st.QueryLogs(ctx, store.LogQuery{Container: id, Limit: m.cfg.SnapshotLogLines})
+	}
 	if len(rows) == 0 {
 		rows = m.fetchFinalLogs(ctx, t)
 	}
@@ -749,7 +894,7 @@ func (m *Manager) deathLoop(ctx context.Context, id string, dieMs int64) restart
 		return restartLoop{} // disabled
 	}
 	n := int64(1)
-	if dieMs > 0 {
+	if dieMs > 0 && m.st != nil {
 		if c, err := m.st.CountDeathsSince(ctx, id, dieMs-m.cfg.RestartLoopWindow.Milliseconds()); err == nil {
 			n = c + 1
 		} else {
@@ -762,6 +907,10 @@ func (m *Manager) deathLoop(ctx context.Context, id string, dieMs int64) restart
 // ---- housekeeping ----
 
 func (m *Manager) maintenance(ctx context.Context) {
+	// Retention/size enforcement needs a store; agent mode streams instead.
+	if m.st == nil {
+		return
+	}
 	run := func() {
 		n, err := m.st.Prune(ctx, m.cfg.LogRetention, m.cfg.MetricsRetention, m.cfg.SnapshotRetention)
 		if err != nil && ctx.Err() == nil {

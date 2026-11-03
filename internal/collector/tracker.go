@@ -13,7 +13,7 @@ import (
 // ring buffers of recent log lines and metric samples (used for crash
 // snapshots), and flags learned from Docker events.
 type tracker struct {
-	id, name, app, image, replica string
+	id, name, app, image, replica, hostID string
 	tty                           bool
 	created                       time.Time // when CapScope started tracking this incarnation
 	started                       time.Time // the container's real start time per Docker (falls back to created)

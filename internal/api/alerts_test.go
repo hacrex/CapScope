@@ -19,6 +19,8 @@ import (
 	"capscope/internal/docker"
 	"capscope/internal/hub"
 	"capscope/internal/store"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // setupAlerts builds a server with an alert engine armed with one deadman rule.
@@ -36,6 +38,9 @@ func setupAlerts(t *testing.T, rulesFile string) (*httptest.Server, *store.Store
 	mgr := collector.NewManager(cfg, dk, st, h, log)
 	eng := alerts.New(st, rulesFile, time.Minute, nil, log)
 	as := auth.NewSessionManager(log)
+	// Seed the first user from AUTH_USER/AUTH_PASS
+	hash, _ := bcrypt.GenerateFromPassword([]byte("p"), bcrypt.DefaultCost)
+	_, _ = st.SeedFirstUser("u", string(hash))
 	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
 	return srv, st
@@ -112,8 +117,10 @@ func TestAlertsTestEndpointSendsAndReports(t *testing.T) {
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := collector.NewManager(cfg, dk, st, h, log)
-	eng := alerts.New(st, rulesPath, time.Minute, alerts.BuildChannels(capture.URL, "", "", "", ""), log)
+	eng := alerts.New(st, rulesPath, time.Minute, alerts.BuildChannels(capture.URL, "", "", "", "", "", ""), log)
 	as := auth.NewSessionManager(log)
+	hash, _ := bcrypt.GenerateFromPassword([]byte("p"), bcrypt.DefaultCost)
+	_, _ = st.SeedFirstUser("u", string(hash))
 	srv := httptest.NewServer(New(cfg, st, mgr, h, log, WithAlerts(eng), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
 
@@ -252,5 +259,25 @@ func TestAlertsRuleBuilder(t *testing.T) {
 	}
 	if again, _ := alerts.Load(rulesPath); len(again) != 2 {
 		t.Fatalf("file changed after rejected save: %+v", again)
+	}
+
+	// Event rules (A6) round-trip their extra fields through the builder:
+	// exclude/status/cooldown survive the save and the defaults apply.
+	newDoc = `{"rules":[{"name":"die","kind":"event","event":"die","exclude":[130]},{"name":"sick","kind":"event","event":"health_status"},{"name":"loop-cool","kind":"event","event":"oom","cooldown":"2h"}]}`
+	if code, body := post("/api/alerts/rules", newDoc); code != 200 {
+		t.Fatalf("save event rules: want 200, got %d %s", code, body)
+	}
+	got, err = alerts.Load(rulesPath)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("event rules did not load: %+v err %v", got, err)
+	}
+	if got[0].Event != "die" || len(got[0].Exclude) != 1 || got[0].Exclude[0] != 130 {
+		t.Errorf("die rule fields: %+v", got[0])
+	}
+	if got[1].Status != "unhealthy" {
+		t.Errorf("health_status default not applied: %+v", got[1])
+	}
+	if got[2].Repeat.D() != 2*time.Hour {
+		t.Errorf("cooldown not persisted: %+v", got[2])
 	}
 }

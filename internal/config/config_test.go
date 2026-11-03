@@ -97,3 +97,113 @@ func TestPerAppBudgetsEmptyAndInvalid(t *testing.T) {
 		t.Errorf("want APP_MAX_MB error, got %v", err)
 	}
 }
+
+// Z5-prep: AUTH_PROVIDER=proxy — authentication is owned by the reverse proxy
+// and a password is not required; the identity header must be a valid name.
+func TestProxyProviderConfig(t *testing.T) {
+	t.Setenv("AUTH_PASS", "") // proxy mode must not require a password
+	t.Setenv("AUTH_PROVIDER", "proxy")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("proxy mode should not require AUTH_PASS: %v", err)
+	}
+	if c.ProxyUserHeader != "Remote-User" {
+		t.Errorf("PROXY_USER_HEADER default = %q, want Remote-User", c.ProxyUserHeader)
+	}
+	t.Setenv("PROXY_USER_HEADER", "X-WebAuth-User")
+	if c, err = Load(); err != nil || c.ProxyUserHeader != "X-WebAuth-User" {
+		t.Errorf("custom header = %q err %v", c.ProxyUserHeader, err)
+	}
+
+	t.Setenv("PROXY_USER_HEADER", "bad header with a space") // not a valid MIME header key
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "PROXY_USER_HEADER") {
+		t.Errorf("want PROXY_USER_HEADER error, got %v", err)
+	}
+
+	t.Setenv("PROXY_USER_HEADER", "Remote-User")
+	t.Setenv("AUTH_PROVIDER", "sso")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AUTH_PROVIDER") {
+		t.Errorf("want unknown provider error, got %v", err)
+	}
+
+	// Back to local: an empty password is refused again (regression guard on
+	// the provider switch).
+	t.Setenv("AUTH_PROVIDER", "local")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AUTH_PASS") {
+		t.Errorf("local mode must still require AUTH_PASS, got %v", err)
+	}
+}
+
+// A7: ntfy channel threading and the update-check knobs.
+func TestNtfyAndUpdateCheckConfig(t *testing.T) {
+	t.Setenv("AUTH_PASS", "secret")
+	// Update check is on by default with a 24h cadence; ntfy defaults empty.
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.UpdateCheck {
+		t.Error("UPDATE_CHECK should default to true")
+	}
+	if c.UpdateCheckInterval != 24*time.Hour {
+		t.Errorf("UPDATE_CHECK_INTERVAL default = %v, want 24h", c.UpdateCheckInterval)
+	}
+	if c.AlertNtfyURL != "" || c.AlertNtfyToken != "" {
+		t.Error("ntfy settings should default to empty")
+	}
+	// Both set: parsed.
+	t.Setenv("ALERT_NTFY_URL", "https://ntfy.sh/me/capscope")
+	t.Setenv("ALERT_NTFY_TOKEN", "tk_abc")
+	t.Setenv("UPDATE_CHECK", "false")
+	t.Setenv("UPDATE_CHECK_INTERVAL", "2h")
+	if c, err = Load(); err != nil || c.AlertNtfyURL != "https://ntfy.sh/me/capscope" || c.AlertNtfyToken != "tk_abc" {
+		t.Fatalf("ntfy cfg = %q err %v", c.AlertNtfyURL, err)
+	}
+	if c.UpdateCheck || c.UpdateCheckInterval != 2*time.Hour {
+		t.Errorf("update cfg = %v/%v", c.UpdateCheck, c.UpdateCheckInterval)
+	}
+	// Token without a URL is refused; a bad URL is refused; short interval clamps.
+	t.Setenv("ALERT_NTFY_URL", "")
+	t.Setenv("UPDATE_CHECK_INTERVAL", "5m")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "ALERT_NTFY_TOKEN") {
+		t.Errorf("want token-without-url error, got %v", err)
+	}
+	t.Setenv("ALERT_NTFY_URL", "sneaky://x")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "ALERT_NTFY_URL") {
+		t.Errorf("want bad ntfy url error, got %v", err)
+	}
+	t.Setenv("ALERT_NTFY_URL", "https://ntfy.sh/me")
+	if c, err = Load(); err != nil || c.UpdateCheckInterval != time.Hour {
+		t.Fatalf("want interval clamp to 1h, got %v err %v", c.UpdateCheckInterval, err)
+	}
+}
+
+// Phase 4: agent config knobs.
+func TestAgentConfig(t *testing.T) {
+	t.Setenv("AUTH_PASS", "secret")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.AgentHub != "" || c.AgentHostID != "" || c.DockerFilter != "" {
+		t.Errorf("agent settings should default to empty: %+v", c)
+	}
+	t.Setenv("AGENT_HUB", "hub.example.com:9092")
+	t.Setenv("AGENT_HOST_ID", "node-1")
+	t.Setenv("AGENT_CA_CERT", "/certs/ca.crt")
+	t.Setenv("AGENT_CERT", "/certs/agent.crt")
+	t.Setenv("AGENT_KEY", "/certs/agent.key")
+	t.Setenv("DOCKER_FILTER", "com.docker.swarm.node.id=abc,env=prod")
+	if c, err = Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.AgentHub != "hub.example.com:9092" || c.AgentHostID != "node-1" {
+		t.Errorf("agent hub/host = %q/%q", c.AgentHub, c.AgentHostID)
+	}
+	if c.AgentCACert != "/certs/ca.crt" || c.AgentCert != "/certs/agent.crt" || c.AgentKey != "/certs/agent.key" {
+		t.Errorf("agent cert paths = %q/%q/%q", c.AgentCACert, c.AgentCert, c.AgentKey)
+	}
+	if c.DockerFilter != "com.docker.swarm.node.id=abc,env=prod" {
+		t.Errorf("DockerFilter = %q", c.DockerFilter)
+	}
+}

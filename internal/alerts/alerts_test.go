@@ -472,19 +472,19 @@ func TestNotifierHTTPErrorSurfaces(t *testing.T) {
 }
 
 func TestBuildChannelsSkipsEmpty(t *testing.T) {
-	chans := BuildChannels("", "", "", "", "")
+	chans := BuildChannels("", "", "", "", "", "", "")
 	if len(chans) != 0 {
 		t.Fatalf("want 0 channels, got %d", len(chans))
 	}
-	chans = BuildChannels("http://x", "tok", "chat", "http://s", "http://d")
-	if len(chans) != 4 {
-		t.Fatalf("want 4 channels, got %d", len(chans))
+	chans = BuildChannels("http://x", "tok", "chat", "http://s", "http://d", "http://n", "")
+	if len(chans) != 5 {
+		t.Fatalf("want 5 channels, got %d", len(chans))
 	}
 	names := map[string]bool{}
 	for _, c := range chans {
 		names[c.Name] = true
 	}
-	for _, want := range []string{"webhook", "telegram", "slack", "discord"} {
+	for _, want := range []string{"webhook", "telegram", "slack", "discord", "ntfy"} {
 		if !names[want] {
 			t.Errorf("missing channel %s", want)
 		}

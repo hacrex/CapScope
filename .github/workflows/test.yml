@@ -1,0 +1,24 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: UI static check (inline script syntax)
+        run: node scripts/check-ui.js
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 -tags "sqlite_omit_load_extension fts5" ./...

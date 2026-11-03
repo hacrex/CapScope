@@ -24,6 +24,17 @@ Coolify builds the repo's `Dockerfile` directly, so no extra definition file is 
 
 **Health check**: URL path `/healthz` (auth-free by design).
 
+### Behind Coolify's auth (optional)
+
+If you put CapScope behind Coolify's own access login (Proxy → Coolify resource shared with authorized teams) or another forward-auth layer, you can drop the password:
+
+| Key | Value |
+|---|---|
+| `AUTH_PROVIDER` | `proxy` |
+| `PROXY_USER_HEADER` | the header your proxy sets after login (`Remote-User` for Authelia/Authentik) |
+
+CapScope then trusts that header as the caller identity. Only do this when the proxy is the only path to the port — the header is trusted from any direct connection.
+
 ## 3. Storage
 
 Add a **Persistent Storage** volume:

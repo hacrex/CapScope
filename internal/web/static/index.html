@@ -95,6 +95,11 @@ main.narrow aside #apps{display:none}
 /* v0.7-C: collapsed duplicate-line run */
 .ln.collapse{cursor:pointer;color:var(--muted);font-style:italic;background:var(--panel2);border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
 .ln.collapse:hover{color:var(--text)}
+/* multi-line (stack-trace) grouping: v0.8 'Group' toggle */
+.cont-badge{cursor:pointer;font-size:10px;line-height:12px;padding:1px 6px;border:1px solid var(--line);border-radius:7px;color:var(--muted);flex:none;font-style:normal}
+.cont-badge:hover{color:var(--text);border-color:var(--accent)}
+.ln.cont{padding-left:44px;opacity:.82}
+.ln.cont .c{visibility:hidden}
 /* v0.7-D: incident card */
 .incident{border:1px solid var(--line2);border-left:4px solid var(--accent);border-radius:10px;background:var(--panel);padding:16px;margin:12px 0;box-shadow:var(--shadow)}
 .incident h2{margin:0 0 6px;font-size:16px}
@@ -106,6 +111,10 @@ aside h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:
 .app .n{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:500;font-size:13px}
 .app .n>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app .m{font-size:12px;color:var(--muted);display:flex;gap:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+#appFilter{margin:2px 8px 6px;width:calc(100% - 16px);padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px}
+#appFilter:focus{outline:none;border-color:var(--accent)}
+#appFilter::placeholder{color:var(--muted)}
+main.narrow aside #appFilter{display:none}
 .badge{font-size:11px;font-weight:600;border-radius:999px;padding:0 7px;line-height:17px;font-variant-numeric:tabular-nums}
 .badge.e{background:var(--err-bg);color:var(--err)}.badge.w{background:var(--warn-bg);color:var(--warn)}
 section.content{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -194,14 +203,29 @@ h2{font-weight:600;letter-spacing:-.02em}
 .cont{font-size:12px;padding:5px 10px;margin-left:16px;border-left:2px solid transparent}
 .cont:hover{background:var(--panel2)}
 .cont.sel{background:var(--panel2);border-left-color:var(--accent)}
-.login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100}
-.login-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:32px 28px;min-width:320px;max-width:90vw;box-shadow:var(--shadow)}
-.login-header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-.login-header h2{font-size:18px;margin:0}
-.login-muted{color:var(--muted);font-size:13px;margin:0 0 20px}
-.login-field{margin-bottom:14px}
-.login-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-.login-error{color:var(--err);font-size:12px;margin-top:8px;min-height:16px}
+.login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;z-index:100;overflow:hidden}
+.login-hero{flex:1;background:linear-gradient(180deg,var(--bg),var(--panel));padding:56px 48px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--line);min-width:300px}
+.login-hero .hero-badge{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;padding:5px 12px;margin-bottom:28px;background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.login-hero h1{font-size:44px;font-weight:700;letter-spacing:-.03em;margin:0 0 18px;line-height:1.08;color:var(--text)}
+.login-hero p{font-size:17px;color:var(--muted);margin:0 0 32px;line-height:1.7}
+.login-hero .hero-features{display:flex;flex-direction:column;gap:14px}
+.login-hero .hero-feat{display:flex;align-items:flex-start;gap:12px;font-size:15px;color:var(--text)}
+.login-hero .hero-feat .dot{flex:0 0 auto;width:7px;height:7px;background:var(--accent);border-radius:50%;margin-top:7px}
+.login-form-panel{flex:0 0 auto;width:460px;padding:56px 48px;display:flex;align-items:center;justify-content:center;background:var(--panel)}
+.login-card{background:transparent;border:none;border-radius:0;padding:0;min-width:auto;max-width:none;box-shadow:none;width:100%}
+.login-card .login-header{margin-bottom:24px}
+.login-card h2{font-size:28px}
+.login-card .login-muted{margin-bottom:28px;color:var(--muted);font-size:16px}
+.login-card .login-field{margin-bottom:18px}
+.login-card .login-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.login-card .login-error{color:var(--err);font-size:12px;margin-top:8px;min-height:16px}
+@media (max-width:900px){
+  .login-overlay{flex-direction:column}
+  .login-hero{border-right:none;border-bottom:1px solid var(--line);min-height:40vh;padding:40px 32px;justify-content:flex-start}
+  .login-form-panel{width:100%;min-height:60vh;padding:40px 32px}
+  .login-hero h1{font-size:32px}
+  .login-hero p{font-size:15px}
+}
 .product-footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 16px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
 .product-footer .footer-name{font-weight:600;color:var(--text)}
 .product-footer .footer-tagline{font-size:11px;max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -216,13 +240,16 @@ h2{font-weight:600;letter-spacing:-.02em}
   <span class="chip" id="conn">connecting</span>
   <span class="sp"></span>
   <span class="chip" id="crashchip" title="Crash snapshots in the last 24h" style="cursor:pointer;display:none"></span>
+  <span class="chip" id="hostchip" title="Filter by Docker host" style="cursor:pointer;display:none;margin-left:6px">All hosts</span>
   <span class="chip" id="contStat" title="Selected container" style="display:none"></span>
   <button class="b" id="paletteBtn" title="Command palette (Ctrl+K)">⌘K</button>
+  <button class="b" id="shareBtn" title="Copy an expiring share link for the current view (valid 7 days)">Share</button>
+  <button class="b" id="tzBtn" title="Display times in browser-local or UTC">Local</button>
   <button class="b" id="themeBtn" title="Color theme">Auto</button>
   <button class="b" id="logoutBtn" title="Log out" style="display:none">Log out</button>
 </header>
 <main id="main">
-  <aside><button id="sideToggle" title="Collapse sidebar">⟨⟨</button><h2>Apps</h2><div id="apps"></div></aside>
+  <aside><button id="sideToggle" title="Collapse sidebar">⟨⟨</button><h2>Apps</h2><input type="search" id="appFilter" placeholder="Filter apps" autocomplete="off" spellcheck="false"><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
       <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
@@ -246,8 +273,12 @@ h2{font-weight:600;letter-spacing:-.02em}
         <button class="b hide-sql" id="pause">Pause</button>
         <button class="b hide-sql" id="older">Load older</button>
         <button class="b hide-sql" id="wrap">Wrap</button>
+        <button class="b hide-sql" id="group" title="Fold stack-trace continuation lines (indents, 'at …', 'Caused by: …') into the entry above — click the ▸ badge to expand one">Group</button>
         <button class="b hide-sql" id="jsonBtn" title="Pretty print all JSON log lines inline">JSON</button>
         <a class="chip hide-sql" id="logCSV" href="/api/logs/export" title="Download matching logs as CSV (whole app, all replicas, up to 200k lines)">Download CSV</a>
+        <a class="chip hide-sql" id="logJSON" href="/api/logs/export?fmt=json" title="Download matching logs as one JSON document (same filters and ceiling — BI/jq ready)">Download JSON</a>
+        <a class="chip hide-sql" id="logTXT" href="/api/logs/raw" title="Download matching logs as a plain text file (one raw line per row, pipe/grep ready, same 200k ceiling)">Download TXT</a>
+        <a class="chip hide-sql" id="logPNG" href="/api/logs/export?fmt=png" title="Download matching logs as a PNG image (same filters and ceiling)">Download PNG</a>
         <button class="b hide-sql" id="exportSel" style="display:none" title="Export selected lines as CSV">Export (0) lines</button>
         <span class="chip" id="cnt"></span>
         <div class="pop" id="repPop" style="display:none"></div>      </div>
@@ -308,7 +339,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -324,6 +355,19 @@ $('#themeBtn').onclick=()=>{
   localStorage.setItem('theme',S.theme);
   applyTheme(S.theme);
 };
+/* Time display: browser-local or UTC (survives reload; panes re-render lazily). */
+function applyTz(){
+  $('#tzBtn').textContent=S.tz==='utc'?'UTC':'Local';
+  for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.schedule(); // repaint visible rows only
+}
+applyTz();
+$('#tzBtn').onclick=()=>{
+  S.tz=S.tz==='utc'?'local':'utc';
+  localStorage.setItem('tz',S.tz);
+  applyTz();
+  toast('Times: '+(S.tz==='utc'?'UTC':'browser local'));
+};
+$('#shareBtn').onclick=()=>copyShareLink(7);
 
 /* ---------- ⌘K command palette ---------- */
 // v0.7 fix: TABS/RANGE_MS/selectApp are declared later (const TDZ / function
@@ -348,10 +392,16 @@ function paletteActions(){
     ...TABS.map(t=>safeAct('Tabs','Go to '+t.charAt(0).toUpperCase()+t.slice(1),()=>setTab(t))),
     ...Object.keys(RANGE_MS).map(r=>safeAct('Range','Time range: '+r,()=>{S.range=r;setRangeChip();syncURL();show();})),
     safeAct('View','Toggle wrap lines',()=>{$('#wrap')?.click();}),
+    safeAct('View','Toggle pretty-print JSON',()=>{$('#jsonBtn')?.click();}),
     safeAct('View',(S.theme==='dark'?'Switch to light theme':'Switch to dark theme'),()=>{S.theme=S.theme==='dark'?'light':'dark';localStorage.setItem('theme',S.theme);applyTheme(S.theme);toast('Theme: '+THEME_LABEL[S.theme]);}),
     safeAct('View','Collapse duplicate log lines: '+(S.collapseDupes?'on':'off'),()=>{S.collapseDupes=!S.collapseDupes;localStorage.setItem('collapseDupes',S.collapseDupes?'1':'0');toast('Pattern collapse '+(S.collapseDupes?'enabled':'disabled'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);}),
+    safeAct('View','Fold stack-trace lines (multi-line): '+(S.groupLines?'on':'off'),()=>{$('#group').click();}),
+    safeAct('View',(S.tz==='utc'?'Show times in browser local':'Show times in UTC'),()=>$('#tzBtn').click()),
+    safeAct('Share','Copy expiring share link for this view (7 days)',()=>copyShareLink(7)),
+    safeAct('Export','Export current view as PNG',()=>{location.href=$('#logPNG').href;}),
     safeAct('View','Toggle sidebar: '+(S.sideNarrow?'collapsed':'expanded'),()=>setSidebar(!S.sideNarrow)),
     safeAct('Alerts','New alert rule',()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}),
+    safeAct('View','Jump to Crashes tab',()=>setTab('crashes')),
   ];
   for(const a of S.apps)acts.push(safeAct('Apps','Open app: '+a.app,()=>selectApp(a.app)));
   return acts;
@@ -421,8 +471,8 @@ async function api(path,init){
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
-const fmtTime=ms=>{const d=new Date(ms);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
-const fmtDT=ms=>new Date(ms).toLocaleString();
+const fmtTime=ms=>{const d=new Date(ms);if(S.tz==='utc'){return String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0')+':'+String(d.getUTCSeconds()).padStart(2,'0')+'.'+String(d.getUTCMilliseconds()).padStart(3,'0');}return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0');};
+const fmtDT=ms=>{const d=new Date(ms);return S.tz==='utc'?d.toISOString().replace('T',' ').slice(0,19)+' UTC':d.toLocaleString();};
 const mib=b=>(b/1048576).toFixed(b>1073741824?0:1)+' MiB';
 const appIcon=image=>{
   const i=(image||'').toLowerCase();
@@ -448,6 +498,9 @@ function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ag
 /* Surface a transient failure on the connection chip; refreshApps restores the real state. */
 let badT;
 function connBad(msg){const c=$('#conn');c.textContent=msg;c.className='chip bad';clearTimeout(badT);badT=setTimeout(refreshApps,4000);}
+/* transient connection states (reconnecting / dropped rows) must not trigger
+   the connBad auto-refresh timer — chips are informational only. */
+function connChip(kind,msg){const c=$('#conn');c.textContent=msg;c.className='chip '+kind;clearTimeout(badT);}
 /* ---------- toasts ---------- */
 /* Non-blocking feedback for saves/records; replaces inline status text on success. */
 function toast(msg,kind){
@@ -458,7 +511,7 @@ function toast(msg,kind){
 }
 
 /* Keep the Logs-tab CSV download in step with the current filters. */
-function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);}
+function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);$('#logJSON').href='/api/logs/export?fmt=json&'+params({},null);$('#logTXT').href='/api/logs/raw?'+params({},null);$('#logPNG').href='/api/logs/export?fmt=png&'+params({},null);}
 function escCsv(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function downloadSelected(){
   const rows=[];document.querySelectorAll('#logs .ln.sel,.plog .ln.sel').forEach(d=>{
@@ -513,10 +566,41 @@ async function refreshApps(){
     });
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
     if(S.app===null&&S.selCont===null&&appList.length)selectApp(appList[0].name);
+    applyAppFilter(); // re-apply any active sidebar filter after the rebuild
     fillReplicas();fillMetricsContainers();
     updateContainerStat();
   }catch(e){$('#conn').textContent='offline';$('#conn').className='chip bad';}
 }
+/* ---------- host selector (Phase 4.5) ---------- */
+// Fetch registered hosts from the hub (agent-ingested) and local host (serve mode).
+// The chip cycles through hosts; clicking it applies the host filter to
+// containers, crashes, metrics and the dashboard via ?host= permalinks.
+async function loadHosts(){
+  try{
+    const d=await api('/api/hosts');
+    S.hosts=(d&&d.hosts||[]).map(h=>h.host_id).filter(Boolean);
+    const hc=$('#hostchip');
+    if(S.hosts.length){
+      hc.style.display='';
+      hc.textContent=S.host?S.host:'All hosts';
+      hc.title='Filter by host: '+S.hosts.join(', ')+' (click to cycle)';
+    }else{
+      hc.style.display='none';
+    }
+  }catch(e){/* /api/hosts may not exist on older builds; hide the chip */}
+}
+$('#hostchip').onclick=()=>{
+  if(!S.hosts.length)return;
+  const cur=S.hosts.indexOf(S.host);
+  const nxt=(cur+1)%(S.hosts.length+1); // +1 for the "All hosts" off-state
+  S.host=nxt<S.hosts.length?S.hosts[nxt]:'';
+  $('#hostchip').textContent=S.host?S.host:'All hosts';
+  syncURL();
+  refreshApps();
+  if(S.tab==='crashes')loadCrashes();
+  if(S.tab==='dashboard' && !S.app)loadDashboard();
+  if(S.tab==='metrics')loadMetrics();
+};
 function fillMetricsContainers(){
   const sel=$('#mcont'),cur=sel.value;
   sel.innerHTML='<option value="">'+(S.app?'whole app':'all apps')+'</option>';
@@ -612,14 +696,37 @@ function syncURL(){
   const p=new URLSearchParams();
   if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
   if(S.app)p.set('app',S.app); // empty string = All apps → omit
+  if(S.host)p.set('host',S.host); // empty string = All hosts → omit
   if(S.range&&S.range!=='1h')p.set('range',S.range);
   const qs=p.toString();
   history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+}
+/* Expiring share links (V10): a capability token in the DB that opens the
+   same view until its TTL lapses; /s/<token> redirects there. The link,
+   not the data, is shared — the SPA still demands a session after the hop. */
+function shareQS(){
+  const p=new URLSearchParams();
+  if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
+  if(S.app)p.set('app',S.app);
+  if(S.host)p.set('host',S.host);
+  if(S.range&&S.range!=='1h')p.set('range',S.range);
+  return p.toString();
+}
+function currentHash(){const m=location.hash.match(/^#crash=\d+$/);return m?m[0]:'';}
+async function copyShareLink(days){
+  const ttl=(days||7)+'d';
+  try{
+    const d=await api('/api/share',{method:'POST',body:JSON.stringify({qs:shareQS(),hash:currentHash(),ttl})});
+    const url=location.origin+d.url;
+    try{await navigator.clipboard.writeText(url);}catch(e){prompt('Share link (expires in '+ttl+'):',url);}
+    toast('Expiring share link copied — resolves for '+ttl,'ok');
+  }catch(e){toast('Share link failed: '+(e.message||e),null);}
 }
 addEventListener('popstate',()=>{const q=new URLSearchParams(location.search);applyURL(q);});
 function applyURL(q){
   const t=q.get('tab');if(t&&TABS.includes(t)){S.tab=t;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));}
   const a=q.get('app');if(a!==null&&a!==S.app){S.app=a;document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===a));fillReplicas();fillMetricsContainers();updateContainerStat();}
+  const h=q.get('host');if(h!==null&&h!==S.host){S.host=h;$('#hostchip').textContent=h||'All hosts';$('#hostchip').style.display='';}
   const r=q.get('range');if(r&&(RANGE_MS[r]||r==='5m')){S.range=r;setRangeChip();}
 }
 function show(){
@@ -630,7 +737,7 @@ function show(){
   $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
   $('#view-alerts').style.display=S.tab==='alerts'?'block':'none';
   if(S.tab==='logs')restartLogs();else stopStreams();
-  if(S.tab==='dashboard')loadDashboard();
+  if(S.tab==='dashboard' && !S.app)loadDashboard();
   if(S.tab==='metrics')loadMetrics();
   if(S.tab==='access')loadAccess();
   if(S.tab==='crashes')loadCrashes();
@@ -648,16 +755,37 @@ function makeVList(scroller){
   const COLLAPSE_MIN=3;
   const norm=r=>r.d?('d\0'+(r.ts||0)+'\0'+(r.version||'')):('l\0'+(r.container||'')+'\0'+(r.level||'')+'\0'+r.line);
   const runKey=g=>g.first.d?('dk\0'+g.first.ts):('k\0'+(g.first.ts||0)+'\0'+(g.first.container||'')+'\0'+g.n);
+  /* Multi-line fold: lines that look like a stack trace / continuation of the
+     previous entry — indents (Java, Go panics), 'at …' frames, 'Caused by:',
+     Python 'Traceback', 'goroutine ', '...' elision. Heuristic, hence the
+     toggle button (#group). */
+  const contLine=l=>{
+    if(!l)return false;
+    const c=l.charAt(0);
+    if(c===' '||c==='\t')return true;
+    return l.startsWith('at ')||l.startsWith('Caused by:')||l.startsWith('Traceback')||l.startsWith('goroutine ')||l.startsWith('...')||l.endsWith('...');
+  };
   function groupRows(rows){
-    const out=[];let i=0;
+    const out=[];let head=null;
+    // head.m and head.cont are per-render annotations; never let them leak
+    // into the next pass or attached lines would accumulate every rebuild.
+    for(const r of rows){r.m=null;r.cont=false;}
+    let i=0;
     while(i<rows.length){
-      let j=i+1;const k=norm(rows[i]);
+      const r=rows[i];
+      if(r.d){out.push(r);head=null;i++;continue;}
+      if(S.groupLines&&head&&!head.d&&!head.c&&contLine(r.line)){
+        if(vl.expanded.has('m\0'+head.id)){r.cont=true;out.push(r);}
+        else{(head.m||(head.m=[])).push(r);}
+        i++;continue;
+      }
+      let j=i+1;const k=norm(r);
       while(j<rows.length&&norm(rows[j])===k)j++;
-      if(!rows[i].d&&j-i>=COLLAPSE_MIN&&S.collapseDupes){
-        const g={c:true,first:rows[i],n:j-i};
-        if(vl.expanded.has(runKey(g)))for(let p=i;p<j;p++)out.push(rows[p]);
-        else out.push(g);
-      }else for(let p=i;p<j;p++)out.push(rows[p]);
+      if(j-i>=COLLAPSE_MIN&&S.collapseDupes){
+        const g={c:true,first:r,n:j-i};
+        if(vl.expanded.has(runKey(g))){for(let p=i;p<j;p++)out.push(rows[p]);head=rows[j-1];}
+        else{out.push(g);head=null;}
+      }else{out.push(r);head=r;}
       i=j;
     }
     return out;
@@ -673,10 +801,7 @@ function makeVList(scroller){
     win.style.transform='translateY('+(first*ROW_H)+'px)';
     win.replaceChildren();
     const frag=document.createDocumentFragment();
-    for(let i=first;i<last;i++){
-      const r=vl.disp[i];
-      frag.append(r.c?collapseRow(r):vl.renderRow(r));
-    }
+    for(let i=first;i<last;i++)frag.append(renderDisp(vl.disp[i]));
     win.append(frag);
   }
   function collapseRow(g){
@@ -695,6 +820,31 @@ function makeVList(scroller){
     };
     return d;
   }
+  /* one disp entry → its DOM. Groups can render to several rows (expanded
+     multi-line), so this may return a DocumentFragment. */
+  function renderDisp(r){
+    if(r.c)return collapseRow(r);
+    const el=vl.renderRow(r);
+    if(r.cont)el.classList.add('cont');
+    else if(r.m&&r.m.length){
+      const k='m\0'+r.id;
+      const b=document.createElement('span');b.className='cont-badge';
+      b.textContent=(vl.expanded.has(k)?'▾ ':'▸ ')+r.m.length;
+      b.title='Fold/unfold '+r.m.length+' continuation line(s) of this entry';
+      b.onclick=e=>{e.stopPropagation();if(vl.expanded.has(k))vl.expanded.delete(k);else vl.expanded.add(k);rebuild();paint();};
+      el.append(b);
+      if(vl.expanded.has(k)){
+        const f=document.createDocumentFragment();f.append(el);
+        for(const cr of r.m){
+          const sub=vl.renderRow(Object.assign({},cr,{cont:true}));
+          sub.classList.add('cont');
+          f.append(sub);
+        }
+        return f;
+      }
+    }
+    return el;
+  }
   vl.schedule=()=>{if(!vl.raf)vl.raf=requestAnimationFrame(paint);};
   const onScroll=()=>vl.schedule();
   scroller.addEventListener('scroll',onScroll);
@@ -706,8 +856,12 @@ function makeVList(scroller){
   vl.trim=()=>{
     if(vl.rows.length>MAXROWS){
       const cut=vl.rows.length-MAXROWS;
+      const before=total();
       vl.rows.splice(0,cut);
-      scroller.scrollTop=Math.max(0,scroller.scrollTop-cut*ROW_H);
+      rebuild();
+      /* collapse/grouping change the rows↔pixels ratio, so anchor by measured
+         height delta instead of assuming one removed row = one removed line */
+      scroller.scrollTop=Math.max(0,scroller.scrollTop-(before-total()));
     }
   };
   vl.reset=rows=>{
@@ -759,6 +913,8 @@ function params(extra,container){
 }
 function stopStreams(){
   for(const p of S.panes){
+    p.gone=true;                 // tear-down flag: reconnect closures must stop
+    if(p.reconT){clearTimeout(p.reconT);p.reconT=0;}
     if(p.es){p.es.close();p.es=null;}
     if(p.destroy)p.destroy();
   }
@@ -877,24 +1033,79 @@ function createPane(host,container,split){
   pane.destroy=()=>{pane.scroller.removeEventListener('scroll',followOff);vl.destroy();};
   return pane;
 }
-async function startPane(pane){
-  pane.loaded=false;pane.pending=[];pane.maxId=0;pane.vl.reset([]);
-  const my=pane.es=new EventSource('/api/logs/stream?'+params({},pane.name));
+/* ---- live-tail connection: open, resume, reconnect ----
+   The server tags every SSE row with `id:`. When EventSource reconnects (its
+   native retry or our backoff loop below) it sends Last-Event-ID, and the
+   server only forwards hub rows newer than that — no duplicates, no gap while
+   the connection was down. For long outages we additionally replay the missed
+   window from SQLite (catchUp) since the hub has no replay buffer. */
+function openStream(pane,first){
+  // Require a valid session before opening the live-tail stream.
+  // Without one, EventSource gets 401 and retries forever silently.
+  if(!localStorage.getItem('capscope_token')){
+    if(!pane.gone)showLogin();
+    return;
+  }
+  const my=pane.es=new EventSource('/api/logs/stream?'+params(pane.maxId>0?{since_id:pane.maxId}:{},pane.name));
+  my.onopen=()=>{
+    if(pane.gone)return;
+    connChip('live','live');pane.retries=0;
+    // Any reconnect after the initial backfill (our backoff loop or the
+    // browser's native retry): replay rows published while disconnected.
+    if(pane.loaded)catchUp(pane);
+  };
   my.onmessage=e=>{
-    const r=JSON.parse(e.data);
+    if(pane.gone)return;
+    let r;try{r=JSON.parse(e.data);}catch(err){return;}
+    // pane.maxId is the delivery cursor (also tracks paused rows so a resume
+    // after pause+reconnect stays deduped through paneAppend's id check).
+    if(r.id>pane.maxId)pane.maxId=r.id;
     if(!pane.loaded||pane.paused)pane.pending.push(r);
     else paneAppend(pane,[r],true);
   };
-  my.onerror=()=>{$('#conn').className='chip bad';};
-  my.onopen=()=>{$('#conn').className='chip live';$('#conn').textContent='live';};
+  my.onerror=()=>{
+    if(pane.gone)return;
+    // If we lost our session, stop retrying and show the login overlay.
+    if(!localStorage.getItem('capscope_token')){
+      if(my.readyState!==EventSource.CLOSED)my.close();
+      pane.es=null;
+      showLogin();
+      return;
+    }
+    if(my.readyState===EventSource.CLOSED){ // EventSource gave up — take over
+      pane.es=null;
+      scheduleReconnect(pane);
+    }else connChip('bad','reconnecting…'); // native retry will resume via Last-Event-ID
+  };
   // Server emits "event: dropped" (cumulative count) on its 15s ping when the
   // hub had to discard lines for this subscriber under write pressure.
-  my.addEventListener('dropped',e=>{const n=e.data|0;if(n){$('#conn').textContent='live ('+n+' dropped)';$('#conn').title=n+' live line(s) dropped by the SSE buffer (write pressure). Persisted logs and CSV export are unaffected.';}});
+  my.addEventListener('dropped',e=>{const n=e.data|0;if(n){connChip('live','live ('+n+' dropped)');$('#conn').title=n+' live line(s) dropped by the SSE buffer (write pressure). Persisted logs, crash snapshots and CSV export are unaffected.';}});
+}
+function scheduleReconnect(pane){
+  pane.retries=(pane.retries||0)+1;
+  const wait=Math.min(15000,1000*Math.pow(2,Math.min(pane.retries-1,4)))+Math.floor(Math.random()*750);
+  connChip('bad','reconnecting (attempt '+pane.retries+')');
+  pane.reconT=setTimeout(()=>{if(!pane.gone)openStream(pane,false);},wait);
+}
+/* replay rows published between the last delivered id and now, from SQLite */
+async function catchUp(pane){
+  if(!(pane.maxId>0)||!pane.loaded)return;
+  try{
+    const d=await api('/api/logs?'+params({since_id:pane.maxId,asc:'1',limit:2000},pane.name));
+    if(pane.gone||!d.logs||!d.logs.length)return;
+    pane.pending.push(...d.logs);
+    if(pane.paused)return; // stay paused: rows flush on Resume
+    flushPending(pane);
+  }catch(e){/* transient: the next reconnect retries */}
+}
+async function startPane(pane){
+  pane.loaded=false;pane.pending=[];pane.maxId=0;pane.retries=0;pane.gone=false;
+  openStream(pane,true);
   try{
     const d=await api('/api/logs?'+params({limit:500},pane.name));
-    if(pane.es!==my)return;
+    if(pane.gone)return;
     let maxId=0;for(const r of d.logs)if(r.id>maxId)maxId=r.id;
-    pane.maxId=maxId;
+    pane.maxId=Math.max(pane.maxId,maxId); // live rows may have arrived during load
     // V9: interleave deploy markers that fall inside the loaded window.
     const oldest=d.logs.length?d.logs[0].ts:Date.now()-3600e3;
     const deploys=await loadDeploys(null,oldest);
@@ -902,7 +1113,7 @@ async function startPane(pane){
     pane.loaded=true;
     flushPending(pane);
     pane.vl.toBottom();
-  }catch(e){$('#conn').textContent='load failed';$('#conn').className='chip bad';}
+  }catch(e){connBad('load failed');}
 }
 function paneAppend(pane,rs,pin){
   const fresh=[];
@@ -921,6 +1132,16 @@ function updateCnt(){
 }
 $('#follow').onclick=()=>{const nf=!S.panes.some(p=>p.follow);for(const p of S.panes){p.follow=nf;const fw=p.el.querySelector('.bx:nth-child(2)');if(fw)fw.textContent=nf?'👁':'🙈';if(nf)p.vl.toBottom();}$('#follow').classList.toggle('on',nf);};
 $('#wrap').onclick=()=>{S.wrapLines=!S.wrapLines;$('#wrap').classList.toggle('on',S.wrapLines);document.documentElement.classList.toggle('wrap',S.wrapLines);};
+$('#group').classList.toggle('on',S.groupLines);
+$('#group').onclick=()=>{S.groupLines=!S.groupLines;localStorage.setItem('groupLines',S.groupLines?'1':'0');$('#group').classList.toggle('on',S.groupLines);toast('Stack-trace grouping '+(S.groupLines?'on':'off'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);};
+function applyAppFilter(){
+  const v=$('#appFilter').value.toLowerCase();
+  $('#apps').querySelectorAll('.app').forEach(e=>{e.style.display=e.dataset.n.toLowerCase().includes(v)?'':'none';});
+}
+$('#appFilter').addEventListener('input',applyAppFilter);
+$('#appFilter').addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.stopPropagation();$('#appFilter').value='';applyAppFilter();e.target.blur();}
+});
 $('#pause').onclick=()=>{const np=!S.panes.some(p=>p.paused);for(const p of S.panes){p.paused=np;const pf=p.el.querySelector('.bx:nth-child(3)');if(pf)pf.textContent=np?'⏸':'▶';if(!np)flushPending(p);}$('#pause').classList.toggle('on',np);$('#pause').textContent=np?'Pause':'Resume';};
 function setRangeChip(){document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
 function setStatusChip(){document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.classList.toggle('on',b.dataset.status===S.accStatus));}
@@ -1211,7 +1432,7 @@ function draw(canvas,pts,key,fmt,limitKey,deploys,crashes){
 }
 async function loadMetrics(){
   if(S.app===null)return;
-  const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('range',$('#range').value);if($('#mcont').value)p.set('container',$('#mcont').value);
+  const p=new URLSearchParams();if(S.app)p.set('app',S.app);if(S.host)p.set('host',S.host);p.set('range',$('#range').value);if($('#mcont').value)p.set('container',$('#mcont').value);
   const d=await api('/api/metrics?'+p);
   const deploys=await loadDeploys($('#range').value);
   const crashes=await loadCrashMarkers($('#range').value);
@@ -1232,7 +1453,7 @@ async function loadDeploys(range,sinceMs){
 }
 async function loadCrashMarkers(range,sinceMs){
   const ms=RANGE_MS[range]||3600e3;const since=sinceMs||(Date.now()-ms);
-  const p=new URLSearchParams();if(S.app)p.set('app',S.app);p.set('since',since);p.set('limit','200');
+  const p=new URLSearchParams();if(S.app)p.set('app',S.app);if(S.host)p.set('host',S.host);p.set('since',since);p.set('limit','200');
   try{const d=await api('/api/snapshots?'+p);return (d.snapshots||[]).slice().reverse();} // oldest→newest for drawing
   catch(e){console.warn('capscope: crashes load failed',e);return [];}
 }
@@ -1289,13 +1510,15 @@ async function loadCrashes(){
   if(m){await openCrash(m[1]);return;}
   const box=$('#view-crashes');box.innerHTML='';
   const only=S.crashOnlyApp&&S.app;
-  const d=await api('/api/snapshots?limit=100'+(only?'&app='+encodeURIComponent(S.app):''));
+  const d=await api('/api/snapshots?limit=100'+(only?'&app='+encodeURIComponent(S.app):'')+(S.host?'&host='+encodeURIComponent(S.host):''));
   if(!d||!Array.isArray(d.snapshots)){console.warn('capscope: unexpected /api/snapshots shape',d);return;}
   const bar=document.createElement('div');bar.style.marginBottom='12px';
   const lab=document.createElement('label');lab.className='chk';
   const cb=document.createElement('input');cb.type='checkbox';cb.id='onlyapp';cb.checked=!!only;cb.onchange=()=>{S.crashOnlyApp=cb.checked;loadCrashes();};
   lab.append(cb,'only show '+(S.app||'selected app'));bar.append(lab);box.append(bar);
-  if(!d.snapshots.length){const e=document.createElement('div');e.className='empty';e.textContent='No crash snapshots yet. They are saved automatically when a container dies with a non-zero exit code or is OOM killed.';box.append(e);return;}
+  if(!d.snapshots.length){const e=document.createElement('div');e.className='empty';e.textContent='No crash snapshots yet. They are saved automatically when a container dies with a non-zero exit code or is OOM killed.';box.append(e);S.lastCrashCount=0;return;}
+  // Health-check snapshot toast: notify when new crash snapshots are detected.
+  const prev=S.lastCrashCount||0;if(d.snapshots.length>prev){const latest=d.snapshots[d.snapshots.length-1];toast('Health-check snapshot #'+latest.id+' captured — '+latest.app+' · '+latest.kind.replace('_',' ')+' (exit '+latest.exit_code+')','ok');}S.lastCrashCount=d.snapshots.length;
   const tb=document.createElement('table');tb.innerHTML='<tr><th>When</th><th>App</th><th>Kind</th><th>Exit</th><th>Summary</th></tr>';
   d.snapshots.forEach(s=>{
     const tr=document.createElement('tr');tr.className='row';
@@ -1314,6 +1537,11 @@ async function openCrash(id){
   const ibar=document.createElement('div');ibar.className='ibar';
   const back=document.createElement('button');back.className='b';back.textContent='← Back to list';back.onclick=()=>{location.hash='';loadCrashes();};
   const dl=document.createElement('a');dl.className='b';dl.href='/api/snapshots/'+id+'/export';dl.textContent='Download Markdown';dl.style.textDecoration='none';
+  // Phase 6.3: self-contained HTML incident export (no assets, pastes into a ticket).
+  const dlh=document.createElement('a');dlh.className='b';dlh.href='/api/snapshots/'+id+'/incident.html';dlh.textContent='Export HTML';dlh.style.textDecoration='none';
+  // V10: expiring share link for this incident (capability token in the DB).
+  const sh=document.createElement('button');sh.className='b';sh.textContent='Share 7d';
+  sh.onclick=async()=>{try{const d=await api('/api/share',{method:'POST',body:JSON.stringify({hash:'crash='+s.id,ttl:'7d'})});const url=location.origin+d.url;try{await navigator.clipboard.writeText(url);}catch(e){prompt('Share link (expires in 7d):',url);}sh.textContent='Copied ✓';toast('Expiring incident link copied','ok');setTimeout(()=>sh.textContent='Share 7d',1500);}catch(e){toast('Share failed: '+(e.message||e),null);}};
   // v0.7: shareable incident permalink + copy-link
   const link=document.createElement('a');link.href='#crash='+s.id;link.textContent='Permalink';
   const cp=document.createElement('button');cp.className='b';cp.textContent='Copy link';
@@ -1336,7 +1564,13 @@ async function openCrash(id){
     try{await navigator.clipboard.writeText(md);cm.textContent='Copied ✓';toast('Incident copied as Markdown','ok');setTimeout(()=>cm.textContent='Copy as Markdown',1500);}
     catch(e){prompt('Copy the incident Markdown:',md);}
   };
-  ibar.append(back,cp,cm,dl,link);
+  // Crash card action buttons (demo parity): Logs before crash + Snapshot.
+  // Restart container is intentionally omitted — CapScope is read-only toward Docker.
+  const lbs=document.createElement('button');lbs.className='b';lbs.textContent='Logs before crash';
+  lbs.onclick=()=>{location.hash='';setTab('logs');setTimeout(()=>{S.app=s.app;selectApp(s.app);const p=params({limit:500,before_id:0,since_id:0},s.container);$('#q').value='container:'+s.container;show();},80);};
+  const sn=document.createElement('button');sn.className='b';sn.textContent='Snapshot';
+  sn.onclick=async()=>{try{const d=await api('/api/snapshots/'+id+'/incident.html');const blob=new Blob([d],{type:'text/html'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='capscope-incident-'+s.id+'.html';a.click();URL.revokeObjectURL(url);toast('Incident snapshot downloaded','ok');}catch(e){toast('Snapshot download failed: '+(e.message||e),'err');}};
+  ibar.append(back,cp,cm,dl,dlh,sh,link,lbs,sn);
   const h=document.createElement('h2');h.textContent=`${s.app}: ${s.kind.replace('_',' ')} (exit ${s.exit_code})`;
   const sum=document.createElement('div');sum.className='sum';sum.textContent=s.summary;
   const kv=document.createElement('div');kv.className='kv';
@@ -1390,9 +1624,10 @@ async function loadDashboard(){
   const hasContent=box.childElementCount>0&&!box.firstElementChild?.classList.contains('sk-row');
   if(!hasContent)box.innerHTML='<div class="sk-row"><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div></div><div class="sk-grid"><div class="sk sk-tile"></div><div class="sk sk-tile"></div><div class="sk sk-tile"></div></div>';
   let d;
-  try{d=await api('/api/dashboard');}
+  try{d=await api('/api/dashboard'+(S.host?'?host='+encodeURIComponent(S.host):''));}
   catch(e){if(!hasContent){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);}return;}
   box.innerHTML='';
+  if(!d||typeof d!=='object'){box.innerHTML='<div class="callout warn">Dashboard returned unexpected data.</div>';return;}
   const st=d.stats||{},apps=d.apps||[];
   // stat row
   const row=document.createElement('div');row.className='grid';row.style.gridTemplateColumns='repeat(auto-fit,minmax(160px,1fr))';row.style.marginBottom='16px';
@@ -1448,7 +1683,7 @@ async function loadDashboard(){
     strip.append(line);box.append(strip);
   }
   // auto-refresh while visible
-  dashTimer=setTimeout(()=>{if(S.tab==='dashboard')loadDashboard();},15000);
+  dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadDashboard();},15000);
 }
 function drawSpark(canvas,pts){
   if(!canvas||!canvas.getContext)return; // guard: canvas detached mid-render
@@ -1473,7 +1708,7 @@ function drawSpark(canvas,pts){
 }
 
 /* ---------- alerts ---------- */
-const ALERT_KIND={deadman:'Dead man',restart_loop:'Restart loop',metric:'Metric',log_pattern:'Log pattern'};
+const ALERT_KIND={deadman:'Dead man',restart_loop:'Restart loop',metric:'Metric',log_pattern:'Log pattern',event:'Event'};
 async function loadAlerts(){
   const box=$('#view-alerts');box.innerHTML='';
   let meta={rules:[],channels:[],enabled:false},hist={alerts:[]};
@@ -1510,7 +1745,8 @@ async function loadAlerts(){
       const tr=document.createElement('tr');
       const cond=r.kind==='deadman'?`no logs for ${r.for}`
         :r.kind==='restart_loop'?`> ${r.count} deaths in ${r.window}`
-        :r.kind==='metric'?`${r.metric} ${r.op} ${r.value} for ${r.for}`
+        :r.kind==='metric'?`${r.metric} ${r.op} ${r.value}${r.window?' avg of '+r.window:' for '+r.for}`
+        :r.kind==='event'?`Docker event ${r.event}${r.status&&r.status!=='unhealthy'?' where status='+r.status:''}${r.exclude&&r.event==='die'?' except exit '+r.exclude.join('/'):''}`
         :`"${r.pattern}" ≥ ${r.hits} hits in ${r.window}`;
       const st=S.alertStatus.get(r.name)||'resolved';
       const muted=S.alertMuted.get(r.name,0)>now;
@@ -1566,14 +1802,18 @@ async function loadAlerts(){
 /* ---------- alert rule builder (writes ALERTS_FILE via the API) ---------- */
 function ruleToForm(r){return{name:r.name||'',kind:r.kind||'deadman',apps:(r.apps||[]).join(', '),
   for:r.for||'',count:r.count??'',window:r.window||'',metric:r.metric||'cpu',op:r.op||'gt',value:r.value??'',
-  pattern:r.pattern||'',hits:r.hits??'',repeat:r.repeat||''};}
+  pattern:r.pattern||'',hits:r.hits??'',repeat:r.repeat||'',event:r.event||'die',status:r.status||'',
+  exclude:(r.exclude||[]).join(', '),cooldown:r.cooldown||''};}
 function formToRule(f){
   const r={name:f.name.trim(),kind:f.kind};
   if(f.apps.trim())r.apps=f.apps.split(',').map(s=>s.trim()).filter(Boolean);
-  const dur=['for','window','repeat'];dur.forEach(k=>{if(f[k]&&f[k].trim())r[k]=f[k].trim();});
+  const dur=['for','window','repeat','cooldown'];dur.forEach(k=>{if(f[k]&&f[k].trim())r[k]=f[k].trim();});
   if(r.kind==='restart_loop'){if(f.count!=='')r.count=+f.count;}
   if(r.kind==='metric'){r.metric=f.metric;r.op=f.op;if(f.value!=='')r.value=+f.value;}
   if(r.kind==='log_pattern'){if(f.pattern)r.pattern=f.pattern;if(f.hits!=='')r.hits=+f.hits;}
+  if(r.kind==='event'){r.event=f.event;
+    if(f.status&&f.status.trim())r.status=f.status.trim();
+    if(r.event==='die')r.exclude=f.exclude.split(',').map(s=>s.trim()).filter(Boolean).map(Number).filter(n=>Number.isFinite(n));}
   return r;}
 function openRuleBuilder(meta,hist,onSaved,editIdx){
   document.getElementById('ruleModal')?.remove();
@@ -1588,13 +1828,20 @@ function openRuleBuilder(meta,hist,onSaved,editIdx){
   const field=(label,input)=>mk('label',{style:'display:block;margin:8px 0;font-size:12px'},mk('span',{textContent:label,style:'display:block;margin-bottom:3px;color:var(--muted)'}),input);
   const inp=(key,val,ph)=>mk('input',{value:val??'',placeholder:ph||'',oninput:e=>form[key]=e.target.value,style:'width:100%'});
   const kindSel=mk('select',{style:'width:100%',onchange:e=>{form.kind=e.target.value;drawFields();}});
-  [['deadman','Dead man — app goes silent'],['restart_loop','Restart loop — too many deaths'],['metric','Metric — cpu/mem threshold'],['log_pattern','Log pattern — regex hits']].forEach(([v,l])=>kindSel.append(mk('option',{value:v,textContent:l})));
+  [['deadman','Dead man — app goes silent'],['restart_loop','Restart loop — too many deaths'],['metric','Metric — cpu/mem threshold'],['log_pattern','Log pattern — regex hits'],['event','Container event — die / OOM / health']].forEach(([v,l])=>kindSel.append(mk('option',{value:v,textContent:l})));
   kindSel.value=form.kind;
   const condWrap=mk('div',{});
   function drawFields(){
     condWrap.innerHTML='';
     const grid=mk('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:0 12px'});
     if(form.kind==='deadman'){grid.append(field('Silence duration that fires (e.g. 5m)',inp('for',form.for,'5m')));}
+    else if(form.kind==='event'){
+      const esel=mk('select',{style:'width:100%',onchange:e=>{form.event=e.target.value;drawFields();}});
+      [['die','Container died'],['oom','Container OOM-killed'],['health_status','Health status change'],['update_available','Update available']].forEach(([v,l])=>esel.append(mk('option',{value:v,textContent:l})));esel.value=form.event;
+      grid.append(field('Docker event',esel));
+      if(form.event==='die'){grid.append(field('Ignored exit codes (comma list, default 0,130,143,137)',inp('exclude',form.exclude,'0,130,143,137')));}
+      if(form.event==='health_status'){grid.append(field('Status value that fires (e.g. unhealthy)',inp('status',form.status,'unhealthy')));}
+    }
     else if(form.kind==='restart_loop'){
       grid.append(field('Deaths (>N)',inp('count',form.count,'3')),field('Window (e.g. 10m)',inp('window',form.window,'10m')));
     }else if(form.kind==='metric'){
@@ -1635,6 +1882,15 @@ function openRuleBuilder(meta,hist,onSaved,editIdx){
       toast('Alert rules saved — engine hot-reloaded','ok');
       overlay.remove();onSaved&&onSaved();
     }catch(e){status.textContent='✗ save failed: '+(e.message||e);status.style.color='#d33';}
+  };
+  const testBtn=mk('button',{className:'b',style:'font-weight:600',textContent:'Test fire'});
+  testBtn.onclick=async()=>{
+    const rule=formToRule(form);
+    try{
+      const res=await api('/api/alerts/test-rule',{method:'POST',body:JSON.stringify({rule:rule,limit:50})});
+      toast('Test fire: '+(res.firing? 'FIRING �?':'not firing �?')+' ('+res.matchingRows+' matches)','ok');
+      pre.textContent=JSON.stringify(res,null,2);
+    }catch(e){toast('Test fire failed: '+(e.message||e),'err');}
   };
   const delBtn=idx<rules.length?mk('button',{className:'b',textContent:'Delete',style:'color:#d33',onclick:async()=>{
     const next=rules.filter((_,i)=>i!==idx);
@@ -1699,6 +1955,7 @@ addEventListener('DOMContentLoaded',()=>{
       if(s.authEnabled)$('#logoutBtn').style.display='';
       hideLogin();
       await loadCrashCounts();
+      await loadHosts();
       refreshApps().then(()=>crashChip());
       setInterval(refreshApps,10000);setInterval(crashChip,60000);
       if(s.authEnabled)setInterval(sessionWarning,60000);
@@ -1717,25 +1974,41 @@ addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 <div id="loginOverlay" class="login-overlay" style="display:none">
-  <div class="login-card">
-    <div class="login-header">
-      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M10 9.5L6.5 16L10 22.5" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="var(--bg)"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="var(--bg)"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="var(--bg)"/></svg>
-      <h2>CapScope</h2>
+  <!-- Marketing hero — left side -->
+  <div class="login-hero">
+    <div class="hero-badge">Container log viewer • Read-only by design</div>
+    <h1>CapScope</h1>
+    <p>Persistent container logs, crash snapshots, access logs, and metrics — one binary, one volume, no external database. Built for teams that need observability without write access to Docker.</p>
+    <div class="hero-features">
+      <div class="hero-feat"><span class="dot"></span><span>Real-time log tailing with live-follow and pause</span></div>
+      <div class="hero-feat"><span class="dot"></span><span>Crash snapshots captured automatically on exit or OOM</span></div>
+      <div class="hero-feat"><span class="dot"></span><span>Alert rules with ntfy, Slack, and webhook channels</span></div>
+      <div class="hero-feat"><span class="dot"></span><span>Multi-user with admin/viewer roles and audit trail</span></div>
+      <div class="hero-feat"><span class="dot"></span><span>Expiring share links and HTML incident reports</span></div>
     </div>
-    <p class="login-muted">Sign in to view container logs and metrics.</p>
-    <form id="loginForm">
-      <div class="login-field">
-        <label>Username</label>
-        <input type="text" id="loginUser" required autocomplete="username">
+  </div>
+  <!-- Login form — right side -->
+  <div class="login-form-panel">
+    <div class="login-card">
+      <div class="login-header">
+        <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M10 9.5L6.5 16L10 22.5" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="var(--bg)"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="var(--bg)"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="var(--bg)"/></svg>
+        <h2>Sign in</h2>
       </div>
-      <div class="login-field" style="position:relative">
-        <label>Password</label>
-        <input type="password" id="loginPass" required autocomplete="current-password" style="padding-right:34px">
-        <button type="button" id="loginReveal" style="position:absolute;right:8px;top:30px;background:none;border:0;color:var(--muted);cursor:pointer" title="Show password"><i data-lucide="eye"></i></button>
-      </div>
-      <div class="login-error" id="loginError" style="display:none"></div>
-      <button class="b" type="submit">Sign in</button>
-    </form>
+      <p class="login-muted">Enter your credentials to access container logs and metrics.</p>
+      <form id="loginForm">
+        <div class="login-field">
+          <label>Username</label>
+          <input type="text" id="loginUser" required autocomplete="username">
+        </div>
+        <div class="login-field" style="position:relative">
+          <label>Password</label>
+          <input type="password" id="loginPass" required autocomplete="current-password" style="padding-right:34px">
+          <button type="button" id="loginReveal" style="position:absolute;right:8px;top:34px;background:none;border:0;color:var(--muted);cursor:pointer" title="Show password"><i data-lucide="eye"></i></button>
+        </div>
+        <div class="login-error" id="loginError" style="display:none"></div>
+        <button class="b" type="submit">Sign in</button>
+      </form>
+    </div>
   </div>
 </div>
   <footer class="product-footer">

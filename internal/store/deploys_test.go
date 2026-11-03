@@ -43,8 +43,10 @@ func TestRecordAndListDeploys(t *testing.T) {
 		t.Errorf("all deploys = %d, want 3", len(all))
 	}
 
-	// Time-window filter.
-	windowed, err := s.ListDeploys(ctx, "web", now+1, 0, 100) // since in the future
+	// Time-window filter. The ts-0 ("now") deploy records its timestamp at
+	// insert time, and the wall clock may have advanced past the `now`
+	// captured above — so anchor the future window at the real current time.
+	windowed, err := s.ListDeploys(ctx, "web", time.Now().UnixMilli()+1, 0, 100) // since in the future
 	if err != nil {
 		t.Fatal(err)
 	}

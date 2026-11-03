@@ -1,0 +1,102 @@
+// CapScope agent↔hub transport contract (Phase 4).
+//
+// Why a framed stream instead of stock gRPC: protoc is not part of the
+// CapScope toolchain and requiring it would break `go build ./...` for anyone
+// without it installed. This stream carries the same messages a gRPC service
+// would (Hello, LogBatch, MetricBatch, EventBatch, ContainerList, Ack) over
+// mutual TLS with length-prefixed gob frames. The .proto below is the schema
+// contract; if protoc is ever adopted, the Go bindings can be generated from
+// it without changing the wire semantics (field numbers are stable).
+
+syntax = "proto3";
+
+package capscope.transport;
+
+option go_package = "capscope/internal/transport";
+
+// A host is identified by host_id (stable across agent restarts).
+message Hello {
+  string host_id = 1;
+  map<string, string> labels = 2;
+  string version = 3;
+}
+
+// One batch of log rows collected on one host.
+message LogBatch {
+  string host_id = 1;
+  repeated LogRow rows = 2;
+}
+
+message LogRow {
+  int64 ts = 1;        // unix nanoseconds
+  int64 ts_ms = 2;
+  string container_id = 3;
+  string container = 4;
+  string app = 5;
+  string stream = 6;   // "o" | "e"
+  string level = 7;
+  string line = 8;
+}
+
+// One batch of metric samples collected on one host.
+message MetricBatch {
+  string host_id = 1;
+  repeated MetricPoint samples = 2;
+}
+
+message MetricPoint {
+  int64 ts = 1;        // unix ms
+  float cpu = 2;
+  int64 mem = 3;
+  int64 mem_limit = 4;
+  int64 net_rx = 5;
+  int64 net_tx = 6;
+  int64 blk_r = 7;
+  int64 blk_w = 8;
+  int64 pids = 9;
+}
+
+// Docker lifecycle events collected on one host.
+message EventBatch {
+  string host_id = 1;
+  repeated Event events = 2;
+}
+
+message Event {
+  string type = 1;
+  string action = 2;
+  int64 time_nano = 3;
+  map<string, string> attributes = 4;
+}
+
+// Snapshot of all containers the agent is tracking right now.
+message ContainerList {
+  string host_id = 1;
+  repeated Container containers = 2;
+}
+
+message Container {
+  string id = 1;
+  string name = 2;
+  string app = 3;
+  string replica = 4;
+  string image = 5;
+  int64 started = 6;
+  float cpu = 7;
+  int64 mem = 8;
+  int64 mem_limit = 9;
+  int64 sample_ts = 10;
+}
+
+// Server acknowledgement.
+message Ack {
+  string host_id = 1;
+  bool ok = 2;
+  string error = 3;
+}
+
+// Bidirectional stream: client sends Hello first, then interleaved batches;
+// server replies with an Ack per batch. Either side may close to terminate.
+service Agent {
+  rpc Stream(Hello) returns (stream Ack);
+}

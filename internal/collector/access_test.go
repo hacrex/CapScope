@@ -167,7 +167,7 @@ func TestAccessDetectionAndPipeline(t *testing.T) {
 		t.Errorf("access-only container leaked %d rows into the logs table", len(proxyLogs))
 	}
 	// and it must not appear in the sidebar sources
-	apps, _ := st.AppSummaries(context.Background())
+	apps, _ := st.AppSummaries(context.Background(), "")
 	for _, a := range apps {
 		if a.App == "captain-nginx" {
 			t.Error("access-only container appears in the apps list")

@@ -20,6 +20,15 @@ type Config struct {
 	AuthPass    string
 	AllowNoAuth bool
 
+	// Z5-prep: how callers prove who they are. "local" (default) is the shared
+	// AUTH_USER/AUTH_PASS credential; "proxy" trusts an identity header set by
+	// a reverse proxy in front of CapScope (Authelia, Authentik, Cloudflare
+	// Access, ...). Proxy mode never challenges passwords itself.
+	AuthProvider string
+	// ProxyUserHeader is the header the reverse proxy sets to the username
+	// (Authelia/Authentik and the Django/Servlet worlds use "Remote-User").
+	ProxyUserHeader string
+
 	LogRetention      time.Duration
 	MetricsRetention  time.Duration
 	SnapshotRetention time.Duration
@@ -53,9 +62,50 @@ type Config struct {
 	AlertTelegramChat string
 	AlertSlackURL     string
 	AlertDiscordURL   string
+	AlertNtfyURL      string // ntfy topic URL, e.g. https://ntfy.sh/capscope
+	AlertNtfyToken    string // optional ntfy access token
+
+	// A7: daily jittered registry check comparing each container's image
+	// manifest digest; fires "update_available" pseudo-alert events. Spin-free
+	// installs can turn it off here.
+	UpdateCheck         bool
+	UpdateCheckInterval time.Duration
 
 	Include *regexp.Regexp // only track containers whose name or app matches
 	Exclude *regexp.Regexp // never track containers whose name or app matches
+
+	// Agent mode (Phase 4): when AgentHub is set, this binary runs as an agent
+	// that streams collected rows to a hub over mutual TLS instead of storing
+	// them locally. host_id is stable across restarts.
+	AgentHostID string // stable host identity; defaults to CAPSCOPE_HOST_ID then hostname
+	AgentHub    string // hub address (host:port); empty = serve mode
+	AgentCACert string // path to the hub CA cert PEM (trust anchor)
+	AgentCert   string // path to the agent certificate PEM
+	AgentKey    string // path to the agent private key PEM
+
+	// DockerFilter is a label selector (name=value) limiting which containers
+	// the agent collects, like Dozzle's agent filter.
+	DockerFilter string
+
+	// Agent hub (Phase 4.4): when AgentHubListen is set, CapScope listens for
+	// agent connections and ingests their logs/metrics/events tagged by
+	// host_id, merging many nodes into one store and UI.
+	AgentHubListen string // host:port to listen for agents; empty disables agent ingestion
+	// AgentHubPinnedFingerprints is a comma-separated list of SHA-256
+	// fingerprints of agent client certificates allowed to connect. Empty
+	// means any certificate signed by the trusted CA is accepted.
+	AgentHubPinnedFingerprints string
+	// AgentHubCert / AgentHubKey are the hub's server certificate presented to
+	// agents; AgentHubCACert is the CA used to verify agent client certs.
+	AgentHubCert   string
+	AgentHubKey    string
+	AgentHubCACert string
+
+	// OIDC (Phase 3.2): when AuthProvider=oidc, CapScope delegates
+	// authentication to an OpenID Connect provider.
+	OIDCIssuer    string // OIDC issuer URL, used for Discovery
+	OIDCClientID  string // OAuth 2.0 client ID
+	OIDCClientSecret string // OAuth 2.0 client secret
 }
 
 // Load reads configuration from the environment and validates it.
@@ -68,6 +118,8 @@ func Load() (Config, error) {
 		AuthUser:              env("AUTH_USER", "admin"),
 		AuthPass:              os.Getenv("AUTH_PASS"),
 		AllowNoAuth:           envBool("ALLOW_NO_AUTH", false),
+		AuthProvider:          env("AUTH_PROVIDER", "local"),
+		ProxyUserHeader:       env("PROXY_USER_HEADER", "Remote-User"),
 		MaxDBMB:               int64(envInt("MAX_DB_MB", 1024)),
 		InitialTail:           envInt("INITIAL_TAIL", 200),
 		MaxLineBytes:          envInt("MAX_LINE_BYTES", 16384),
@@ -84,6 +136,23 @@ func Load() (Config, error) {
 		AlertTelegramChat:     os.Getenv("ALERT_TELEGRAM_CHAT_ID"),
 		AlertSlackURL:         os.Getenv("ALERT_SLACK_URL"),
 		AlertDiscordURL:       os.Getenv("ALERT_DISCORD_URL"),
+		AlertNtfyURL:          os.Getenv("ALERT_NTFY_URL"),
+		AlertNtfyToken:        os.Getenv("ALERT_NTFY_TOKEN"),
+		UpdateCheck:           envBool("UPDATE_CHECK", true),
+		AgentHostID:           env("AGENT_HOST_ID", os.Getenv("CAPSCOPE_HOST_ID")),
+		AgentHub:              env("AGENT_HUB", ""),
+		AgentCACert:           env("AGENT_CA_CERT", ""),
+		AgentCert:             env("AGENT_CERT", ""),
+		AgentKey:              env("AGENT_KEY", ""),
+		DockerFilter:          env("DOCKER_FILTER", ""),
+		AgentHubListen:        env("AGENT_HUB_LISTEN", ""),
+		AgentHubPinnedFingerprints: env("AGENT_HUB_PINNED_FINGERPRINTS", ""),
+		AgentHubCert:          env("AGENT_HUB_CERT", ""),
+		AgentHubKey:           env("AGENT_HUB_KEY", ""),
+		AgentHubCACert:        env("AGENT_HUB_CA_CERT", ""),
+		OIDCIssuer:            env("OIDC_ISSUER", ""),
+		OIDCClientID:          env("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:      env("OIDC_CLIENT_SECRET", ""),
 	}
 
 	dur := func(key, def string) time.Duration {
@@ -99,6 +168,7 @@ func Load() (Config, error) {
 	c.StatsInterval = dur("STATS_INTERVAL", "10s")
 	c.RestartLoopWindow = dur("RESTART_LOOP_WINDOW", "5m")
 	c.AlertsInterval = dur("ALERTS_INTERVAL", "1m")
+	c.UpdateCheckInterval = dur("UPDATE_CHECK_INTERVAL", "24h")
 
 	for _, k := range strings.Split(env("SNAPSHOT_KINDS", "crash,oom"), ",") {
 		if k = strings.TrimSpace(k); k != "" {
@@ -153,7 +223,25 @@ func Load() (Config, error) {
 	c.Include = rx("INCLUDE")
 	c.Exclude = rx("EXCLUDE")
 
-	if c.AuthPass == "" && !c.AllowNoAuth {
+	switch c.AuthProvider {
+	case "local":
+	case "proxy":
+		// Proxy header auth: no password required because the reverse proxy
+		// owns authentication. The name must be a well-formed RFC 7230 field
+		// name — reject junk early rather than trust it later.
+		if !validHeaderName(c.ProxyUserHeader) {
+			errs = append(errs, fmt.Errorf("PROXY_USER_HEADER must be a valid header name (got %q; e.g. Remote-User)", c.ProxyUserHeader))
+		}
+	case "oidc":
+		// OIDC: Discovery, PKCE, redirect /api/oidc/callback.
+		if c.OIDCIssuer == "" || c.OIDCClientID == "" || c.OIDCClientSecret == "" {
+			errs = append(errs, errors.New("AUTH_PROVIDER=oidc requires OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("AUTH_PROVIDER must be local, proxy or oidc (got %q)", c.AuthProvider))
+	}
+	// A password is only needed for local (password) auth.
+	if c.AuthProvider == "local" && c.AuthPass == "" && !c.AllowNoAuth {
 		errs = append(errs, errors.New("AUTH_PASS is required (set ALLOW_NO_AUTH=true only for local testing)"))
 	}
 	switch c.AccessLog {
@@ -178,15 +266,37 @@ func Load() (Config, error) {
 		{"ALERT_WEBHOOK_URL", c.AlertWebhookURL},
 		{"ALERT_SLACK_URL", c.AlertSlackURL},
 		{"ALERT_DISCORD_URL", c.AlertDiscordURL},
+		{"ALERT_NTFY_URL", c.AlertNtfyURL},
 	} {
 		if ch.url != "" && !strings.HasPrefix(ch.url, "http://") && !strings.HasPrefix(ch.url, "https://") {
 			errs = append(errs, fmt.Errorf("%s must be an http(s) URL", ch.key))
 		}
 	}
+	if c.AlertNtfyToken != "" && c.AlertNtfyURL == "" {
+		errs = append(errs, errors.New("ALERT_NTFY_TOKEN is set but ALERT_NTFY_URL is empty"))
+	}
+	if c.UpdateCheckInterval < time.Hour {
+		c.UpdateCheckInterval = time.Hour // a registry is checked from far away, not often
+	}
 	if (c.AlertTelegramTok == "") != (c.AlertTelegramChat == "") {
 		errs = append(errs, errors.New("ALERT_TELEGRAM_TOKEN and ALERT_TELEGRAM_CHAT_ID must be set together"))
 	}
 	return c, errors.Join(errs...)
+}
+
+// validHeaderName checks RFC 7230 field-name characters: printable ASCII with
+// no separator characters. The exact case does not matter — Header.Get
+// canonicalizes the lookup — so "X-WebAuth-User" stays usable as written.
+func validHeaderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, ch := range s {
+		if ch < '!' || ch > '~' || ch == ':' {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseDuration is time.ParseDuration plus a "d" (days) suffix.

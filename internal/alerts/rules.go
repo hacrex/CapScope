@@ -11,12 +11,13 @@ import (
 	"time"
 )
 
-// Rule kinds. Each maps to one alert feature (A1 to A4).
+// Rule kinds. Each maps to one alert feature (A1 to A6).
 const (
 	KindDeadman     = "deadman"      // A1: no logs from an app for N minutes
 	KindRestartLoop = "restart_loop" // A2: more than N deaths in M minutes
 	KindMetric      = "metric"       // A3: metric above/below value for N minutes
 	KindLogPattern  = "log_pattern"  // A4: regex matched N times in a window
+	KindEvent       = "event"        // A6: a Docker lifecycle event fires immediately
 )
 
 // Dur is a time.Duration that marshals as Go duration strings ("5m") in JSON.
@@ -56,14 +57,24 @@ type Rule struct {
 	Metric string  `json:"metric,omitempty"` // cpu | mem | mem_pct
 	Op     string  `json:"op,omitempty"`     // gt | lt
 	Value  float64 `json:"value,omitempty"`  // threshold (bytes for mem)
-	// For (A3): the threshold must hold for this long.
+	// For (A3): the threshold must hold for this long. When Window is also
+	// set, the value compared is the MEAN of the samples inside the window
+	// (smoothing: one spiky or spotty sample can no longer flip the rule).
+
+	// event (A6)
+	Event   string `json:"event,omitempty"`   // die | oom | health_status | update_available
+	Exclude []int  `json:"exclude,omitempty"` // die: exit codes that never fire; nil => the default [0,130,143,137] (graceful stops and OOM kills handled by the oom rule)
+	Status  string `json:"status,omitempty"`  // health_status: the attribute value that fires (default "unhealthy")
 
 	// log_pattern (A4)
 	Pattern string `json:"pattern,omitempty"` // regex over the log line
 	Hits    int    `json:"hits,omitempty"`    // matched lines that fire (>= hits)
 
-	// silence between two notifications of the same rule+app.
-	Repeat Dur `json:"repeat,omitempty"`
+	// silence between two notifications of the same rule+app. Repeat and
+	// Cooldown are the same mechanism; Cooldown is the Dozzle-compatible
+	// name and wins when both are set.
+	Repeat   Dur `json:"repeat,omitempty"`
+	Cooldown Dur `json:"cooldown,omitempty"`
 
 	re *regexp.Regexp
 }
@@ -110,11 +121,30 @@ func (r *Rule) validate() error {
 		if r.Window.D() <= 0 {
 			r.Window = Dur(10 * time.Minute)
 		}
+	case KindEvent:
+		switch r.Event {
+		case "die":
+			// nil means "not specified": default to the exit codes that mark
+			// an intentional or policy-handled stop. An explicit empty list
+			// keeps every exit code firing.
+			if r.Exclude == nil {
+				r.Exclude = []int{0, 130, 143, 137}
+			}
+		case "oom", "health_status", "update_available":
+		default:
+			return fmt.Errorf("rule %s: event must be die, oom, health_status or update_available", r.Name)
+		}
+		if r.Event == "health_status" && r.Status == "" {
+			r.Status = "unhealthy"
+		}
 	default:
 		return fmt.Errorf("rule %s: unknown kind %q", r.Name, r.Kind)
 	}
 	if r.Repeat.D() <= 0 {
 		r.Repeat = Dur(30 * time.Minute)
+	}
+	if r.Cooldown.D() > 0 {
+		r.Repeat = r.Cooldown // Dozzle-compatible name; same silence mechanism
 	}
 	return nil
 }

@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  capscope:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - LISTEN=0.0.0.0:8080
+      - DB_PATH=/data/capscope.db
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      # Uncomment for production auth:
+      # - AUTH_PASS=your-secure-password
+      # - ALLOW_NO_AUTH=false
+    volumes:
+      - capscope-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - com.caprover.containerHttpPort=8080
+      - com.caprover.containerHttpsPort=443
+      - com.caprover.appName=capscope
+
+volumes:
+  capscope-data:

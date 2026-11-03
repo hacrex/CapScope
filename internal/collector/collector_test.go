@@ -214,7 +214,7 @@ func TestCatchUpDeathWhileDownAndRestartLoop(t *testing.T) {
 		deadline := time.Now().Add(8 * time.Second)
 		var list []store.Snapshot
 		for time.Now().Before(deadline) {
-			list, _ = st.ListSnapshots(context.Background(), "", 10)
+			list, _ = st.ListSnapshots(context.Background(), "", "", 10)
 			if len(list) >= n {
 				return list
 			}
@@ -314,7 +314,7 @@ func TestCrashSnapshotEndToEnd(t *testing.T) {
 	var list []store.Snapshot
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		list, _ = st.ListSnapshots(context.Background(), "", 10)
+		list, _ = st.ListSnapshots(context.Background(), "", "", 10)
 		if len(list) > 0 {
 			break
 		}

@@ -21,6 +21,8 @@ import (
 	"capscope/internal/docker"
 	"capscope/internal/hub"
 	"capscope/internal/store"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -40,6 +42,9 @@ func setup(t *testing.T) (*httptest.Server, *store.Store, *hub.Hub) {
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	as := auth.NewSessionManager(slog.Default())
+	// Seed the first user from AUTH_USER/AUTH_PASS
+	hash, _ := bcrypt.GenerateFromPassword([]byte("p"), bcrypt.DefaultCost)
+	_, _ = st.SeedFirstUser("u", string(hash))
 	srv := httptest.NewServer(New(cfg, st, mgr, h, slog.Default(), WithAuth(as)).Handler())
 	t.Cleanup(srv.Close)
 	testServerURL = srv.URL
@@ -307,6 +312,32 @@ func TestAccessAPIAndExports(t *testing.T) {
 	if !strings.Contains(s, "last row") {
 		t.Errorf("logs export missing final row")
 	}
+
+	// Raw text export: the raw lines only, no CSV quoting, same paging ceiling.
+	r = get(t, srv.URL+"/api/logs/raw?app=web", true)
+	b, _ = io.ReadAll(r.Body)
+	s = string(b)
+	if got := r.Header.Get("Content-Type"); got != "text/plain; charset=utf-8" {
+		t.Errorf("raw export content type: %q", got)
+	}
+	if !strings.Contains(r.Header.Get("Content-Disposition"), "capscope-logs.txt") {
+		t.Errorf("raw export disposition: %q", r.Header.Get("Content-Disposition"))
+	}
+	// Bytes are emitted verbatim; the CSV-quoted variant must not appear.
+	if !strings.Contains(s, `something "bad", happened`) || strings.Contains(s, `""bad""`) {
+		head := s
+		if len(head) > 200 {
+			head = head[:200]
+		}
+		t.Errorf("raw export quoting wrong: %q", head)
+	}
+	// Same paging correctness as the CSV path (601 rows).
+	if n := strings.Count(s, "\n"); n != 600 {
+		t.Errorf("raw export rows = %d separators, want exactly 600 (last, newline-terminated file)", n)
+	}
+	if !strings.Contains(s, "last row") {
+		t.Errorf("raw export missing final row")
+	}
 }
 
 func TestAccessExportsRequireAuth(t *testing.T) {
@@ -349,4 +380,194 @@ func TestSSEDeliversPublishedRows(t *testing.T) {
 		}
 	}
 	t.Fatal("no SSE data received")
+}
+
+// Regression for the gapless live tail: the browser reconnects with
+// Last-Event-ID (or since_id) after a drop. Rows the subscriber already saw
+// must not be re-delivered, rows published while it was down must be.
+func TestSSEResumesFromLastEventID(t *testing.T) {
+	srv, _, h := setup(t)
+	h.Publish([]store.LogRow{
+		{ID: 10, App: "web", Line: "already seen"},
+		{ID: 11, App: "web", Line: "published during the outage"},
+	})
+	for _, variant := range []struct{ name, url, header string }{
+		{"last-event-id", "/api/logs/stream?app=web", "10"},
+		{"since_id", "/api/logs/stream?app=web&since_id=10", ""},
+	} {
+		t.Run(variant.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+variant.url, nil)
+			loginIfNeeded(t)
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			if variant.header != "" {
+				req.Header.Set("Last-Event-ID", variant.header)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			sc := bufio.NewScanner(resp.Body)
+			sc.Scan() // ": connected"
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				h.Publish([]store.LogRow{
+					{ID: 12, App: "web", Line: "new row"},
+					{ID: 13, App: "web", Line: "another"},
+				})
+			}()
+			sawNew, sawOld := false, false
+			for sc.Scan() {
+				line := sc.Text()
+				if strings.HasPrefix(line, "id: ") {
+					if id := line[4:]; id == "10" || id == "11" {
+						sawOld = true // rows before the cursor must never replay
+					}
+				}
+				if strings.HasPrefix(line, "data: ") {
+					if strings.Contains(line, "already seen") || strings.Contains(line, "outage") {
+						sawOld = true
+					}
+					if strings.Contains(line, "new row") {
+						sawNew = true
+						break
+					}
+				}
+			}
+			if !sawNew {
+				t.Fatal("rows after the cursor were not streamed")
+			}
+			if sawOld {
+				t.Fatal("resume replayed rows the subscriber had already seen")
+			}
+		})
+	}
+}
+
+// The SSE stream must be reachable by EventSource, which cannot set an
+// Authorization header: /api/login mints an HttpOnly session cookie and the
+// middleware must accept it as a fallback to the Bearer token.
+func TestLoginSetsUsableSessionCookie(t *testing.T) {
+	srv, _, _ := setup(t)
+	jar := &cookieJar{}
+	client := &http.Client{Jar: jar}
+	req, _ := http.NewRequest("POST", srv.URL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(jar.cookies) == 0 {
+		t.Fatal("login did not set a session cookie")
+	}
+	c := jar.cookies[0]
+	if c.Name != "capscope_token" || c.Value == "" || !c.HttpOnly {
+		t.Fatalf("unexpected cookie %s=%q httponly=%v", c.Name, c.Value, c.HttpOnly)
+	}
+	// No Authorization header — the cookie alone must authenticate.
+	r, err := client.Get(srv.URL + "/api/logs/stream?app=web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != 200 {
+		t.Fatalf("SSE with cookie auth: got %d", r.StatusCode)
+	}
+}
+
+// cookieJar is the minimal http.CookieJar both net/http and our assertions need.
+type cookieJar struct {
+	cookies []*http.Cookie
+}
+
+func (j *cookieJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
+	j.cookies = append(j.cookies, cookies...)
+}
+
+func (j *cookieJar) Cookies(*url.URL) []*http.Cookie { return j.cookies }
+
+// AUTH_PROVIDER=proxy: the reverse proxy owns authentication and declares the
+// caller via PROXY_USER_HEADER. No password, no sessions, and crucially the
+// Bearer path must NOT authenticate anyone in this mode.
+func TestProxyHeaderAuth(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	st, err := store.Open(filepath.Join(t.TempDir(), "proxy.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	h := hub.New()
+	cfg := config.Config{AuthProvider: "proxy", ProxyUserHeader: "Remote-User", SnapshotKinds: map[string]bool{}}
+	dk, _ := docker.New("tcp://127.0.0.1:1")
+	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv := httptest.NewServer(New(cfg, st, mgr, h, slog.Default()).Handler())
+	t.Cleanup(srv.Close)
+
+	if r, err := http.Get(srv.URL + "/api/session"); err != nil || r.StatusCode != 401 {
+		t.Fatalf("no identity header: want 401, got %d (err %v)", r.StatusCode, err)
+	}
+	// A stale or forged Bearer token must not bypass the header.
+	req, _ := http.NewRequest("GET", srv.URL+"/api/session", nil)
+	req.Header.Set("Authorization", "Bearer whatever")
+	if r2, err := http.DefaultClient.Do(req); err != nil || r2.StatusCode != 401 {
+		t.Fatalf("bearer must not bypass proxy auth: want 401, got %d (err %v)", r2.StatusCode, err)
+	}
+
+	// The proxy speaks: identity header → authenticated session state.
+	preq, _ := http.NewRequest("GET", srv.URL+"/api/session", nil)
+	preq.Header.Set("Remote-User", "alice")
+	pr, err := http.DefaultClient.Do(preq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sess struct {
+		AuthEnabled bool   `json:"auth_enabled"`
+		User        string `json:"user"`
+	}
+	_ = json.NewDecoder(pr.Body).Decode(&sess)
+	pr.Body.Close()
+	if pr.StatusCode != 200 || !sess.AuthEnabled || sess.User != "alice" {
+		t.Fatalf("session = %d %+v", pr.StatusCode, sess)
+	}
+
+	// Local password login must never run in proxy mode.
+	lreq, _ := http.NewRequest("POST", srv.URL+"/api/login", strings.NewReader(`{"username":"u","password":"p"}`))
+	lreq.Header.Set("Content-Type", "application/json")
+	if lr, err := http.DefaultClient.Do(lreq); err == nil {
+		lr.Body.Close()
+		if lr.StatusCode != 400 {
+			t.Fatalf("login in proxy mode: want 400, got %d", lr.StatusCode)
+		}
+	}
+
+	// The header wins over the port: with it set, /api/logs/stream (the
+	// EventSource endpoint that cannot send headers) is reachable.
+	sreq, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/logs/stream?app=web", nil)
+	sreq.Header.Set("Remote-User", "alice")
+	sr, err := http.DefaultClient.Do(sreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr.Body.Close() // teardown: an open SSE body blocks Server.Close()
+	if sr.StatusCode != 200 {
+		t.Fatalf("SSE via proxy header: want 200, got %d", sr.StatusCode)
+	}
+
+	// A custom PROXY_USER_HEADER is honored instead of the default.
+	cfg2 := cfg
+	cfg2.ProxyUserHeader = "X-WebAuth-User"
+	srv2 := httptest.NewServer(New(cfg2, st, mgr, h, slog.Default()).Handler())
+	t.Cleanup(srv2.Close)
+	if r3, err := http.Get(srv2.URL + "/api/session"); err != nil || r3.StatusCode != 401 {
+		t.Fatalf("custom header unset: want 401, got %d (err %v)", r3.StatusCode, err)
+	}
+	wreq, _ := http.NewRequest("GET", srv2.URL+"/api/session", nil)
+	wreq.Header.Set("X-WebAuth-User", "bob")
+	if r4, err := http.DefaultClient.Do(wreq); err != nil || r4.StatusCode != 200 {
+		t.Fatalf("custom header set: want 200, got %d (err %v)", r4.StatusCode, err)
+	}
 }

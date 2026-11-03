@@ -36,7 +36,7 @@ func (s *Server) prometheus(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, "# HELP capscope_containers Tracked containers by app and replica.\n")
 	fmt.Fprint(w, "# TYPE capscope_containers gauge\n")
-	for _, c := range s.mgr.Containers() {
+	for _, c := range s.mgr.Containers("") {
 		fmt.Fprint(w, "capscope_containers{app=\"")
 		writeEscapedLabel(w, c.App)
 		fmt.Fprint(w, "\",replica=\"")
@@ -50,7 +50,7 @@ func (s *Server) prometheus(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "# TYPE capscope_container_memory_bytes gauge\n")
 	fmt.Fprint(w, "# HELP capscope_container_memory_limit_bytes Configured memory limit in bytes (0 when unlimited).\n")
 	fmt.Fprint(w, "# TYPE capscope_container_memory_limit_bytes gauge\n")
-	for _, c := range s.mgr.Containers() {
+	for _, c := range s.mgr.Containers("") {
 		id := c.ID
 		if len(id) > 12 {
 			id = id[:12]
@@ -74,7 +74,7 @@ func (s *Server) prometheus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	snaps, _ := s.st.ListSnapshots(ctx, "", 0)
+	snaps, _ := s.st.ListSnapshots(ctx, "", "", 0)
 	var restarts24h int64
 	oomByApp := map[string]int64{}
 	crashesByApp := map[string]int64{}

@@ -46,6 +46,23 @@ func TestLevel(t *testing.T) {
 		"GET /index.html 200":                       "",
 		"Traceback (most recent call last):":        "error",
 		"ERR_CONNECTION is just a token, not level": "",
+		// OpenTelemetry: severityText strings and severityNumber bands.
+		`{"severityText":"ERROR","body":"boom"}`:        "error",
+		`{"severityNumber":21,"body":"fatal via otel"}`: "error",
+		`{"severityNumber":13,"body":"warn via otel"}`:  "warn",
+		`{"severityNumber":9,"body":"info via otel"}`:   "info",
+		`{"severityNumber":6,"body":"debug via otel"}`:  "debug",
+		// Pino numeric levels as sent by real pino JSON lines.
+		`{"level":30,"msg":"pino info"}`:  "info",
+		`{"level":50,"msg":"pino error"}`: "error",
+		`{"level":40,"msg":"pino warn"}`:  "warn",
+		`{"level":20,"msg":"pino debug"}`: "debug",
+		`{"level":60,"msg":"pino fatal"}`: "error",
+		`{"level":10,"msg":"pino trace"}`: "debug",
+		// Non-level numbers must not be misdetected (HTTP-like payloads, ids).
+		`{"level":"unknown","status":404}`:  "",
+		`{"seq":13,"level":"chatty"}`:       "",
+		`{"pageSize":50,"rows":30}`:         "",
 	}
 	for in, want := range cases {
 		if got := Level(in); got != want {

@@ -63,7 +63,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	summaries, err := s.st.AppSummaries(ctx)
+	summaries, err := s.st.AppSummaries(ctx, r.URL.Query().Get("host"))
 	if err != nil {
 		fail(w, 500, err)
 		return
@@ -73,7 +73,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	// Deaths per app over 24h, plus the crash-loop set, come from snapshots —
 	// bounded by ts so we never scan the full table here.
-	snaps, err := s.st.SnapshotsSince(ctx, since24)
+	snaps, err := s.st.SnapshotsSince(ctx, since24, r.URL.Query().Get("host"))
 	if err != nil {
 		fail(w, 500, err)
 		return
@@ -95,7 +95,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Live containers give us "running now" counts.
-	conts := s.mgr.Containers()
+	conts := s.mgr.Containers(r.URL.Query().Get("host"))
 	runByApp := map[string]int{}
 	for _, c := range conts {
 		runByApp[c.App]++
@@ -124,7 +124,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			pts, err := s.st.QueryMetrics(ctx, app, "", sparkSince, 0, 60_000)
+			pts, err := s.st.QueryMetrics(ctx, app, "", r.URL.Query().Get("host"), sparkSince, 0, 60_000)
 			sparkCh <- sparkResult{i, pts, err}
 		}(i, a.App)
 	}
@@ -166,7 +166,7 @@ func (s *Server) crashLoops(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("threshold")); err == nil && n > 0 {
 		threshold = n
 	}
-	snaps, err := s.st.ListSnapshots(ctx, r.URL.Query().Get("app"), 0)
+	snaps, err := s.st.ListSnapshots(ctx, r.URL.Query().Get("app"), r.URL.Query().Get("host"), 0)
 	if err != nil {
 		fail(w, 500, err)
 		return
