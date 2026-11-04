@@ -18,5 +18,5 @@ COPY --from=build /out/capscope /capscope
 ENV LISTEN=:8080 DB_PATH=/data/capscope.db
 VOLUME /data
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/capscope", "--healthcheck"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/capscope", "healthcheck"]
 ENTRYPOINT ["/capscope"]
