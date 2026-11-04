@@ -174,11 +174,17 @@ var migrations = []string{
 	 );
 	 CREATE INDEX idx_users_name ON users(name);
 	 ALTER TABLE access ADD COLUMN user TEXT NOT NULL DEFAULT '';`,
+
+	// Dashboard performance (Phase 5): composite indexes so /api/dashboard and
+	// /api/apps can scan the last-hour/error windows without touching every
+	// row of a multi-gigabyte logs table.
+	`CREATE INDEX IF NOT EXISTS idx_logs_ts_app ON logs(ts, app);
+	 CREATE INDEX IF NOT EXISTS idx_snapshots_ts_app ON snapshots(ts, app);`,
 }
 
 // Open creates or migrates the database at path.
 func Open(path string) (*Store, error) {
-	base := "file:" + path + "?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL"
+	base := "file:" + path + "?_busy_timeout=30000&_journal_mode=WAL&_synchronous=NORMAL"
 	w, err := sql.Open("sqlite", base)
 	if err != nil {
 		return nil, err

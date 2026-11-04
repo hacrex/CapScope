@@ -542,7 +542,7 @@ async function refreshApps(){
       fillReplicas();fillMetricsContainers();updateContainerStat();return;
     }
     const row=(n,label,cs,cpu,mem,errs,warns,crashes)=>{
-      const el=document.createElement('div');el.className='app'+(n===S.app?' sel':'');el.dataset.n=n;
+      const el=document.createElement('div');el.className='app'+(n===S.app||(!n&&!S.app)?' sel':'');el.dataset.n=n;
       const nm=document.createElement('div');nm.className='n';
       const icon=cs[0]?.image?appIcon(cs[0].image):'📦';
       const t=document.createElement('span');t.textContent=icon+' '+label;nm.append(t);
@@ -565,7 +565,7 @@ async function refreshApps(){
       row(n,n,cs,cs.reduce((t,x)=>t+x.cpu,0),cs.reduce((t,x)=>t+x.mem,0),errs,warns,crashes);
     });
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
-    if(S.app===null&&S.selCont===null&&appList.length)selectApp(appList[0].name);
+    if(S.app===null&&S.selCont===null&&appList.length&&S.tab!=='dashboard')selectApp(appList[0].name);
     applyAppFilter(); // re-apply any active sidebar filter after the rebuild
     fillReplicas();fillMetricsContainers();
     updateContainerStat();
@@ -730,13 +730,16 @@ function applyURL(q){
   const r=q.get('range');if(r&&(RANGE_MS[r]||r==='5m')){S.range=r;setRangeChip();}
 }
 function show(){
-  $('#view-dashboard').style.display=S.tab==='dashboard'?'block':'none';
+  $('#view-dashboard').style.display=(S.tab==='dashboard'&&!S.app)?'block':'none';
   $('#view-logs').style.display=S.tab==='logs'?'flex':'none';
   $('#view-metrics').style.display=S.tab==='metrics'?'flex':'none';
   $('#view-access').style.display=S.tab==='access'?'flex':'none';
   $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
   $('#view-alerts').style.display=S.tab==='alerts'?'block':'none';
   if(S.tab==='logs')restartLogs();else stopStreams();
+  // Dashboard is the all-apps overview: leave it and open the selected app's
+  // logs instead of rendering a per-app dashboard.
+  if(S.tab==='dashboard'&&S.app)setTab('logs');
   if(S.tab==='dashboard' && !S.app)loadDashboard();
   if(S.tab==='metrics')loadMetrics();
   if(S.tab==='access')loadAccess();
@@ -1617,7 +1620,7 @@ let dashTimer=0;
 async function loadDashboard(){
   clearTimeout(dashTimer);
   const box=$('#view-dashboard');
-  if(S.tab!=='dashboard')return;
+  if(S.tab!=='dashboard'||S.app)return; // dashboard is the all-apps view only
   // First paint: shimmer skeleton. Background refreshes (15s poll) keep the
   // existing content on screen and swap it in atomically when data arrives,
   // so re-renders never flash "Loading…".
@@ -1667,8 +1670,9 @@ async function loadDashboard(){
   }
   if(!apps.length){const e=document.createElement('div');e.className='empty';e.textContent='No apps yet. CapScope needs at least one container it can see.';grid.append(e);}
   box.append(grid);
-  // recent crashes strip
-  const snaps=await loadCrashes('24h').catch(()=>[]);
+  // recent crashes strip (fetch snapshots directly — loadCrashes() renders the
+  // crashes view and returns undefined, so it can't supply data here)
+  const snaps=((await api('/api/snapshots?limit=100'+(S.host?'&host='+encodeURIComponent(S.host):'')).catch(()=>({}))).snapshots||[]).filter(s=>s.ts&&Date.now()-s.ts<864e5);
   if(snaps.length){
     const strip=document.createElement('div');strip.className='card';strip.style.marginTop='16px';
     const t=document.createElement('h3');t.textContent='Recent crashes (24h) — click to deep-link';strip.append(t);

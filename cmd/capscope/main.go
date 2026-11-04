@@ -31,7 +31,7 @@ func run(log *slog.Logger, args []string) error {
 		return serve(log)
 	case "agent":
 		return runAgent(log)
-	case "healthcheck":
+	case "healthcheck", "--healthcheck": // "--healthcheck" matches the Dockerfile HEALTHCHECK line
 		return runHealthcheck(log)
 	case "version":
 		fmt.Printf("capscope %s\n", version)
