@@ -252,7 +252,7 @@ h2{font-weight:600;letter-spacing:-.02em}
   <aside><button id="sideToggle" title="Collapse sidebar">⟨⟨</button><h2>Apps</h2><input type="search" id="appFilter" placeholder="Filter apps" autocomplete="off" spellcheck="false"><div id="apps"></div></aside>
   <section class="content">
     <nav class="tabs" id="tabs">
-      <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button>
+      <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button><button data-t="admin" id="adminTab" style="display:none">Admin</button>
     </nav>
     <div id="view-dashboard" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -321,6 +321,7 @@ h2{font-weight:600;letter-spacing:-.02em}
     </div>
     <div id="view-crashes" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-alerts" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
+    <div id="view-admin" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
   </section>
 </main>
 
@@ -339,7 +340,7 @@ h2{font-weight:600;letter-spacing:-.02em}
 "use strict";
 const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0,user:'anonymous',role:'viewer'};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -673,9 +674,9 @@ $('#replicas').onclick=e=>{e.stopPropagation();const p=$('#repPop');p.style.disp
 document.addEventListener('click',e=>{if(!e.target.closest('#replicas')&&!e.target.closest('#repPop'))$('#repPop').style.display='none';});
 
 /* ---------- tabs (v0.7: tab/app/range mirrored into the URL for permalinks) ---------- */
-const TABS=['dashboard','logs','metrics','access','crashes','alerts'];
+const TABS=['dashboard','logs','metrics','access','crashes','alerts','admin'];
 function setTab(t){
-  if(!TABS.includes(t))t='logs';
+  if(!TABS.includes(t)||t==='admin'&&S.role!=='admin')t='logs';
   S.tab=t;
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));
   syncURL();
@@ -736,6 +737,7 @@ function show(){
   $('#view-access').style.display=S.tab==='access'?'flex':'none';
   $('#view-crashes').style.display=S.tab==='crashes'?'block':'none';
   $('#view-alerts').style.display=S.tab==='alerts'?'block':'none';
+  $('#view-admin').style.display=S.tab==='admin'&&S.role==='admin'?'block':'none';
   if(S.tab==='logs')restartLogs();else stopStreams();
   // Dashboard is the all-apps overview: leave it and open the selected app's
   // logs instead of rendering a per-app dashboard.
@@ -745,6 +747,7 @@ function show(){
   if(S.tab==='access')loadAccess();
   if(S.tab==='crashes')loadCrashes();
   if(S.tab==='alerts')loadAlerts();
+  if(S.tab==='admin'&&S.role==='admin')loadAdmin();
 }
 
 /* ---------- virtual list ---------- */
@@ -1614,7 +1617,33 @@ function sessionWarning(){
     el.textContent='Session expires in '+mins+' min — ';
   }else if(el){el.remove();el=null;}
 }
-
+/* ---------- admin panel ---------- */
+async function loadAdmin(){
+  const box=$('#view-admin');
+  if(S.role!=='admin')return;
+  box.innerHTML='<div class="card"><h2>Admin</h2><p style="color:var(--muted)">Manage CapScope users and roles. Passwords are never displayed.</p><div id="adminStatus" class="callout" style="display:none"></div><form id="userForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:16px 0"><label style="display:flex;flex-direction:column;gap:4px">Username<input name="name" required autocomplete="off" placeholder="username"></label><label style="display:flex;flex-direction:column;gap:4px">Password<input name="password" required type="password" minlength="8" autocomplete="new-password" placeholder="at least 8 characters"></label><label style="display:flex;flex-direction:column;gap:4px">Role<select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label><button class="b" type="submit">Create user</button></form><table id="usersTable" style="width:100%"></table></div>';
+  const status=$('#adminStatus');
+  const note=(msg,kind)=>{status.textContent=msg;status.className='callout '+(kind||'');status.style.display='';};
+  const render=async()=>{
+    try{
+      const d=await api('/api/users');
+      const table=$('#usersTable');table.replaceChildren();
+      const head=document.createElement('tr');['User','Role','Created','Actions'].forEach(x=>{const th=document.createElement('th');th.textContent=x;head.append(th);});table.append(head);
+      for(const u of d.users||[]){
+        const tr=document.createElement('tr');
+        const name=document.createElement('td');name.textContent=u.name;
+        const role=document.createElement('td');const sel=document.createElement('select');['viewer','admin'].forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r;o.selected=u.role===r;sel.append(o);});role.append(sel);
+        const created=document.createElement('td');created.textContent=u.created_ms?fmtDT(u.created_ms):'—';
+        const actions=document.createElement('td');
+        sel.onchange=async()=>{try{await api('/api/users/'+encodeURIComponent(u.id)+'/role',{method:'POST',body:JSON.stringify({role:sel.value})});note('Role updated','ok');}catch(e){sel.value=u.role;note('Role update failed: '+(e.message||e),'err');}};
+        if(u.name!==S.user){const del=document.createElement('button');del.className='b';del.textContent='Delete';del.onclick=async()=>{if(!confirm('Delete user '+u.name+'?'))return;try{await api('/api/users/'+encodeURIComponent(u.id),{method:'DELETE'});note('User deleted','ok');await render();}catch(e){note('Delete failed: '+(e.message||e),'err');}};actions.append(del);}else{actions.textContent='Current user';}
+        tr.append(name,role,created,actions);table.append(tr);
+      }
+    }catch(e){note('Could not load users: '+(e.message||e),'err');}
+  };
+  $('#userForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/users',{method:'POST',body:JSON.stringify({name:f.get('name'),password:f.get('password'),role:f.get('role')})});e.currentTarget.reset();note('User created','ok');await render();}catch(ex){note('Create failed: '+(ex.message||ex),'err');}};
+  await render();
+}
 /* ---------- global dashboard (v0.7) ---------- */
 let dashTimer=0;
 async function loadDashboard(){
@@ -1922,7 +1951,7 @@ addEventListener('DOMContentLoaded',()=>{
     try{
       const d=await api('/api/session');
       // auth_enabled:false => server runs without AUTH_PASS; proceed anonymously.
-      return{ok:true,user:d.user||'anonymous',expiresAt:d.expires_at||0,authEnabled:d.auth_enabled!==false};
+      return{ok:true,user:d.user||'anonymous',role:d.role||'viewer',expiresAt:d.expires_at||0,authEnabled:d.auth_enabled!==false};
     }catch(e){return{ok:false};}
   }
   $('#loginForm').onsubmit=async(e)=>{
@@ -1956,6 +1985,8 @@ addEventListener('DOMContentLoaded',()=>{
     const s=await checkSession();
     if(s.ok){
       S.sessionExpires=s.expiresAt;
+      S.user=s.user;S.role=s.role;
+      $('#adminTab').style.display=S.role==='admin'?'':'none';
       if(s.authEnabled)$('#logoutBtn').style.display='';
       hideLogin();
       await loadCrashCounts();

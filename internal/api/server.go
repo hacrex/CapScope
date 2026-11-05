@@ -839,7 +839,7 @@ func (s *Server) access(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	agg, err := s.st.QueryAccess(ctx, v.Get("app"), time.Now().Add(-rng).UnixMilli(), 0, bucket, topN)
+	agg, err := s.st.QueryAccessFiltered(ctx, v.Get("app"), v.Get("status"), time.Now().Add(-rng).UnixMilli(), 0, bucket, topN)
 	if err != nil {
 		fail(w, 500, err)
 		return
@@ -1202,7 +1202,7 @@ func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 		rng = d
 	}
 	limit, _ := strconv.ParseInt(v.Get("limit"), 10, 64)
-	rows, err := s.st.QueryAccessRows(r.Context(), v.Get("app"), time.Now().Add(-rng).UnixMilli(), 0, limit)
+	rows, err := s.st.QueryAccessRowsFiltered(r.Context(), v.Get("app"), v.Get("status"), time.Now().Add(-rng).UnixMilli(), 0, limit)
 	if err != nil {
 		fail(w, 500, err)
 		return

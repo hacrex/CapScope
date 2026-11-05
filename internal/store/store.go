@@ -1129,18 +1129,25 @@ type AccessPoint struct {
 
 // AccessAggregates bundles everything the Access dashboard tab shows.
 type AccessAggregates struct {
-	SinceMs, UntilMs, BucketMs int64
-	Totals                     AccessSummary
-	Codes                      []AccessCode
-	Paths                      []AccessTop
-	IPs                        []AccessTop
-	Refs                       []AccessTop
+	SinceMs                    int64         `json:"since_ms"`
+	UntilMs                    int64         `json:"until_ms"`
+	BucketMs                   int64         `json:"bucket_ms"`
+	Totals                     AccessSummary `json:"totals"`
+	Codes                      []AccessCode  `json:"codes"`
+	Paths                      []AccessTop   `json:"paths"`
+	IPs                        []AccessTop   `json:"ips"`
+	Refs                       []AccessTop   `json:"refs"`
 	Tl                         []AccessPoint `json:"timeline"`
 }
 
 // QueryAccessRows returns raw parsed requests oldest-first, for CSV export.
 // limit is clamped to at most 100000.
 func (s *Store) QueryAccessRows(ctx context.Context, app string, sinceMs, untilMs, limit int64) ([]AccessRow, error) {
+	return s.QueryAccessRowsFiltered(ctx, app, "", sinceMs, untilMs, limit)
+}
+
+// QueryAccessRowsFiltered returns parsed access rows with an optional status class filter.
+func (s *Store) QueryAccessRowsFiltered(ctx context.Context, app, status string, sinceMs, untilMs, limit int64) ([]AccessRow, error) {
 	if limit <= 0 || limit > 100000 {
 		limit = 100000
 	}
@@ -1150,6 +1157,9 @@ func (s *Store) QueryAccessRows(ctx context.Context, app string, sinceMs, untilM
 	}
 	if app != "" {
 		cl, args = append(cl, "app = ?"), append(args, app)
+	}
+	if lo, hi, ok := accessStatusRange(status); ok {
+		cl, args = append(cl, "status >= ? AND status < ?"), append(args, lo, hi)
 	}
 	rows, err := s.r.QueryContext(ctx, `SELECT ts,container_id,container,app,ip,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, limit)...)
 	if err != nil {
@@ -1170,6 +1180,11 @@ func (s *Store) QueryAccessRows(ctx context.Context, app string, sinceMs, untilM
 // QueryAccess computes the dashboard aggregates over one window.
 // topN limits the "top paths/IPs/referrers" lists (clamped 0..100).
 func (s *Store) QueryAccess(ctx context.Context, app string, sinceMs, untilMs, bucketMs int64, topN int) (AccessAggregates, error) {
+	return s.QueryAccessFiltered(ctx, app, "", sinceMs, untilMs, bucketMs, topN)
+}
+
+// QueryAccessFiltered computes access aggregates with an optional status class filter.
+func (s *Store) QueryAccessFiltered(ctx context.Context, app, status string, sinceMs, untilMs, bucketMs int64, topN int) (AccessAggregates, error) {
 	if bucketMs < 30000 {
 		bucketMs = 30000
 	}
@@ -1185,6 +1200,9 @@ func (s *Store) QueryAccess(ctx context.Context, app string, sinceMs, untilMs, b
 	}
 	if app != "" {
 		cl, args = append(cl, "app = ?"), append(args, app)
+	}
+	if lo, hi, ok := accessStatusRange(status); ok {
+		cl, args = append(cl, "status >= ? AND status < ?"), append(args, lo, hi)
 	}
 	where := " WHERE " + strings.Join(cl, " AND ")
 	withArgs := func(extra ...any) []any { return append(append([]any{}, args...), extra...) }
@@ -1260,6 +1278,19 @@ func (s *Store) QueryAccess(ctx context.Context, app string, sinceMs, untilMs, b
 	}
 	rows.Close()
 	return agg, rows.Err()
+}
+
+func accessStatusRange(status string) (int, int, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "2xx":
+		return 200, 300, true
+	case "4xx":
+		return 400, 500, true
+	case "5xx":
+		return 500, 600, true
+	default:
+		return 0, 0, false
+	}
 }
 
 func (s *Store) deleteBatched(ctx context.Context, table, col string, cutoff int64) (int64, error) {

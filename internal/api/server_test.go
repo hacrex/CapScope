@@ -284,6 +284,32 @@ func TestAccessAPIAndExports(t *testing.T) {
 	if len(agg.Paths) != 1 || agg.Paths[0].Key != "/api/items" || agg.Paths[0].Errors != 1 {
 		t.Errorf("paths: %+v", agg.Paths)
 	}
+	var filtered struct {
+		Totals struct {
+			Requests  int64 `json:"requests"`
+			UniqueIPs int64 `json:"unique_ips"`
+		} `json:"totals"`
+		IPs []store.AccessTop `json:"ips"`
+	}
+	resp = get(t, srv.URL+"/api/access?range=1h&status=5xx", true)
+	if err := json.NewDecoder(resp.Body).Decode(&filtered); err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Totals.Requests != 1 || filtered.Totals.UniqueIPs != 1 || len(filtered.IPs) != 1 || filtered.IPs[0].Hits != 1 {
+		t.Errorf("5xx filter: %+v", filtered)
+	}
+	resp = get(t, srv.URL+"/api/access?range=1h&status=2xx", true)
+	if err := json.NewDecoder(resp.Body).Decode(&filtered); err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Totals.Requests != 1 {
+		t.Errorf("2xx filter: %+v", filtered.Totals)
+	}
+	resp = get(t, srv.URL+"/api/access?range=1h", true)
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), `"Totals"`) || !strings.Contains(string(body), `"totals"`) {
+		t.Errorf("access JSON keys are not lowercase: %s", body[:min(len(body), 300)])
+	}
 	// CSV export contains the parsed rows
 	r := get(t, srv.URL+"/api/access/export?range=1h", true)
 	b, _ := io.ReadAll(r.Body)
