@@ -43,6 +43,13 @@ func TestLogsInsertQueryFilters(t *testing.T) {
 	if len(got) != 3 || got[0].Line != "started" {
 		t.Fatalf("app filter / order wrong: %+v", got)
 	}
+	got, _ = s.QueryLogs(ctx, LogQuery{App: "api", AllowedApps: []string{"web"}})
+	if len(got) != 0 {
+		t.Fatalf("scope bypass: unauthorized app returned rows: %+v", got)
+	}
+	if (LogQuery{App: "api", AllowedApps: []string{"web"}}).Match(rows[3]) {
+		t.Fatal("scope bypass: live matcher accepted unauthorized app")
+	}
 	got, _ = s.QueryLogs(ctx, LogQuery{App: "web", Levels: []string{"error"}})
 	if len(got) != 1 {
 		t.Fatalf("level filter: %+v", got)

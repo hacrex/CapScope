@@ -419,7 +419,8 @@ func (q LogQuery) whereOpts(withQ bool) (string, []any) {
 	var args []any
 	if q.App != "" {
 		cl, args = append(cl, "app = ?"), append(args, q.App)
-	} else if len(q.AllowedApps) > 0 {
+	}
+	if len(q.AllowedApps) > 0 {
 		cl = append(cl, "app IN ("+strings.TrimSuffix(strings.Repeat("?,", len(q.AllowedApps)), ",")+")")
 		for _, app := range q.AllowedApps {
 			args = append(args, app)
@@ -467,7 +468,7 @@ func (q LogQuery) Match(r LogRow) bool {
 	if q.App != "" && r.App != q.App {
 		return false
 	}
-	if q.App == "" && len(q.AllowedApps) > 0 {
+	if len(q.AllowedApps) > 0 {
 		ok := false
 		for _, app := range q.AllowedApps {
 			if r.App == app {
