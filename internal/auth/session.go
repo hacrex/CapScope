@@ -180,6 +180,26 @@ func (m *SessionManager) Delete(token string) {
 	}
 }
 
+// RevokeUser invalidates every active session belonging to userID. This keeps
+// demoted or deleted users from retaining their previous access until expiry.
+func (m *SessionManager) RevokeUser(userID int64) {
+	if userID == 0 {
+		return
+	}
+	m.mu.Lock()
+	changed := false
+	for mac, s := range m.sessions {
+		if s.userID == userID {
+			delete(m.sessions, mac)
+			changed = true
+		}
+	}
+	m.mu.Unlock()
+	if changed {
+		m.save()
+	}
+}
+
 // Name returns the session name for a token, or "" if invalid.
 func (m *SessionManager) Name(token string) string {
 	_, name, _, ok := m.Validate(token)

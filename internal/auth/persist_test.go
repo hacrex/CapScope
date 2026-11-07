@@ -51,6 +51,23 @@ func TestSessionsDeletedTokenStopsValidating(t *testing.T) {
 	}
 }
 
+func TestRevokeUserStopsAllSessions(t *testing.T) {
+	m := NewSessionManager(quietLogger())
+	token1 := m.CreateSession(7, "viewer", RoleViewer)
+	token2 := m.CreateSession(7, "viewer", RoleViewer)
+	other := m.CreateSession(8, "other", RoleViewer)
+	m.RevokeUser(7)
+	if _, _, _, ok := m.Validate(token1); ok {
+		t.Fatal("first user session still valid after revocation")
+	}
+	if _, _, _, ok := m.Validate(token2); ok {
+		t.Fatal("second user session still valid after revocation")
+	}
+	if _, _, _, ok := m.Validate(other); !ok {
+		t.Fatal("revocation affected another user")
+	}
+}
+
 func TestExpiredSessionsNotRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sessions")
 	m := NewPersistentSessionManager(path, quietLogger())

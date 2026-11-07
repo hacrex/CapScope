@@ -579,6 +579,10 @@ func (s *Server) shareCreate(w http.ResponseWriter, r *http.Request) {
 
 // usersList returns all users (admin only).
 func (s *Server) usersList(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
 	token := requestToken(r)
 	if _, _, role, ok := s.sessions.Validate(token); !ok || role != auth.RoleAdmin {
 		http.Error(w, "forbidden: admin required", http.StatusForbidden)
@@ -604,6 +608,10 @@ func (s *Server) usersList(w http.ResponseWriter, r *http.Request) {
 
 // usersCreate creates a new user (admin only).
 func (s *Server) usersCreate(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
 	token := requestToken(r)
 	if _, _, role, ok := s.sessions.Validate(token); !ok || role != auth.RoleAdmin {
 		http.Error(w, "forbidden: admin required", http.StatusForbidden)
@@ -640,6 +648,10 @@ func (s *Server) usersCreate(w http.ResponseWriter, r *http.Request) {
 
 // usersSetRole changes a user's role (admin only).
 func (s *Server) usersSetRole(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
 	token := requestToken(r)
 	if _, _, role, ok := s.sessions.Validate(token); !ok || role != auth.RoleAdmin {
 		http.Error(w, "forbidden: admin required", http.StatusForbidden)
@@ -662,11 +674,16 @@ func (s *Server) usersSetRole(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	s.sessions.RevokeUser(id)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
 // usersDelete removes a user (admin only).
 func (s *Server) usersDelete(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
 	token := requestToken(r)
 	if _, _, role, ok := s.sessions.Validate(token); !ok || role != auth.RoleAdmin {
 		http.Error(w, "forbidden: admin required", http.StatusForbidden)
@@ -689,6 +706,7 @@ func (s *Server) usersDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	s.sessions.RevokeUser(id)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
