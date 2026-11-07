@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Per-app RBAC, automated webhooks, and SSE capacity testing
+- **Per-app RBAC**: viewer users require explicit assignments in the `user_apps`
+  SQLite table. Admins retain access to every app. The Admin panel can edit
+  assignments, and logs, exports, SSE, dashboards, metrics, access analytics,
+  snapshots, alerts, and deploy markers enforce the scope.
+- **Automated webhook alerts**: `ALERT_WEBHOOK_URL` delivers critical
+  log-pattern and error-spike rules automatically. The Admin-only alert rule
+  editor and test sender protect notification configuration.
+- **SSE load testing**: `go run ./cmd/sse-bench -url ... -connections 500`
+  opens concurrent live-tail clients in batches and reports failures, events,
+  read errors, connection time, and optional target RSS via `-pid`.
+
 ### v0.15 — MCP server over SQLite (Phase 6.4)
 - **MCP server (`cmd/capscope mcp`)** (Phase 6.4): new `mcp` subcommand runs a
   Model Context Protocol server over stdio using JSON-RPC 2.0. Exposes read-only

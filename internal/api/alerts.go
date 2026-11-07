@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"capscope/internal/alerts"
+	"capscope/internal/auth"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,10 @@ func readBody(r *http.Request, max int64) ([]byte, error) {
 
 // alertsList returns the recorded alert history (A1 to A4 firings).
 func (s *Server) alertsList(w http.ResponseWriter, r *http.Request) {
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(r.URL.Query().Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	list, err := s.st.ListAlerts(r.Context(), r.URL.Query().Get("app"), limit)
 	if err != nil {
@@ -57,7 +62,20 @@ func (s *Server) alertsRules(w http.ResponseWriter, r *http.Request) {
 		Cooldown string   `json:"cooldown,omitempty"`
 	}
 	views := make([]ruleView, 0, len(rules))
+	allowed, restricted := s.viewerScope(r)
 	for _, ru := range rules {
+		if restricted {
+			visible := false
+			for _, app := range ru.Apps {
+				if appInScope(app, allowed) {
+					visible = true
+					break
+				}
+			}
+			if !visible {
+				continue
+			}
+		}
 		v := ruleView{Name: ru.Name, Kind: ru.Kind, Apps: ru.Apps, Count: ru.Count, Metric: ru.Metric, Op: ru.Op, Value: ru.Value, Pattern: ru.Pattern, Hits: ru.Hits,
 			Event: ru.Event, Status: ru.Status, Exclude: ru.Exclude}
 		if ru.For > 0 {
@@ -80,6 +98,10 @@ func (s *Server) alertsRules(w http.ResponseWriter, r *http.Request) {
 // alertsTest sends a test message through every configured channel, so a
 // user can verify webhooks before an incident.
 func (s *Server) alertsTest(w http.ResponseWriter, r *http.Request) {
+	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
 	if s.eng == nil {
 		fail(w, 400, fmt.Errorf("alerting is disabled (no %s)", "ALERTS_FILE"))
 		return
@@ -105,6 +127,10 @@ func (s *Server) alertsTest(w http.ResponseWriter, r *http.Request) {
 // alertsTestRule evaluates a rule against recent log data without saving it.
 // Used by the alert rule builder to preview whether a rule would fire.
 func (s *Server) alertsTestRule(w http.ResponseWriter, r *http.Request) {
+	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
 	if s.eng == nil {
 		fail(w, 400, fmt.Errorf("alerting is disabled (no ALERTS_FILE)"))
 		return
@@ -131,9 +157,9 @@ func (s *Server) alertsTestRule(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	result := struct {
-		Firing      bool   `json:"firing"`
-		MatchingRows int   `json:"matchingRows"`
-		Message     string `json:"message,omitempty"`
+		Firing       bool   `json:"firing"`
+		MatchingRows int    `json:"matchingRows"`
+		Message      string `json:"message,omitempty"`
 	}{}
 
 	switch req.Rule.Kind {
@@ -217,7 +243,6 @@ func (s *Server) alertsTestRule(w http.ResponseWriter, r *http.Request) {
 
 // snapshotExport renders a crash snapshot as a Markdown document.
 
-
 // ruleInput is one rule as submitted by the alert-rule builder UI. Durations
 // arrive as Go duration strings ("5m", "1h") and are validated server-side.
 type ruleInput struct {
@@ -292,6 +317,10 @@ func parseRulesBody(body []byte) ([]alerts.Rule, error) {
 // alertsRulesValidate dry-runs a rules document without touching disk; the
 // builder UI calls it to show errors before saving.
 func (s *Server) alertsRulesValidate(w http.ResponseWriter, r *http.Request) {
+	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
 	body, err := readBody(r, 1<<20)
 	if err != nil {
 		fail(w, 400, err)
@@ -307,6 +336,10 @@ func (s *Server) alertsRulesValidate(w http.ResponseWriter, r *http.Request) {
 // alertsRulesSave replaces the whole rules file with the posted document.
 // The engine hot-reloads and starts evaluating the new rules immediately.
 func (s *Server) alertsRulesSave(w http.ResponseWriter, r *http.Request) {
+	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
 	if s.eng == nil {
 		fail(w, 400, fmt.Errorf("alerting is disabled (no ALERTS_FILE configured)"))
 		return

@@ -30,6 +30,9 @@ func (s *Server) snapshotIncident(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
+	if !s.requireScopedApp(w, r, sn.App) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="incident-%s-%d.html"`, sn.App, sn.ID))
 	_ = incidentTmpl.Execute(w, incidentData(sn))

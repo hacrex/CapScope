@@ -51,12 +51,13 @@ type CrashLoopEntry struct {
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	allowed, restricted := s.viewerScope(r)
 
 	// The whole payload is assembled in parallel and cached briefly: the first
 	// paint on a big database used to serialize dozens of sparkline queries and
 	// made the dashboard take many seconds to appear.
 	gen, fresh := s.dash.begin()
-	if fresh {
+	if fresh && !restricted {
 		if v, ok := s.dash.get(); ok {
 			writeJSON(w, v)
 			return
@@ -68,6 +69,15 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
+	if restricted {
+		filtered := summaries[:0]
+		for _, item := range summaries {
+			if appInScope(item.App, allowed) {
+				filtered = append(filtered, item)
+			}
+		}
+		summaries = filtered
+	}
 
 	since24 := time.Now().Add(-24 * time.Hour).UnixMilli()
 
@@ -77,6 +87,15 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 500, err)
 		return
+	}
+	if restricted {
+		filtered := snaps[:0]
+		for _, sn := range snaps {
+			if appInScope(sn.App, allowed) {
+				filtered = append(filtered, sn)
+			}
+		}
+		snaps = filtered
 	}
 	deathsByApp := map[string]int64{}
 	loopApps := map[string]bool{}
@@ -96,6 +115,15 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	// Live containers give us "running now" counts.
 	conts := s.mgr.Containers(r.URL.Query().Get("host"))
+	if restricted {
+		filtered := conts[:0]
+		for _, c := range conts {
+			if appInScope(c.App, allowed) {
+				filtered = append(filtered, c)
+			}
+		}
+		conts = filtered
+	}
 	runByApp := map[string]int{}
 	for _, c := range conts {
 		runByApp[c.App]++

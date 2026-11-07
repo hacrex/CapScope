@@ -144,6 +144,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/users", s.usersList)
 	mux.HandleFunc("POST /api/users", s.usersCreate)
 	mux.HandleFunc("POST /api/users/{id}/role", s.usersSetRole)
+	mux.HandleFunc("GET /api/users/{id}/apps", s.userAppsList)
+	mux.HandleFunc("PUT /api/users/{id}/apps", s.userAppsReplace)
 	mux.HandleFunc("DELETE /api/users/{id}", s.usersDelete)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
@@ -283,6 +285,42 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// viewerScope returns the explicit app scope for local/OIDC viewer sessions.
+// Admins and auth-disabled deployments are unrestricted. Proxy-auth users do
+// not have local user records and therefore remain globally read-only.
+func (s *Server) viewerScope(r *http.Request) ([]string, bool) {
+	if s.sessions == nil || s.st == nil || s.cfg.AuthProvider == "proxy" {
+		return nil, false
+	}
+	uid, _, role, ok := s.sessions.Validate(requestToken(r))
+	if !ok || role == auth.RoleAdmin {
+		return nil, false
+	}
+	apps, err := s.st.UserApps(uid)
+	if err != nil {
+		return []string{}, true
+	}
+	return apps, true
+}
+
+func appInScope(app string, apps []string) bool {
+	for _, allowed := range apps {
+		if allowed == app {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) requireScopedApp(w http.ResponseWriter, r *http.Request, app string) bool {
+	apps, restricted := s.viewerScope(r)
+	if restricted && !appInScope(app, apps) {
+		http.Error(w, "forbidden: application is not assigned to this user", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 // oidcAuth is the middleware for AUTH_PROVIDER=oidc. It redirects unauthenticated
@@ -501,7 +539,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, fmt.Errorf("oidc: callback failed: %w", err))
 		return
 	}
-// Find or create the user in the store.
+	// Find or create the user in the store.
 	u, err := s.st.GetUserByName(name)
 	if err != nil {
 		// Auto-provision the first user as admin.
@@ -596,11 +634,13 @@ func (s *Server) usersList(w http.ResponseWriter, r *http.Request) {
 	// Never return password hashes.
 	out := make([]map[string]any, 0, len(users))
 	for _, u := range users {
+		apps, _ := s.st.UserApps(u.ID)
 		out = append(out, map[string]any{
 			"id":         u.ID,
 			"name":       u.Name,
 			"role":       u.Role,
 			"created_ms": u.CreatedMs,
+			"apps":       apps,
 		})
 	}
 	writeJSON(w, map[string]any{"users": out})
@@ -618,9 +658,10 @@ func (s *Server) usersCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     string `json:"name"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Name     string   `json:"name"`
+		Password string   `json:"password"`
+		Role     string   `json:"role"`
+		Apps     []string `json:"apps"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&body); err != nil {
 		fail(w, 400, err)
@@ -643,7 +684,65 @@ func (s *Server) usersCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, fmt.Errorf("user already exists: %s", body.Name))
 		return
 	}
+	if body.Role == auth.RoleViewer {
+		if err := s.st.ReplaceUserApps(id, body.Apps); err != nil {
+			fail(w, 500, err)
+			return
+		}
+	}
 	writeJSON(w, map[string]any{"id": id, "name": body.Name, "role": body.Role})
+}
+
+func (s *Server) userAppsList(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil || s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
+	var id int64
+	if _, err := fmt.Sscanf(r.PathValue("id"), "%d", &id); err != nil {
+		fail(w, 400, errors.New("invalid user id"))
+		return
+	}
+	apps, err := s.st.UserApps(id)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"apps": apps})
+}
+
+func (s *Server) userAppsReplace(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil || s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
+	var id int64
+	if _, err := fmt.Sscanf(r.PathValue("id"), "%d", &id); err != nil {
+		fail(w, 400, errors.New("invalid user id"))
+		return
+	}
+	var body struct {
+		Apps []string `json:"apps"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		fail(w, 404, err)
+		return
+	}
+	if user.Role == auth.RoleAdmin {
+		fail(w, 400, errors.New("admin users have access to every application"))
+		return
+	}
+	if err := s.st.ReplaceUserApps(id, body.Apps); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	s.sessions.RevokeUser(id)
+	writeJSON(w, map[string]any{"ok": true, "apps": body.Apps})
 }
 
 // usersSetRole changes a user's role (admin only).
@@ -741,7 +840,17 @@ func fail(w http.ResponseWriter, code int, err error) {
 }
 
 func (s *Server) containers(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"containers": s.mgr.Containers(r.URL.Query().Get("host"))})
+	conts := s.mgr.Containers(r.URL.Query().Get("host"))
+	if apps, restricted := s.viewerScope(r); restricted {
+		filtered := conts[:0]
+		for _, c := range conts {
+			if appInScope(c.App, apps) {
+				filtered = append(filtered, c)
+			}
+		}
+		conts = filtered
+	}
+	writeJSON(w, map[string]any{"containers": conts})
 }
 
 func (s *Server) hosts(w http.ResponseWriter, r *http.Request) {
@@ -764,6 +873,15 @@ func (s *Server) apps(w http.ResponseWriter, r *http.Request) {
 	}
 	if a == nil {
 		a = []store.AppSummary{}
+	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		filtered := a[:0]
+		for _, item := range a {
+			if appInScope(item.App, apps) {
+				filtered = append(filtered, item)
+			}
+		}
+		a = filtered
 	}
 	writeJSON(w, map[string]any{"apps": a})
 }
@@ -831,6 +949,9 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		q.AllowedApps = apps
+	}
 	rows, err := s.st.QueryLogs(r.Context(), q)
 	if err != nil {
 		fail(w, 500, err)
@@ -843,6 +964,10 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 // totals, status-code distribution, top paths/IPs/referrers and a timeline.
 func (s *Server) access(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	rng := time.Hour
 	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
 		rng = d
@@ -880,6 +1005,9 @@ func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 400, err)
 		return
+	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		q.AllowedApps = apps
 	}
 	if r.URL.Query().Get("fmt") == "json" {
 		s.logsExportJSON(w, r, q)
@@ -962,6 +1090,9 @@ func (s *Server) logsRaw(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 400, err)
 		return
+	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		q.AllowedApps = apps
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/plain; charset=utf-8")
@@ -1085,101 +1216,101 @@ func (s *Server) logsExportPNG(w http.ResponseWriter, r *http.Request, q store.L
 // font5x5 is a minimal 5x5 bitmap font for common ASCII characters.
 // Each uint32 encodes 5 rows (bits 0-4 of each byte group), each bit is a column.
 var font5x5 = map[rune]uint32{
-	' ': 0x00000,
-	'!': 0x02828,
-	'"': 0x0A000,
-	'#': 0x0A1FA,
-	'$': 0x081FA,
-	'%': 0x110A2,
-	'&': 0x0A1BA,
+	' ':  0x00000,
+	'!':  0x02828,
+	'"':  0x0A000,
+	'#':  0x0A1FA,
+	'$':  0x081FA,
+	'%':  0x110A2,
+	'&':  0x0A1BA,
 	'\'': 0x02000,
-	'(': 0x04180,
-	')': 0x08110,
-	'*': 0x042A4,
-	'+': 0x00284,
-	',': 0x00280,
-	'-': 0x00020,
-	'.': 0x00060,
-	'/': 0x10108,
-	'0': 0x0A11A,
-	'1': 0x02022,
-	'2': 0x001FA,
-	'3': 0x020FA,
-	'4': 0x088FA,
-	'5': 0x021FA,
-	'6': 0x021BA,
-	'7': 0x0001E,
-	'8': 0x021BA,
-	'9': 0x021FA,
-	':': 0x00202,
-	';': 0x00206,
-	'<': 0x01024,
-	'=': 0x00200,
-	'>': 0x04081,
-	'?': 0x0000A,
-	'@': 0x0A1BA,
-	'A': 0x0211A,
-	'B': 0x0213A,
-	'C': 0x04118,
-	'D': 0x02118,
-	'E': 0x021FE,
-	'F': 0x0211E,
-	'G': 0x041BA,
-	'H': 0x0111A,
-	'I': 0x021FE,
-	'J': 0x0011C,
-	'K': 0x01124,
-	'L': 0x0011E,
-	'M': 0x0911A,
-	'N': 0x0911A,
-	'O': 0x0A11A,
-	'P': 0x0213A,
-	'Q': 0x0A11A,
-	'R': 0x0213A,
-	'S': 0x020FA,
-	'T': 0x000FE,
-	'U': 0x0111A,
-	'V': 0x0110A,
-	'W': 0x0910A,
-	'X': 0x09069,
-	'Y': 0x09060,
-	'Z': 0x010E1,
-	'[': 0x04118,
+	'(':  0x04180,
+	')':  0x08110,
+	'*':  0x042A4,
+	'+':  0x00284,
+	',':  0x00280,
+	'-':  0x00020,
+	'.':  0x00060,
+	'/':  0x10108,
+	'0':  0x0A11A,
+	'1':  0x02022,
+	'2':  0x001FA,
+	'3':  0x020FA,
+	'4':  0x088FA,
+	'5':  0x021FA,
+	'6':  0x021BA,
+	'7':  0x0001E,
+	'8':  0x021BA,
+	'9':  0x021FA,
+	':':  0x00202,
+	';':  0x00206,
+	'<':  0x01024,
+	'=':  0x00200,
+	'>':  0x04081,
+	'?':  0x0000A,
+	'@':  0x0A1BA,
+	'A':  0x0211A,
+	'B':  0x0213A,
+	'C':  0x04118,
+	'D':  0x02118,
+	'E':  0x021FE,
+	'F':  0x0211E,
+	'G':  0x041BA,
+	'H':  0x0111A,
+	'I':  0x021FE,
+	'J':  0x0011C,
+	'K':  0x01124,
+	'L':  0x0011E,
+	'M':  0x0911A,
+	'N':  0x0911A,
+	'O':  0x0A11A,
+	'P':  0x0213A,
+	'Q':  0x0A11A,
+	'R':  0x0213A,
+	'S':  0x020FA,
+	'T':  0x000FE,
+	'U':  0x0111A,
+	'V':  0x0110A,
+	'W':  0x0910A,
+	'X':  0x09069,
+	'Y':  0x09060,
+	'Z':  0x010E1,
+	'[':  0x04118,
 	'\\': 0x10084,
-	']': 0x08110,
-	'^': 0x00500,
-	'_': 0x0000E,
-	'`': 0x00000,
-	'a': 0x001FA,
-	'b': 0x0019E,
-	'c': 0x000BA,
-	'd': 0x00AFA,
-	'e': 0x000FA,
-	'f': 0x001FE,
-	'g': 0x00AF0,
-	'h': 0x0019E,
-	'i': 0x00022,
-	'j': 0x00026,
-	'k': 0x001A4,
-	'l': 0x0001E,
-	'm': 0x001DA,
-	'n': 0x0019A,
-	'o': 0x0009A,
-	'p': 0x0013A,
-	'q': 0x00AFA,
-	'r': 0x00180,
-	's': 0x000FA,
-	't': 0x000FE,
-	'u': 0x0019A,
-	'v': 0x000A4,
-	'w': 0x000AA,
-	'x': 0x000A4,
-	'y': 0x009A0,
-	'z': 0x000E1,
-	'{': 0x04148,
-	'|': 0x00100,
-	'}': 0x08140,
-	'~': 0x00540,
+	']':  0x08110,
+	'^':  0x00500,
+	'_':  0x0000E,
+	'`':  0x00000,
+	'a':  0x001FA,
+	'b':  0x0019E,
+	'c':  0x000BA,
+	'd':  0x00AFA,
+	'e':  0x000FA,
+	'f':  0x001FE,
+	'g':  0x00AF0,
+	'h':  0x0019E,
+	'i':  0x00022,
+	'j':  0x00026,
+	'k':  0x001A4,
+	'l':  0x0001E,
+	'm':  0x001DA,
+	'n':  0x0019A,
+	'o':  0x0009A,
+	'p':  0x0013A,
+	'q':  0x00AFA,
+	'r':  0x00180,
+	's':  0x000FA,
+	't':  0x000FE,
+	'u':  0x0019A,
+	'v':  0x000A4,
+	'w':  0x000AA,
+	'x':  0x000A4,
+	'y':  0x009A0,
+	'z':  0x000E1,
+	'{':  0x04148,
+	'|':  0x00100,
+	'}':  0x08140,
+	'~':  0x00540,
 }
 
 // streamName maps a stream code to a display name.
@@ -1215,6 +1346,10 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 // accessExport downloads the raw parsed access rows as CSV.
 func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	rng := 24 * time.Hour
 	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
 		rng = d
@@ -1243,6 +1378,9 @@ func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 400, err)
 		return
+	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		q.AllowedApps = apps
 	}
 	// Gapless live tail: when the browser's EventSource reconnects it sends
 	// Last-Event-ID with the id of the last row it rendered. Filtering hub
@@ -1296,6 +1434,10 @@ func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	rng := time.Hour
 	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
 		rng = d
@@ -1314,8 +1456,13 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
+	app := r.URL.Query().Get("app")
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(app, apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	list, err := s.st.ListSnapshots(r.Context(), r.URL.Query().Get("app"), r.URL.Query().Get("host"), limit)
+	list, err := s.st.ListSnapshots(r.Context(), app, r.URL.Query().Get("host"), limit)
 	if err != nil {
 		fail(w, 500, err)
 		return
@@ -1332,6 +1479,9 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 	sn, err := s.snapshotEnriched(r.Context(), id)
 	if err != nil {
 		fail(w, 404, err)
+		return
+	}
+	if !s.requireScopedApp(w, r, sn.App) {
 		return
 	}
 	writeJSON(w, sn)
@@ -1360,6 +1510,9 @@ func (s *Server) snapshotExport(w http.ResponseWriter, r *http.Request) {
 	sn, err := s.snapshotEnriched(r.Context(), id)
 	if err != nil {
 		fail(w, 404, err)
+		return
+	}
+	if !s.requireScopedApp(w, r, sn.App) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")

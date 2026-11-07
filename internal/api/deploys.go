@@ -14,6 +14,10 @@ import (
 // time range. Used by the charts and the log timeline to draw markers (V9).
 func (s *Server) deploysList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(q.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
 	until, _ := strconv.ParseInt(q.Get("until"), 10, 64)
@@ -40,6 +44,9 @@ func (s *Server) deploysCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.App == "" {
 		fail(w, 400, errors.New("app is required"))
+		return
+	}
+	if !s.requireScopedApp(w, r, in.App) {
 		return
 	}
 	if in.TS <= 0 || in.TS > time.Now().UnixMilli()+60_000 {

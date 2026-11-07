@@ -1621,23 +1621,25 @@ function sessionWarning(){
 async function loadAdmin(){
   const box=$('#view-admin');
   if(S.role!=='admin')return;
-  box.innerHTML='<div class="card"><h2>Admin</h2><p style="color:var(--muted)">Manage CapScope users and roles. Passwords are never displayed. Viewer accounts currently have global read-only access; per-app permission scopes are not configured.</p><div id="adminStatus" class="callout" style="display:none"></div><form id="userForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:16px 0"><label style="display:flex;flex-direction:column;gap:4px">Username<input name="name" required autocomplete="off" placeholder="username"></label><label style="display:flex;flex-direction:column;gap:4px">Password<input name="password" required type="password" minlength="8" autocomplete="new-password" placeholder="at least 8 characters"></label><label style="display:flex;flex-direction:column;gap:4px">Role<select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label><button class="b" type="submit">Create user</button></form><table id="usersTable" style="width:100%"></table></div>';
+  box.innerHTML='<div class="card"><h2>Admin</h2><p style="color:var(--muted)">Manage users, roles, and application scopes. Viewer accounts can access only explicitly assigned applications; admins have access to all. Passwords are never displayed.</p><div id="adminStatus" class="callout" style="display:none"></div><form id="userForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:16px 0"><label style="display:flex;flex-direction:column;gap:4px">Username<input name="name" required autocomplete="off" placeholder="username"></label><label style="display:flex;flex-direction:column;gap:4px">Password<input name="password" required type="password" minlength="8" autocomplete="new-password" placeholder="at least 8 characters"></label><label style="display:flex;flex-direction:column;gap:4px">Role<select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label><button class="b" type="submit">Create user</button></form><table id="usersTable" style="width:100%"></table></div>';
   const status=$('#adminStatus');
   const note=(msg,kind)=>{status.textContent=msg;status.className='callout '+(kind||'');status.style.display='';};
   const render=async()=>{
     try{
       const d=await api('/api/users');
       const table=$('#usersTable');table.replaceChildren();
-      const head=document.createElement('tr');['User','Role','Created','Actions'].forEach(x=>{const th=document.createElement('th');th.textContent=x;head.append(th);});table.append(head);
+      const head=document.createElement('tr');['User','Role','Applications','Created','Actions'].forEach(x=>{const th=document.createElement('th');th.textContent=x;head.append(th);});table.append(head);
       for(const u of d.users||[]){
         const tr=document.createElement('tr');
         const name=document.createElement('td');name.textContent=u.name;
         const role=document.createElement('td');const sel=document.createElement('select');['viewer','admin'].forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r;o.selected=u.role===r;sel.append(o);});role.append(sel);
+        const scope=document.createElement('td');scope.textContent=u.role==='admin'?'All applications':((u.apps||[]).join(', ')||'None');
+        const scopeBtn=document.createElement('button');scopeBtn.className='b';scopeBtn.textContent='Edit apps';scopeBtn.disabled=u.role==='admin';scopeBtn.onclick=async()=>{const raw=prompt('Authorized applications (comma-separated):', (u.apps||[]).join(', '));if(raw===null)return;const apps=raw.split(',').map(x=>x.trim()).filter(Boolean);try{await api('/api/users/'+encodeURIComponent(u.id)+'/apps',{method:'PUT',body:JSON.stringify({apps})});u.apps=apps;scope.textContent=apps.join(', ')||'None';note('Application permissions updated','ok');}catch(e){note('Permission update failed: '+(e.message||e),'err');}};scope.append(document.createTextNode(' '),scopeBtn);
         const created=document.createElement('td');created.textContent=u.created_ms?fmtDT(u.created_ms):'—';
         const actions=document.createElement('td');
         sel.onchange=async()=>{try{await api('/api/users/'+encodeURIComponent(u.id)+'/role',{method:'POST',body:JSON.stringify({role:sel.value})});note('Role updated','ok');}catch(e){sel.value=u.role;note('Role update failed: '+(e.message||e),'err');}};
         if(u.name!==S.user){const del=document.createElement('button');del.className='b';del.textContent='Delete';del.onclick=async()=>{if(!confirm('Delete user '+u.name+'?'))return;try{await api('/api/users/'+encodeURIComponent(u.id),{method:'DELETE'});note('User deleted','ok');await render();}catch(e){note('Delete failed: '+(e.message||e),'err');}};actions.append(del);}else{actions.textContent='Current user';}
-        tr.append(name,role,created,actions);table.append(tr);
+        tr.append(name,role,scope,created,actions);table.append(tr);
       }
     }catch(e){note('Could not load users: '+(e.message||e),'err');}
   };

@@ -180,6 +180,14 @@ var migrations = []string{
 	// row of a multi-gigabyte logs table.
 	`CREATE INDEX IF NOT EXISTS idx_logs_ts_app ON logs(ts, app);
 	 CREATE INDEX IF NOT EXISTS idx_snapshots_ts_app ON snapshots(ts, app);`,
+	// Per-user application scopes (RBAC): admins have all apps; viewers must
+	// have an explicit row in this table for each application they may inspect.
+	`CREATE TABLE user_apps(
+	   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	   app TEXT NOT NULL,
+	   PRIMARY KEY(user_id, app)
+	 );
+	 CREATE INDEX idx_user_apps_app ON user_apps(app);`,
 }
 
 // Open creates or migrates the database at path.
@@ -328,6 +336,12 @@ type User struct {
 	CreatedMs    int64  `json:"created_ms"`
 }
 
+// UserAppScope is an application assigned to a viewer account.
+type UserAppScope struct {
+	UserID int64  `json:"user_id"`
+	App    string `json:"app"`
+}
+
 // AccessRow is one parsed access-log request, keyed by the container that
 // emitted it (App is the reverse proxy's app, not the route's target).
 type AccessRow struct {
@@ -377,6 +391,7 @@ func (s *Store) InsertLogs(rows []LogRow) error {
 type LogQuery struct {
 	App, Container, Stream, Q string
 	Levels                    []string
+	AllowedApps               []string       // optional server-side viewer scope
 	Regex                     *regexp.Regexp // when set, Q is ignored and matching happens in Go
 	SinceMs, UntilMs          int64
 	AfterID, BeforeID         int64
@@ -404,6 +419,11 @@ func (q LogQuery) whereOpts(withQ bool) (string, []any) {
 	var args []any
 	if q.App != "" {
 		cl, args = append(cl, "app = ?"), append(args, q.App)
+	} else if len(q.AllowedApps) > 0 {
+		cl = append(cl, "app IN ("+strings.TrimSuffix(strings.Repeat("?,", len(q.AllowedApps)), ",")+")")
+		for _, app := range q.AllowedApps {
+			args = append(args, app)
+		}
 	}
 	if q.HostID != "" {
 		cl, args = append(cl, "host_id = ?"), append(args, q.HostID)
@@ -446,6 +466,18 @@ func (q LogQuery) whereOpts(withQ bool) (string, []any) {
 func (q LogQuery) Match(r LogRow) bool {
 	if q.App != "" && r.App != q.App {
 		return false
+	}
+	if q.App == "" && len(q.AllowedApps) > 0 {
+		ok := false
+		for _, app := range q.AllowedApps {
+			if r.App == app {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
 	}
 	if q.HostID != "" && r.HostID != q.HostID {
 		return false
@@ -1018,6 +1050,58 @@ func (s *Store) ListUsers() ([]User, error) {
 	return out, rows.Err()
 }
 
+// UserApps returns the explicitly assigned application scopes for a user.
+func (s *Store) UserApps(userID int64) ([]string, error) {
+	rows, err := s.r.Query(`SELECT app FROM user_apps WHERE user_id=? ORDER BY app`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var apps []string
+	for rows.Next() {
+		var app string
+		if err := rows.Scan(&app); err != nil {
+			return nil, err
+		}
+		apps = append(apps, app)
+	}
+	return apps, rows.Err()
+}
+
+// ReplaceUserApps atomically replaces a viewer's application scopes.
+func (s *Store) ReplaceUserApps(userID int64, apps []string) error {
+	seen := make(map[string]struct{}, len(apps))
+	tx, err := s.w.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM user_apps WHERE user_id=?`, userID); err != nil {
+		return err
+	}
+	for _, app := range apps {
+		app = strings.TrimSpace(app)
+		if app == "" {
+			continue
+		}
+		if _, ok := seen[app]; ok {
+			continue
+		}
+		seen[app] = struct{}{}
+		if _, err := tx.Exec(`INSERT INTO user_apps(user_id,app) VALUES(?,?)`, userID, app); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// UserCanAccessApp reports whether a non-admin user has an explicit scope.
+func (s *Store) UserCanAccessApp(userID int64, app string) (bool, error) {
+	var n int
+	err := s.r.QueryRow(`SELECT COUNT(*) FROM user_apps WHERE user_id=? AND app=?`, userID, app).Scan(&n)
+	return n > 0, err
+}
+
 // SeedFirstUser creates the first user from AUTH_USER/AUTH_PASS if no users
 // exist yet. Returns true if a user was created.
 func (s *Store) SeedFirstUser(name, passwordHash string) (bool, error) {
@@ -1129,15 +1213,15 @@ type AccessPoint struct {
 
 // AccessAggregates bundles everything the Access dashboard tab shows.
 type AccessAggregates struct {
-	SinceMs                    int64         `json:"since_ms"`
-	UntilMs                    int64         `json:"until_ms"`
-	BucketMs                   int64         `json:"bucket_ms"`
-	Totals                     AccessSummary `json:"totals"`
-	Codes                      []AccessCode  `json:"codes"`
-	Paths                      []AccessTop   `json:"paths"`
-	IPs                        []AccessTop   `json:"ips"`
-	Refs                       []AccessTop   `json:"refs"`
-	Tl                         []AccessPoint `json:"timeline"`
+	SinceMs  int64         `json:"since_ms"`
+	UntilMs  int64         `json:"until_ms"`
+	BucketMs int64         `json:"bucket_ms"`
+	Totals   AccessSummary `json:"totals"`
+	Codes    []AccessCode  `json:"codes"`
+	Paths    []AccessTop   `json:"paths"`
+	IPs      []AccessTop   `json:"ips"`
+	Refs     []AccessTop   `json:"refs"`
+	Tl       []AccessPoint `json:"timeline"`
 }
 
 // QueryAccessRows returns raw parsed requests oldest-first, for CSV export.
