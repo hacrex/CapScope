@@ -27,7 +27,7 @@ No external database. No Prometheus stack. One container, one volume, one passwo
 | **Deploy markers** | Record deploys from CI or the UI; markers appear on CPU/memory charts, inline in the log timeline, and on crash details ("Last deploy: v1.4") |
 | **Alerts** | Dead-man (silence), restart loop, metric threshold (with duration), log-pattern rules, and live container-event rules (die/OOM/health/update-available); webhook, Telegram, Slack, Discord, and ntfy channels; `${ENV}` placeholders in channel endpoints |
 | **Secret redaction** | Masks JWTs, bearer tokens, `password=`/`token=` values, URL credentials, AWS keys, and PEM keys before storage |
-| **Auth** | Basic auth by default; `AUTH_PROVIDER=proxy` trusts a reverse proxy identity header (Authelia/Authentik/Cloudflare Access). Refuses to start without a password unless you explicitly opt out or use proxy auth |
+| **Auth and RBAC** | Local password auth, OIDC, or reverse-proxy auth; persistent `admin`/`viewer` users; per-app permissions for viewers; session revocation after role/scope changes |
 
 ---
 
@@ -181,6 +181,38 @@ without a password prompt. Two rules:
 
 ---
 
+## Users and per-app RBAC
+
+Local and OIDC deployments support two persistent roles:
+
+- **Admin** — full access to every application, user management, application
+  assignments, alert rules, webhook tests, and deploy-marker writes.
+- **Viewer** — read-only access to explicitly assigned applications. A viewer
+  with no assignments sees no application data.
+
+Log history, live SSE streams, exports, dashboards, metrics, access analytics,
+crash snapshots, incident exports, deploy markers, and alert history all enforce
+the viewer's application scope. Scope changes revoke the affected user's
+active sessions, so a newly removed application takes effect immediately.
+
+To manage scopes, sign in as an admin, open **Admin**, and use **Edit apps**
+on a viewer row. Applications are assigned by name, for example `shop, blog`.
+The same operation is available to automation through:
+
+```bash
+GET /api/users/{id}/apps
+PUT /api/users/{id}/apps   # {"apps":["shop","blog"]}
+```
+
+The `PUT` endpoint is Admin-only. Admin users always have access to all apps;
+their scope cannot be reduced through this endpoint.
+
+`AUTH_PROVIDER=proxy` is intentionally different: proxy identities are not
+stored as CapScope users, so they remain globally read-only. Use local or OIDC
+authentication when per-user application scoping is required.
+
+---
+
 ## Platform guides
 
 CapScope works on any Docker host. Pick your platform:
@@ -205,9 +237,10 @@ Alerts are driven by a JSON file (`ALERTS_FILE`), hot-reloaded without restart.
     { "name": "api-looping", "kind": "restart_loop", "apps": ["api"], "count": 3, "window": "10m" },
     { "name": "api-mem", "kind": "metric", "apps": ["api"], "metric": "mem_pct", "op": "gt", "value": 85, "for": "5m" },
     { "name": "api-5xx", "kind": "log_pattern", "apps": ["api"], "pattern": "status=5\\d\\d", "hits": 5, "window": "5m" },
-  { "name": "api-crash", "kind": "event", "apps": ["api"], "event": "die" },
-  { "name": "any-oom", "kind": "event", "event": "oom" },
-  { "name": "api-sick", "kind": "event", "event": "health_status", "status": "unhealthy" }
+    { "name": "api-error-spike", "kind": "log_pattern", "apps": ["api"], "pattern": "(?i)(error|fatal|panic)", "hits": 10, "window": "5m" },
+    { "name": "api-crash", "kind": "event", "apps": ["api"], "event": "die" },
+    { "name": "any-oom", "kind": "event", "event": "oom" },
+    { "name": "api-sick", "kind": "event", "event": "health_status", "status": "unhealthy" }
 ]
 }
 ```
@@ -232,7 +265,16 @@ Extras on the rules:
   names starting with `AWS_`, `DOCKER_`, `KUBERNETES_` or `DOZZLE_` are
   refused so a committed rules file cannot leak host secrets.
 
-Channels: webhook, Telegram, Slack, Discord, ntfy. Use the **Send test alert** button in the UI to verify before an incident.
+Channels: webhook, Telegram, Slack, Discord, ntfy. `ALERT_WEBHOOK_URL` receives
+an HTTP POST with a JSON alert payload whenever a rule fires. Configure it
+alongside `ALERTS_FILE`, then use the Admin-only **Send test alert** button to
+verify delivery before an incident. Channel URLs and tokens support
+`${ENV_VAR}` expansion at send time; keep the webhook secret in the deployment
+environment rather than committing it to `alerts.json`.
+
+Alert rule saves, validation, rule testing, and webhook test sends are
+Admin-only. Viewers may see alert history only for applications assigned to
+their account.
 
 ---
 
@@ -254,9 +296,34 @@ Docker Engine  →  CapScope (one Go binary)  →  SQLite (one file)
 
 ---
 
+## SSE load testing
+
+The repository includes `cmd/sse-bench`, a connection soak tool for testing a
+running CapScope instance. It opens clients in batches, keeps them connected,
+counts received SSE events and read errors, and can sample the target process's
+RSS:
+
+```bash
+go run ./cmd/sse-bench \
+  -url 'http://127.0.0.1:8080/api/logs/stream?app=my-app' \
+  -connections 500 \
+  -step 50 \
+  -duration 60s \
+  -pid "$(pidof capscope)"
+```
+
+Use a session cookie or bearer token when the endpoint is protected. A zero
+event count is normal when no new Docker log lines are generated during the
+soak. Read errors reported only after the final result are expected when the
+benchmark closes its clients; errors during the soak indicate a connection
+stability problem.
+
+---
+
 ## Limits to know
 
-- **Single node.** You see containers on the node CapScope runs on. Multi-node agent mode is on the roadmap.
+- **Multi-node requires agent mode.** A hub can ingest tagged logs and metrics
+  from agents; without `AGENT_HUB` you see the Docker node where CapScope runs.
 - **Crash catch-up** works only if the container still exists when CapScope starts (it replays Docker events from the last cursor, up to 24h back).
 - **Log driver:** `json-file`, `local`, and `journald` are supported via the Docker logs API.
 - **Redaction and level detection are heuristics** — don't rely on redaction as your only secret protection.
@@ -295,7 +362,8 @@ Issues and pull requests are welcome. See `docs/` for the PRD, architecture note
 - **v0.13** — Multi-host visibility: host selector chip, per-host views (containers/crashes/metrics/dashboard filtered by `host_id`), `?host=` permalinks, `GET /api/hosts` (done)
 - **v0.14** — Multi-user auth: OIDC SSO (`AUTH_PROVIDER=oidc`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`), users table with `admin`/`viewer` roles, user management API, audit trail on `access` rows (done)
 - **v0.15** — MCP server over SQLite (Phase 6.4): `cmd/capscope mcp` runs an MCP server over stdio with tools `query_logs`, `list_snapshots`, `get_snapshot`, `run_sql`. Session-token authenticated.
-- **v1.0** — Agent mode for multi-node, per-app permissions, OIDC, access-log app attribution + GeoIP
+- **v0.16** — Agent hub ingestion, per-app viewer RBAC, Admin application assignments, scoped live SSE/history/export APIs, webhook alert hardening, and `cmd/sse-bench` (done)
+- **Next** — Access-log app attribution improvements, optional GeoIP enrichment, and additional Dozzle-compatible operational polish
 
 ---
 
