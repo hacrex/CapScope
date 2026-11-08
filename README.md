@@ -18,7 +18,7 @@ No external database. No Prometheus stack. One container, one volume, one passwo
 
 | Area | What you get |
 |------|--------------|
-| **Live logs** | Per-app sidebar, virtual-scrolled live tail over SSE, pause/follow, load older, split view for up to 4 replicas side by side, click any JSON line to pretty-print it |
+| **Live logs** | Per-app sidebar, virtual-scrolled live tail over SSE, pause/follow, load older, split view for up to 4 replicas side by side, click any JSON line to pretty-print it, and a live CPU/memory header chip for the selected container |
 | **Search history** | FTS5 full-text search over persisted logs, regex mode, or raw SQL (`SELECT` over `logs`, `metrics`, `containers`, `snapshots`, `access` via `/api/sql`); filter by level, stream, and replica |
 | **History after redeploy** | Logs and CPU/memory samples persist in SQLite with age and size retention; search an app's logs long after its container is gone |
 | **Crash snapshots** | Exit code, OOM flag, restart count, uptime, last N log lines, last N metric samples, rule-based plain-language summary, Markdown export for incident handoff |

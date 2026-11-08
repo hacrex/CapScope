@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Live resource header and high-volume SSE profiling
+- **Selected-container resource chip**: the header now shows live CPU %, memory
+  %, and memory used versus limit for the clicked container, refreshed with the
+  container list.
+- **Simpler log toolbar**: removed the PNG log-download action and its command
+  palette entry; CSV, JSON, TXT, and incident Markdown exports remain.
+- **Throughput coverage**: added a 500-subscriber hub test that publishes
+  thousands of rows per second and records fan-out delivery count and maximum
+  observed delivery latency.
+
 ### Per-app RBAC, automated webhooks, and SSE capacity testing
 - **Per-app RBAC**: viewer users require explicit assignments in the `user_apps`
   SQLite table. Admins retain access to every app. The Admin panel can edit

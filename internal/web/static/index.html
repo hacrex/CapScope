@@ -278,7 +278,6 @@ h2{font-weight:600;letter-spacing:-.02em}
         <a class="chip hide-sql" id="logCSV" href="/api/logs/export" title="Download matching logs as CSV (whole app, all replicas, up to 200k lines)">Download CSV</a>
         <a class="chip hide-sql" id="logJSON" href="/api/logs/export?fmt=json" title="Download matching logs as one JSON document (same filters and ceiling — BI/jq ready)">Download JSON</a>
         <a class="chip hide-sql" id="logTXT" href="/api/logs/raw" title="Download matching logs as a plain text file (one raw line per row, pipe/grep ready, same 200k ceiling)">Download TXT</a>
-        <a class="chip hide-sql" id="logPNG" href="/api/logs/export?fmt=png" title="Download matching logs as a PNG image (same filters and ceiling)">Download PNG</a>
         <button class="b hide-sql" id="exportSel" style="display:none" title="Export selected lines as CSV">Export (0) lines</button>
         <span class="chip" id="cnt"></span>
         <div class="pop" id="repPop" style="display:none"></div>      </div>
@@ -399,7 +398,6 @@ function paletteActions(){
     safeAct('View','Fold stack-trace lines (multi-line): '+(S.groupLines?'on':'off'),()=>{$('#group').click();}),
     safeAct('View',(S.tz==='utc'?'Show times in browser local':'Show times in UTC'),()=>$('#tzBtn').click()),
     safeAct('Share','Copy expiring share link for this view (7 days)',()=>copyShareLink(7)),
-    safeAct('Export','Export current view as PNG',()=>{location.href=$('#logPNG').href;}),
     safeAct('View','Toggle sidebar: '+(S.sideNarrow?'collapsed':'expanded'),()=>setSidebar(!S.sideNarrow)),
     safeAct('Alerts','New alert rule',()=>{setTab('alerts');setTimeout(()=>document.querySelectorAll('#view-alerts button').forEach(b=>{if(b.textContent==='+ New rule')b.click();}),80);}),
     safeAct('View','Jump to Crashes tab',()=>setTab('crashes')),
@@ -512,7 +510,7 @@ function toast(msg,kind){
 }
 
 /* Keep the Logs-tab CSV download in step with the current filters. */
-function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);$('#logJSON').href='/api/logs/export?fmt=json&'+params({},null);$('#logTXT').href='/api/logs/raw?'+params({},null);$('#logPNG').href='/api/logs/export?fmt=png&'+params({},null);}
+function syncLogCSV(){$('#logCSV').href='/api/logs/export?'+params({},null);$('#logJSON').href='/api/logs/export?fmt=json&'+params({},null);$('#logTXT').href='/api/logs/raw?'+params({},null);}
 function escCsv(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function downloadSelected(){
   const rows=[];document.querySelectorAll('#logs .ln.sel,.plog .ln.sel').forEach(d=>{
@@ -532,6 +530,7 @@ async function refreshApps(){
   try{
     const [a,c]=await Promise.all([api('/api/apps'),api('/api/containers')]);
     S.conts=c.containers;S.apps=a.apps;
+    if(S.selCont)S.selCont=S.conts.find(x=>x.name===S.selCont.name)||null;
     const live={};for(const x of S.conts){(live[x.app]=live[x.app]||[]).push(x);}
     const names=new Set([...a.apps.map(x=>x.app),...Object.keys(live)]);
     const byName=Object.fromEntries(a.apps.map(x=>[x.app,x]));
@@ -628,9 +627,12 @@ function selectContainer(id,c){
 function updateContainerStat(){
   const chip=$('#contStat');
   if(S.selCont){
-    const cpuPct=S.selCont.cpu.toFixed(1);
-    const memPct=S.selCont.mem_limit>0?(S.selCont.mem/S.selCont.mem_limit*100).toFixed(0):0;
-    chip.innerHTML=`${S.selCont.name} · <span style="color:var(--ok)">${cpuPct}%</span> <span style="color:var(--muted)">cpu</span> · <span style="color:#3b82f6">${memPct}%</span> <span style="color:var(--muted)">mem</span>`;
+    const cpuPct=Number(S.selCont.cpu||0).toFixed(1);
+    const memBytes=Number(S.selCont.mem||0),limit=Number(S.selCont.mem_limit||0);
+    const memPct=limit>0?(memBytes/limit*100).toFixed(1):'—';
+    const memText=limit>0?`${mib(memBytes)} / ${mib(limit)}`:mib(memBytes);
+    chip.innerHTML=`${esc(S.selCont.name)} · <span style="color:var(--ok)">${cpuPct}%</span> <span style="color:var(--muted)">CPU</span> · <span style="color:#3b82f6">${memPct}%</span> <span style="color:var(--muted)">MEM (${memText})</span>`;
+    chip.title='Live resource usage for the selected container';
     chip.style.display='';
   }else{
     chip.style.display='none';
