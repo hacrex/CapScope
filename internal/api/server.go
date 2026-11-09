@@ -287,6 +287,12 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	})
 }
 
+// noApps is a non-empty sentinel returned by viewerScope when the user's app
+// scope cannot be resolved (store error). It never matches a real app name,
+// so the store enforces an empty IN() clause (matching nothing) instead of
+// treating an empty slice as unrestricted — scope errors fail closed.
+var noApps = []string{"__capscope_invalid_scope__"}
+
 // viewerScope returns the explicit app scope for local/OIDC viewer sessions.
 // Admins and auth-disabled deployments are unrestricted. Proxy-auth users do
 // not have local user records and therefore remain globally read-only.
@@ -300,7 +306,10 @@ func (s *Server) viewerScope(r *http.Request) ([]string, bool) {
 	}
 	apps, err := s.st.UserApps(uid)
 	if err != nil {
-		return []string{}, true
+		return noApps, true
+	}
+	if len(apps) == 0 {
+		return noApps, true
 	}
 	return apps, true
 }
@@ -380,7 +389,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, auth.ErrInvalidCredentials)
 		return
 	}
-	token := s.sessions.CreateSession(user.ID, user.Name, user.Role)
+	token, err := s.sessions.CreateSession(user.ID, user.Name, user.Role)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
 	// Mirror the token into an HttpOnly cookie: EventSource cannot send an
 	// Authorization header, so /api/logs/stream (live tail) needs the cookie.
 	newSessionCookie(w, r, token, cookieMaxAge)
@@ -451,7 +464,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 }
 
 // oidcLogin starts the OIDC authorization code flow with PKCE.
-// Body (optional JSON): {"redirect_to": "/logs"} where to go after login.
+// Query (optional): ?redirect_to=/logs  where to go after login.
 func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.AuthProvider != "oidc" {
 		fail(w, 400, errors.New("OIDC is not configured (AUTH_PROVIDER=oidc)"))
@@ -461,7 +474,9 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	redirectURI := s.cfg.Listen // the callback must match what the provider expects
+	// The callback must match what the provider expects: a real URL, not the
+	// ":8080"-style listen address.
+	redirectURI := oidcCallbackURL(r)
 	if s.cfg.OIDCClientID == "" || s.cfg.OIDCIssuer == "" {
 		fail(w, 500, errors.New("OIDC is not fully configured"))
 		return
@@ -472,10 +487,7 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, fmt.Errorf("oidc discovery failed: %w", err))
 		return
 	}
-	redirectTo := r.URL.Query().Get("redirect_to")
-	if redirectTo == "" {
-		redirectTo = "/"
-	}
+	redirectTo := oidcRedirectTarget(r.URL.Query().Get("redirect_to"))
 	authURL, state, err := prov.AuthorizationURL(redirectURI, redirectTo)
 	if err != nil {
 		fail(w, 500, fmt.Errorf("oidc: build auth URL failed: %w", err))
@@ -489,9 +501,44 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   600, // 10 minutes
-		Secure:   r.TLS != nil,
+		Secure:   cookieSecure(r),
 	})
 	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+// oidcRedirectTarget validates a post-login redirect target: it must be a
+// same-origin path (start with "/", no scheme, no protocol-relative "//").
+// Anything else falls back to "/", preventing open redirects.
+func oidcRedirectTarget(v string) string {
+	if v == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") || strings.Contains(v, "://") {
+		return "/"
+	}
+	return v
+}
+
+// oidcCallbackURL builds the absolute callback URL this service registers with
+// the OIDC provider, derived from the request's Host and the original scheme.
+func oidcCallbackURL(r *http.Request) string {
+	scheme := "https"
+	if r.TLS == nil {
+		if proto := strings.ToLower(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+			scheme = proto
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + r.Host + "/api/oidc/callback"
+}
+
+// cookieSecure reports whether the response should mark cookies Secure.
+func cookieSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.ToLower(r.Header.Get("X-Forwarded-Proto")) == "https"
 }
 
 // oidcCallback handles the OIDC authorization response.
@@ -525,7 +572,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   cookieSecure(r),
 	})
 
 	prov, err := auth.NewProvider(s.cfg.OIDCIssuer, s.cfg.OIDCClientID, s.cfg.OIDCClientSecret, s.cfg.AuthUser, s.log)
@@ -533,8 +580,8 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, fmt.Errorf("oidc discovery failed: %w", err))
 		return
 	}
-	redirectURI := s.cfg.Listen
-	name, err := prov.Callback(redirectURI, stateParam, code)
+	redirectURI := oidcCallbackURL(r)
+	name, redirectToParam, err := prov.Callback(redirectURI, stateParam, code)
 	if err != nil {
 		fail(w, 400, fmt.Errorf("oidc: callback failed: %w", err))
 		return
@@ -559,14 +606,15 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		u = &store.User{ID: userID, Name: name, Role: role}
 	}
-	token := s.sessions.CreateSession(u.ID, u.Name, u.Role)
-	newSessionCookie(w, r, token, cookieMaxAge)
-	redirectTo := "/"
-	// Read the redirect target from a cookie set by the login page, default "/".
-	if c, err := r.Cookie("oidc_redirect"); err == nil {
-		redirectTo = c.Value
-		http.SetCookie(w, &http.Cookie{Name: "oidc_redirect", Value: "", Path: "/", MaxAge: -1})
+	token, err := s.sessions.CreateSession(u.ID, u.Name, u.Role)
+	if err != nil {
+		fail(w, 500, err)
+		return
 	}
+	newSessionCookie(w, r, token, cookieMaxAge)
+	// The redirect target was captured in the state at login; validate it
+	// before redirecting (no open redirect to an arbitrary URL).
+	redirectTo := oidcRedirectTarget(redirectToParam)
 	http.Redirect(w, r, redirectTo, http.StatusFound)
 }
 
@@ -1039,6 +1087,10 @@ func (s *Server) logsExport(w http.ResponseWriter, r *http.Request) {
 // row. Shared by the CSV and raw-text exports so both reach the same ceiling
 // with the same FTS overlap guard.
 func (s *Server) eachLogRow(ctx context.Context, q store.LogQuery, exportCap int, fn func(store.LogRow) error) error {
+	// Walk oldest→newest so q.AfterID=lastID genuinely advances through the
+	// whole range: without this, page 1 is the newest page (DESC then flipAsc),
+	// lastID becomes the table's maximum id, and page 2 (`id > max`) is empty.
+	q.Asc = true
 	written := 0
 	lastID := int64(0) // highest id already written; rows are always ascending
 	for written < exportCap && ctx.Err() == nil {
@@ -1182,8 +1234,27 @@ func (s *Server) logsExportPNG(w http.ResponseWriter, r *http.Request, q store.L
 		maxTextLen = 1
 	}
 
+	// Clamp to a sane render budget so a single export cannot allocate an
+	// unbounded RGBA buffer (and OOM the whole process) from a long log line
+	// or a huge row count.
+	const (
+		maxLineLen = 200  // chars rendered per line
+		maxLines   = 4000 // lines rendered in one PNG
+		maxPixels  = 4_000_000
+	)
+	if maxTextLen > maxLineLen {
+		maxTextLen = maxLineLen
+	}
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+
 	imgW := marginX*2 + maxTextLen*charW
 	imgH := marginY*2 + len(lines)*(charH+lineGap)
+	if imgW*imgH > maxPixels {
+		http.Error(w, "log range too large for PNG export; use CSV/JSON instead", http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	img := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
@@ -1326,8 +1397,17 @@ func itoa64(v int64) string { return strconv.FormatInt(v, 10) }
 
 // sql runs one read-only ad-hoc statement over the stored tables. Validation
 // and the row cap live in store.QuerySQL; a 5s deadline keeps a heavy scan
-// from pinning the read pool.
+// from pinning the read pool. Admin-only: raw SQL reaches every table
+// (users table included), which is not something a scoped viewer gets.
 func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
+	if _, _, role, ok := s.sessions.Validate(requestToken(r)); !ok || role != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

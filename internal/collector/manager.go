@@ -394,7 +394,11 @@ func (m *Manager) handleLine(ctx context.Context, t *tracker, l docker.LogLine) 
 		m.mu.Unlock()
 		return // already stored before a reconnect
 	}
-	if n > m.lastTS[t.id] {
+	// Only real Docker timestamps advance the cursor: a zero-TS line gets a
+	// wall-clock stamp, and advancing lastTS to it would make every subsequent
+	// (correctly timestamped, older-looking) line look like a duplicate and be
+	// silently dropped.
+	if !l.TS.IsZero() && n > m.lastTS[t.id] {
 		m.lastTS[t.id] = n
 	}
 	m.mu.Unlock()
@@ -851,7 +855,11 @@ func (m *Manager) rebuildTracker(ctx context.Context, id string) *tracker {
 	if m.st != nil {
 		rows, _ = m.st.QueryLogs(ctx, store.LogQuery{Container: id, Limit: m.cfg.SnapshotLogLines})
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && !insp.State.Running {
+		// The container is not running now, so its log file still holds the
+		// lines from before this death. If it IS running, it's a new
+		// incarnation and its log file belongs to it — do not misattribute
+		// those lines to the historical death.
 		rows = m.fetchFinalLogs(ctx, t)
 	}
 	t.logs = rows

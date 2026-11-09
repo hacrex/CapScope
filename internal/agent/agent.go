@@ -267,11 +267,19 @@ func (s *agentSink) flush(ctx context.Context) error {
 }
 
 // toDockerEvent converts an alert-engine ContainerEvent into a docker.Event
-// for transport as an EventBatch.
+// for transport as an EventBatch. The collector already resolved the app and
+// normalized container name — serialize them into the attributes so the hub
+// can re-derive them (docker's own attributes never carry "app").
 func toDockerEvent(e alerts.ContainerEvent) docker.Event {
 	ev := docker.Event{Type: "container", Action: e.Action, TimeNano: e.TS.UnixNano()}
 	ev.Actor.ID = e.ID
 	ev.Actor.Attributes = e.Attr
+	if e.App != "" {
+		ev.Actor.Attributes["app"] = e.App
+	}
+	if e.Container != "" {
+		ev.Actor.Attributes["name"] = strings.TrimPrefix(e.Container, "/")
+	}
 	return ev
 }
 

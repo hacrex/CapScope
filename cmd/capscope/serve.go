@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -55,8 +56,8 @@ func serve(log *slog.Logger) error {
 			log.Warn("authentication is disabled (ALLOW_NO_AUTH=true); anyone who can reach this port can read all container logs")
 		}
 	}
-	if i := strings.LastIndex(cfg.DBPath, "/"); i > 0 {
-		if err := os.MkdirAll(cfg.DBPath[:i], 0o755); err != nil {
+	if dir := filepath.Dir(cfg.DBPath); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
@@ -158,6 +159,12 @@ func serve(log *slog.Logger) error {
 		if err != nil {
 			return fmt.Errorf("listen AGENT_HUB_LISTEN: %w", err)
 		}
+		// Close the listener on shutdown so Run's accept loop exits instead of
+		// blocking forever (and accepting against a closed store).
+		go func() {
+			<-ctx.Done()
+			_ = ln.Close()
+		}()
 		go func() {
 			_ = hs.Run(ctx, ln, string(hubCert), string(hubKey), string(caCert))
 		}()

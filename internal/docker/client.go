@@ -321,7 +321,7 @@ func (c *Client) Events(ctx context.Context, since time.Time, fn func(Event) err
 func emit(stream, line string, maxLine int, fn func(LogLine)) {
 	line = strings.TrimSuffix(line, "\r")
 	ll := LogLine{Stream: stream, Text: line}
-	if i := strings.IndexByte(line, ' '); i > 20 && i < 40 {
+	if i := strings.IndexByte(line, ' '); i >= 20 && i < 40 {
 		if t, err := time.Parse(time.RFC3339Nano, line[:i]); err == nil {
 			ll.TS, ll.Text = t, line[i+1:]
 		}

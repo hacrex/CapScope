@@ -71,23 +71,37 @@ func NewPersistentSessionManager(path string, log *slog.Logger) *SessionManager 
 		log:      log,
 	}
 	m.load()
+	// The HMAC key is created once at construction (from the backing file or
+	// fresh entropy) and never changes afterwards. Publishing it before the
+	// reaper goroutine starts, and never writing it again, makes keyBytes a
+	// plain read and removes the data race on concurrent logins/validations.
+	if m.key == nil {
+		m.mu.Lock()
+		if m.key == nil {
+			m.key = genKey()
+		}
+		m.mu.Unlock()
+	}
 	go m.reap()
 	return m
 }
 
-// keyBytes returns the signing key, creating it lazily. The file-backed path
-// seeds it from the file; the memory-only path draws one per process.
-func (m *SessionManager) keyBytes() []byte {
-	if m.key != nil {
-		return m.key
-	}
+// genKey returns a fresh 32-byte HMAC key. It degrades to the wall clock only
+// when the OS cannot supply entropy; that is a fatal configuration problem but
+// we never panic for it.
+func genKey() []byte {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		m.log.Warn("auth: cannot read entropy for the session key; token keys degrade to the wall clock", "err", err)
-		b = []byte(time.Now().String() + "capscope")
+		return []byte(time.Now().String() + "capscope")
 	}
-	m.key = b
 	return b
+}
+
+// keyBytes returns the signing key. m.key is immutable after construction (set
+// once under m.mu above), so concurrent readers are safe — no lock needed,
+// which matters because mac() is called while callers already hold m.mu.
+func (m *SessionManager) keyBytes() []byte {
+	return m.key
 }
 
 // mac returns the persistent identity of a raw bearer token: HMAC-SHA256.
@@ -120,18 +134,20 @@ func (m *SessionManager) reap() {
 }
 
 // CreateSession issues a new token for userID/name/role and returns it.
-func (m *SessionManager) CreateSession(userID int64, name, role string) string {
+// Fails closed when crypto/rand cannot supply entropy: a predictable bearer
+// token would be an authentication bypass.
+func (m *SessionManager) CreateSession(userID int64, name, role string) (string, error) {
 	b := make([]byte, sessionLength)
 	if _, err := rand.Read(b); err != nil {
-		m.log.Warn("auth: crypto/rand failed, falling back to time-based token", "err", err)
-		b = []byte(time.Now().String() + name)
+		m.log.Error("auth: crypto/rand failed, refusing to create session", "err", err)
+		return "", err
 	}
 	token := hex.EncodeToString(b)
 	m.mu.Lock()
 	m.sessions[m.mac(token)] = &session{userID: userID, name: name, role: role, expires: time.Now().Add(ttl)}
 	m.mu.Unlock()
 	m.save()
-	return token
+	return token, nil
 }
 
 // Validate checks a token and returns (userID, name, role, ok). Returns ok=false

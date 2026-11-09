@@ -88,7 +88,9 @@ func (s *Server) Run(ctx context.Context, ln net.Listener, hubCertPEM, hubKeyPEM
 			if errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
 				return nil
 			}
+			// Back off so a persistent accept error (e.g. EMFILE) doesn't hot-spin.
 			s.log.Warn("hubagent: accept failed", "err", err)
+			time.Sleep(time.Second)
 			continue
 		}
 		go s.handleConn(tls.Server(raw, tlsCfg), raw)

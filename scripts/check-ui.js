@@ -14,6 +14,17 @@ const files = ["internal/web/static/index.html", ...process.argv.slice(2).filter
 let blocks = 0;
 let failed = false;
 
+// Isolated temp dir so concurrent check-ui runs (e.g. parallel CI jobs) don't
+// collide on the same inline-${i}.js path in the shared os.tmpdir().
+const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "check-ui-"));
+let cleaned = false;
+const cleanup = () => {
+  if (!cleaned) {
+    cleaned = true;
+    try { fs.rmSync(workdir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+  }
+};
+
 for (const file of files) {
   const src = fs.readFileSync(file, "utf8");
   const re = /<script>([\s\S]*?)<\/script>/g;
@@ -21,7 +32,7 @@ for (const file of files) {
   for (const m of src.matchAll(re)) {
     i++;
     blocks++;
-    const tmp = path.join(os.tmpdir(), `${path.basename(file)}.inline-${i}.js`);
+    const tmp = path.join(workdir, `${path.basename(file)}.inline-${i}.js`);
     fs.writeFileSync(tmp, m[1], "utf8");
     const r = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
     if (r.status !== 0) {
@@ -31,6 +42,7 @@ for (const file of files) {
     fs.unlinkSync(tmp);
   }
 }
+cleanup();
 
 if (failed) process.exit(1);
 console.log(`ui check ok: ${blocks} inline script block(s) parsed`);

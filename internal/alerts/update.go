@@ -259,7 +259,28 @@ func parseChallenge(h, repo string) (realm, service, scope string) {
 	if scope == "" {
 		scope = "repository:" + repo + ":pull"
 	}
+	// Only trust https realms: a registry could point the challenge at an
+	// internal http URL and pullToken would happily GET it (SSRF). Loopback
+	// realms are allowed for local dev/test registries.
+	if realm != "" && !allowedRealm(realm) {
+		realm = ""
+	}
 	return realm, service, scope
+}
+
+// allowedRealm reports whether a challenge realm is safe to fetch tokens from.
+// https is always allowed; http is allowed only on loopback (local dev/test
+// registries). Remote http realms are rejected to avoid SSRF.
+func allowedRealm(realm string) bool {
+	if strings.HasPrefix(realm, "https://") {
+		return true
+	}
+	u, err := url.Parse(realm)
+	if err != nil {
+		return false
+	}
+	h := u.Hostname()
+	return h == "localhost" || h == "127.0.0.1" || h == "::1" || strings.HasSuffix(h, ".localhost")
 }
 
 // pullToken fetches an anonymous pull token from a challenge realm.
@@ -279,7 +300,9 @@ func (u *Updater) pullToken(ctx context.Context, realm, service, scope string) (
 		AccessToken string `json:"access_token"`
 	}
 	var tr tokenResp
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	// Cap the token response: a malicious registry could stream an enormous
+	// JSON body to exhaust memory (the manifest path above already caps at 4 KiB).
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&tr); err != nil {
 		return "", err
 	}
 	if tr.Token == "" {

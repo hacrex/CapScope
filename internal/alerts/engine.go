@@ -63,6 +63,9 @@ func (e *Engine) reload() {
 	rules, err := Load(e.path)
 	if err != nil {
 		e.log.Error("alerts: rules file rejected, keeping previous rules", "err", err)
+		e.mu.Lock()
+		e.rmt = mt // don't re-attempt until the file's mtime changes
+		e.mu.Unlock()
 		return
 	}
 	e.mu.Lock()
@@ -315,7 +318,11 @@ func (e *Engine) evalMetric(ctx context.Context, r Rule, app string, now time.Ti
 		if !over(v) {
 			return "", false // threshold broke inside the window
 		}
-		worst = v
+		// Track the true extreme (max for "gt", min for "lt") so the alert
+		// message reports the worst offender, not just the last sample.
+		if seen == 1 || (r.Op == "lt" && v < worst) || (r.Op != "lt" && v > worst) {
+			worst = v
+		}
 	}
 	if seen == 0 {
 		return "", false // e.g. mem_pct with no known limits

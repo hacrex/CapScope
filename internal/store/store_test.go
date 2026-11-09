@@ -121,6 +121,36 @@ func TestFTSSearch(t *testing.T) {
 	}
 }
 
+func TestFTSRespectsAsc(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now().Add(-time.Minute)
+	rows := []LogRow{
+		row("web", "alpha db first", "info", now),
+		row("web", "beta db second", "info", now.Add(time.Second)),
+		row("web", "gamma db third", "info", now.Add(2*time.Second)),
+	}
+	if err := s.InsertLogs(rows); err != nil {
+		t.Fatal(err)
+	}
+	// QueryLogs always returns oldest-first (store flips DESC→ASC), so the
+	// FTS fast path and the LIKE fallback must agree — a text search and an
+	// app filter over the same rows must return the same order.
+	fts, err := s.QueryLogs(ctx, LogQuery{Q: "db", Limit: 10})
+	if err != nil || len(fts) != 3 || fts[0].Line != "alpha db first" || fts[2].Line != "gamma db third" {
+		t.Fatalf("fts order: got=%+v err=%v", fts, err)
+	}
+	like, err := s.QueryLogs(ctx, LogQuery{App: "web", Limit: 10})
+	if err != nil || len(like) != 3 || like[0].Line != "alpha db first" || like[2].Line != "gamma db third" {
+		t.Fatalf("like order: got=%+v err=%v", like, err)
+	}
+	// q.Asc is a no-op (QueryLogs is always ascending); it must not change the result.
+	asc, err := s.QueryLogs(ctx, LogQuery{Q: "db", Asc: true, Limit: 10})
+	if err != nil || len(asc) != 3 || asc[0].Line != "alpha db first" || asc[2].Line != "gamma db third" {
+		t.Fatalf("fts asc: got=%+v err=%v", asc, err)
+	}
+}
+
 func TestFTSQuerySanitized(t *testing.T) {
 	cases := map[string]string{
 		"dat":        `"dat"*`,
@@ -291,4 +321,63 @@ func BenchmarkInsertLogs(b *testing.B) {
 		}
 	}
 	b.ReportMetric(float64(b.N*len(batch))/b.Elapsed().Seconds(), "rows/s")
+}
+
+func TestAppSummariesHostFilter(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	// Two containers on two different hosts.
+	mkContainer := func(id, app, host string) {
+		if err := s.UpsertContainer(ContainerRow{
+			ID:        id,
+			Name:      app + ".1",
+			App:       app,
+			Image:     app + ":latest",
+			Replica:   "1",
+			HostID:    host,
+			State:     "running",
+			FirstSeen: now.UnixMilli(),
+			LastSeen:  now.UnixMilli(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkContainer("c1", "web", "hostA")
+	mkContainer("c2", "api", "hostB")
+
+	now = now.Add(time.Minute)
+	insertLog := func(app, host, level string) {
+		if err := s.InsertLogs([]LogRow{
+			{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: app + ".1", App: app, Stream: "o", Level: level, Line: "msg", HostID: host},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertLog("web", "hostA", "error")
+	insertLog("api", "hostB", "error")
+
+	// All hosts: both apps present.
+	all, err := s.AppSummaries(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apps := map[string]bool{}
+	for _, a := range all {
+		apps[a.App] = true
+	}
+	if !apps["web"] || !apps["api"] {
+		t.Fatalf("expected both apps, got %v", all)
+	}
+
+	// Host-filtered: previously produced `WHERE ts >= ? WHERE host_id = ?`
+	// (a syntax error). Must succeed and only return hostB's app.
+	filtered, err := s.AppSummaries(ctx, "hostB")
+	if err != nil {
+		t.Fatalf("host-filtered AppSummaries: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].App != "api" || filtered[0].Errors1h != 1 {
+		t.Fatalf("expected only api with 1 error, got %+v", filtered)
+	}
 }

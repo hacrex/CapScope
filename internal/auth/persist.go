@@ -51,21 +51,21 @@ func (m *SessionManager) load() {
 			m.log.Warn("auth: cannot read session file, starting fresh", "path", m.path, "err", err)
 		}
 		// First boot (or deleted file): create key + empty snapshot right away.
-		m.keyBytes()
+		m.key = genKey()
 		m.save()
 		return
 	}
 	var f persistFile
 	if err := json.Unmarshal(b, &f); err != nil || f.Key == "" {
 		m.log.Warn("auth: session file unreadable, starting fresh", "path", m.path, "err", err)
-		m.keyBytes()
+		m.key = genKey()
 		m.save()
 		return
 	}
 	key, err := hex.DecodeString(f.Key)
 	if err != nil || len(key) < 16 {
 		m.log.Warn("auth: session file has a broken key, regenerating", "path", m.path)
-		m.keyBytes()
+		m.key = genKey()
 		m.save()
 		return
 	}

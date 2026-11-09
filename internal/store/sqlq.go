@@ -26,9 +26,14 @@ type SQLResult struct {
 }
 
 var (
-	sqlStart     = regexp.MustCompile(`(?is)^(select|with)\b`)
+	sqlStart = regexp.MustCompile(`(?is)^(select|with)\b`)
+	// sqlStringLit strips SQLite string literals; sqlDQString strips
+	// double-quoted identifiers the same way ('' / "" are escaped interior
+	// quotes). Real pairings and regex pairings agree because both start a
+	// token at the first unpaired quote.
 	sqlComments  = regexp.MustCompile(`(?s)/\*.*?\*/|--[^\n]*`)
 	sqlStringLit = regexp.MustCompile(`'(?:[^']|'')*'`)
+	sqlDQString  = regexp.MustCompile(`"(?:[^"]|"")*"`)
 	// replace() is a legitimate scalar function; REPLACE INTO / INSERT OR
 	// REPLACE are caught by the start check instead.
 	sqlForbidden = regexp.MustCompile(`(?i)\b(insert|update|delete|create|drop|alter|attach|detach|reindex|vacuum|pragma|analyze|begin|commit|rollback|savepoint|release|load_extension)\b`)
@@ -44,9 +49,18 @@ func validateSQL(query string) (string, error) {
 	if q == "" {
 		return "", fmt.Errorf("%w: empty query", ErrInvalidQuery)
 	}
-	// Strip comments (replaced with a space so tokens cannot fuse) and string
-	// literals (so 'delete me' in a value is not mistaken for a keyword).
-	bare := sqlStringLit.ReplaceAllString(sqlComments.ReplaceAllString(q, " "), " ")
+	// Strip string literals BEFORE comments, mirroring SQLite's own parsing
+	// order. If comments were stripped first, a `--` inside a string literal
+	// (e.g. line='%--') would swallow the remainder of the query — including
+	// stacked statements like "; DELETE FROM users" — so the bare text would
+	// look harmless while SQLite still executes the full query.
+	bare := sqlComments.ReplaceAllString(sqlDQString.ReplaceAllString(
+		sqlStringLit.ReplaceAllString(q, " "), " "), " ")
+	// Any quote that survives both passes is unbalanced/mispaired; treat the
+	// query as invalid rather than guessing what SQLite will pair it with.
+	if strings.ContainsAny(bare, `'"`) {
+		return "", fmt.Errorf("%w: unterminated string literal", ErrInvalidQuery)
+	}
 	// Allow one trailing semicolon on the bare text (covers "SELECT 1; -- note");
 	// any other semicolon means a stacked statement.
 	bare = strings.TrimSpace(strings.TrimSuffix(strings.TrimRight(bare, " \t\r\n"), ";"))

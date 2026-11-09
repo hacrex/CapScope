@@ -28,8 +28,34 @@ func slogDiscard() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// authenticate runs an initialize request with a valid session token so the
+// test server treats the session as authenticated (mirroring a real MCP client).
+func authenticate(t *testing.T, srv *Server) string {
+	t.Helper()
+	token, err := srv.sessions.CreateSession(1, "tester", auth.RoleViewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := map[string]any{
+		"protocolVersion": "2024-11-05",
+		"meta":            map[string]any{"token": token},
+	}
+	p, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := srv.handle(context.Background(), Message{
+		JSONRPC: "2.0", ID: jsonID(`1`), Method: "initialize", Params: p,
+	})
+	if resp.Error != nil {
+		t.Fatalf("initialize failed: %+v", resp.Error)
+	}
+	return token
+}
+
 func TestServerListTools(t *testing.T) {
 	srv, _ := newTestServer(t)
+	authenticate(t, srv)
 
 	msg := Message{
 		JSONRPC: "2.0",
@@ -64,6 +90,7 @@ func TestServerListTools(t *testing.T) {
 
 func TestServerRunSQL(t *testing.T) {
 	srv, st := newTestServer(t)
+	authenticate(t, srv)
 
 	// Insert a test row directly
 	_, err := st.CreateUser("testuser", "hash", "admin")
@@ -85,8 +112,8 @@ func TestServerRunSQL(t *testing.T) {
 		t.Fatalf("unexpected error: %+v", resp.Error)
 	}
 	var result struct {
-		Columns []string          `json:"columns"`
-		Rows    []map[string]any  `json:"rows"`
+		Columns []string         `json:"columns"`
+		Rows    []map[string]any `json:"rows"`
 	}
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
@@ -104,6 +131,7 @@ func TestServerRunSQL(t *testing.T) {
 
 func TestServerRunSQLRejectsWrite(t *testing.T) {
 	srv, _ := newTestServer(t)
+	authenticate(t, srv)
 
 	msg := Message{
 		JSONRPC: "2.0",
@@ -126,6 +154,7 @@ func TestServerRunSQLRejectsWrite(t *testing.T) {
 
 func TestServerRunSQLRejectsInsert(t *testing.T) {
 	srv, _ := newTestServer(t)
+	authenticate(t, srv)
 
 	msg := Message{
 		JSONRPC: "2.0",
@@ -144,6 +173,7 @@ func TestServerRunSQLRejectsInsert(t *testing.T) {
 
 func TestServerGetSnapshot(t *testing.T) {
 	srv, st := newTestServer(t)
+	authenticate(t, srv)
 
 	// Insert a snapshot directly
 	sn := store.Snapshot{
@@ -178,9 +208,9 @@ func TestServerGetSnapshot(t *testing.T) {
 		t.Fatalf("unexpected error: %+v", resp.Error)
 	}
 	var result struct {
-		ID      int64  `json:"id"`
-		App     string `json:"app"`
-		ExitCode int   `json:"exit_code"`
+		ID       int64  `json:"id"`
+		App      string `json:"app"`
+		ExitCode int    `json:"exit_code"`
 	}
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
@@ -209,6 +239,21 @@ func TestServerAuthRequired(t *testing.T) {
 	}
 	if resp.Error.Code != ErrUnauthorized {
 		t.Fatalf("expected ErrUnauthorized, got %+v", resp.Error)
+	}
+}
+
+func TestServerAuthRequiredTools(t *testing.T) {
+	// When auth is on, tools must not be callable without a successful initialize.
+	srv, _ := newTestServer(t)
+	for _, method := range []string{"tools/list", "tools/call"} {
+		msg := Message{
+			JSONRPC: "2.0", ID: jsonID(`1`), Method: method,
+			Params: json.RawMessage(`{"name":"run_sql","arguments":{"sql":"SELECT 1"}}`),
+		}
+		resp := srv.handle(context.Background(), msg)
+		if resp.Error == nil || resp.Error.Code != ErrUnauthorized {
+			t.Fatalf("method %s: expected ErrUnauthorized, got %+v", method, resp.Error)
+		}
 	}
 }
 

@@ -199,6 +199,38 @@ func TestMetricSamples(t *testing.T) {
 	}
 }
 
+// MetricSamples must return the newest `limit` samples (ascending), so the
+// metric freshness check (pts[len-1]) reads the real newest sample even when
+// an app has more than `limit` samples in the window.
+func TestMetricSamplesCappedReturnsNewest(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+	const limit = 200
+	// Insert limit+50 samples spaced 1s apart; the newest is the last inserted.
+	for i := 0; i < limit+50; i++ {
+		if err := s.InsertMetric("c1", "app", MetricPoint{TS: now - int64(limit+50-i)*1000, CPU: float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.MetricSamples(ctx, "app", now-int64(limit+50)*1000, now, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != limit {
+		t.Fatalf("samples = %d, want %d (capped)", len(got), limit)
+	}
+	// Ascending order, and the last element must be the newest sample overall
+	// (the last one inserted, at now-1000 ms).
+	newestTS := now - 1000
+	if got[0].TS != newestTS-int64(limit-1)*1000 || got[len(got)-1].TS != newestTS {
+		t.Fatalf("not ascending/newest: first=%d last=%d newest=%d", got[0].TS, got[len(got)-1].TS, newestTS)
+	}
+	if got[len(got)-1].CPU != float64(limit+50-1) {
+		t.Fatalf("last sample is not the newest inserted: %v", got[len(got)-1])
+	}
+}
+
 func TestSetAlertDelivery(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()

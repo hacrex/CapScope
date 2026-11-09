@@ -53,6 +53,15 @@ func TestQuerySQLSelect(t *testing.T) {
 	if _, err := s.QuerySQL(ctx, "SELECT 'delete me' AS note", 0); err != nil {
 		t.Fatalf("literal with keyword: %v", err)
 	}
+	// A literal containing `--` and stacked-statement-looking text parses fine
+	// because the literal itself is valid SQLite.
+	if _, err := s.QuerySQL(ctx, "SELECT '%--; drop me' AS note", 0); err != nil {
+		t.Fatalf("literal with dashes: %v", err)
+	}
+	// Double-quoted identifiers are stripped like literals.
+	if _, err := s.QuerySQL(ctx, `SELECT "count" FROM logs LIMIT 1`, 0); err != nil {
+		t.Fatalf("double-quoted identifier: %v", err)
+	}
 	// A trailing semicolon is fine.
 	if _, err := s.QuerySQL(ctx, "SELECT 1;", 0); err != nil {
 		t.Fatalf("trailing semicolon: %v", err)
@@ -89,6 +98,14 @@ func TestQuerySQLRejectsWrites(t *testing.T) {
 		"SELECT load_extension('/x')",
 		"VACUUM",
 		"BEGIN",
+		// Bypass: a `--` inside a string literal is a comment to the SQL
+		// parser. Stripping comments before literals once admitted these.
+		"SELECT 1 FROM logs WHERE line='%--' ; PRAGMA query_only=0; DELETE FROM logs; -- x'",
+		"SELECT '%' ; DELETE FROM logs /* tail '-- nothing here",
+		// Unbalanced quote must be rejected, not guessed at.
+		"SELECT * FROM logs WHERE line = 'unterminated",
+		// Stacked write hidden behind a combined literal+comment trick.
+		"SELECT 'x' ; DROP TABLE logs; SELECT '--",
 	}
 	for _, q := range bad {
 		if _, err := s.QuerySQL(ctx, q, 0); err == nil {

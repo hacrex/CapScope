@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"net"
 	"reflect"
+	"sync"
 	"time"
 )
 
@@ -151,13 +152,13 @@ func GenerateCertBundle(host string) (caCert, caKey, agentCert, agentKey, hubCer
 		return nil, nil, nil, nil, nil, nil, err
 	}
 	caTmpl := &x509.Certificate{
-		SerialNumber:            big.NewInt(1),
-		Subject:                 pkix.Name{CommonName: "capscope-agent-ca"},
-		NotBefore:               time.Now().Add(-time.Hour),
-		NotAfter:                time.Now().Add(10 * 365 * 24 * time.Hour),
-		KeyUsage:                x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid:   true,
-		IsCA:                    true,
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "capscope-agent-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caRawKey.PublicKey, caRawKey)
 	if err != nil {
@@ -260,8 +261,11 @@ func pemEncodeKey(key *rsa.PrivateKey) []byte {
 }
 
 // Conn is a length-prefixed gob frame stream over a net.Conn.
+// Send is concurrency-safe (agent-side stats/log loops call it from multiple
+// goroutines); Recv is single-reader (one goroutine per connection).
 type Conn struct {
-	conn net.Conn
+	conn   net.Conn
+	sendMu sync.Mutex
 }
 
 // WrapConn wraps an existing connection (e.g. a TLS conn) in a frame stream.
@@ -282,6 +286,15 @@ func (c *Conn) Send(m any) error {
 	}
 	var hdr [frameHeaderLen]byte
 	binary.BigEndian.PutUint32(hdr[:], uint32(len(data)))
+	return c.sendFrame(hdr[:], data)
+}
+
+// sendFrame writes header+payload as one locked, atomic unit so concurrent
+// Send calls from the agent's log/stats/event loops cannot interleave frames
+// (e.g. header-A, header-B, body-B, body-A).
+func (c *Conn) sendFrame(hdr []byte, data []byte) error {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
 	if _, err := c.conn.Write(hdr[:]); err != nil {
 		return err
 	}
@@ -311,7 +324,13 @@ func (c *Conn) Recv(m any) error {
 	}
 	// decoded holds a concrete value; copy it into the caller's interface.
 	rv := reflect.ValueOf(m).Elem()
-	rv.Set(reflect.ValueOf(decoded))
+	// Guard against a desynchronized stream (decoded message is not of the
+	// type the caller expected) so one bad frame can't crash the whole hub.
+	dv := reflect.ValueOf(decoded)
+	if !dv.Type().AssignableTo(rv.Type()) {
+		return fmt.Errorf("transport: unexpected message type %s, want %s", dv.Type(), rv.Type())
+	}
+	rv.Set(dv)
 	return nil
 }
 

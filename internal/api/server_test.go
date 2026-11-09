@@ -2,8 +2,15 @@ package api
 
 import (
 	"bufio"
+	"capscope/internal/auth"
+	"capscope/internal/collector"
+	"capscope/internal/config"
+	"capscope/internal/docker"
+	"capscope/internal/hub"
+	"capscope/internal/store"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,13 +21,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"capscope/internal/auth"
-	"capscope/internal/collector"
-	"capscope/internal/config"
-	"capscope/internal/docker"
-	"capscope/internal/hub"
-	"capscope/internal/store"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -595,5 +595,47 @@ func TestProxyHeaderAuth(t *testing.T) {
 	wreq.Header.Set("X-WebAuth-User", "bob")
 	if r4, err := http.DefaultClient.Do(wreq); err != nil || r4.StatusCode != 200 {
 		t.Fatalf("custom header set: want 200, got %d (err %v)", r4.StatusCode, err)
+	}
+}
+
+// TestLogsExportPagination verifies the export walks the full range instead of
+// stopping at the newest ~5000 rows (the pre-fix bug: page 1 returned the
+// newest page, so AfterID=lastID found nothing beyond it).
+func TestLogsExportPagination(t *testing.T) {
+	srv, st, _ := setup(t)
+	now := time.Now()
+	const total = 6000 // above the 5000-row page size
+	batch := make([]store.LogRow, 0, total)
+	for i := 0; i < total; i++ {
+		batch = append(batch, store.LogRow{
+			TS:          now.Add(time.Duration(i) * time.Second).UnixNano(),
+			TSMs:        now.Add(time.Duration(i) * time.Second).UnixMilli(),
+			ContainerID: "c1",
+			Container:   "web.1",
+			App:         "web",
+			Stream:      "o",
+			Level:       "info",
+			Line:        fmt.Sprintf("line %d", i),
+		})
+	}
+	if err := st.InsertLogs(batch); err != nil {
+		t.Fatal(err)
+	}
+	resp := get(t, srv.URL+"/api/logs/export?fmt=csv", true)
+	if resp.StatusCode != 200 {
+		t.Fatalf("export: %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	lines := 0
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		lines++
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	// header + total data rows; nothing silently dropped at the page boundary.
+	if lines != total+1 {
+		t.Fatalf("export returned %d lines (header + %d rows), want header + %d rows", lines, lines-1, total)
 	}
 }

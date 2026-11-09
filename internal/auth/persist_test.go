@@ -19,7 +19,7 @@ func TestSessionsSurviveRestart(t *testing.T) {
 	path := filepath.Join(dir, "capscope.db.sessions")
 
 	m1 := NewPersistentSessionManager(path, quietLogger())
-	token := m1.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m1.CreateSession(1, "admin", RoleAdmin)
 	userID, name, role, ok := m1.Validate(token)
 	if !ok || name != "admin" || role != RoleAdmin || userID != 1 {
 		t.Fatalf("fresh token invalid: %d %q %q %v", userID, name, role, ok)
@@ -31,7 +31,7 @@ func TestSessionsSurviveRestart(t *testing.T) {
 		t.Fatalf("session did not survive the restart: %d %q %q %v", userID, name, role, ok)
 	}
 	// A brand-new token from the restored manager works and lands in the file.
-	token2 := m2.CreateSession(2, "viewer", RoleViewer)
+	token2, _ := m2.CreateSession(2, "viewer", RoleViewer)
 	_, _, _, ok = NewPersistentSessionManager(path, quietLogger()).Validate(token2)
 	if !ok {
 		t.Fatal("third manager lost the newest token")
@@ -41,7 +41,7 @@ func TestSessionsSurviveRestart(t *testing.T) {
 func TestSessionsDeletedTokenStopsValidating(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sessions")
 	m := NewPersistentSessionManager(path, quietLogger())
-	token := m.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m.CreateSession(1, "admin", RoleAdmin)
 	m.Delete(token)
 	if _, _, _, ok := m.Validate(token); ok {
 		t.Fatal("deleted token still valid")
@@ -53,9 +53,9 @@ func TestSessionsDeletedTokenStopsValidating(t *testing.T) {
 
 func TestRevokeUserStopsAllSessions(t *testing.T) {
 	m := NewSessionManager(quietLogger())
-	token1 := m.CreateSession(7, "viewer", RoleViewer)
-	token2 := m.CreateSession(7, "viewer", RoleViewer)
-	other := m.CreateSession(8, "other", RoleViewer)
+	token1, _ := m.CreateSession(7, "viewer", RoleViewer)
+	token2, _ := m.CreateSession(7, "viewer", RoleViewer)
+	other, _ := m.CreateSession(8, "other", RoleViewer)
 	m.RevokeUser(7)
 	if _, _, _, ok := m.Validate(token1); ok {
 		t.Fatal("first user session still valid after revocation")
@@ -71,7 +71,7 @@ func TestRevokeUserStopsAllSessions(t *testing.T) {
 func TestExpiredSessionsNotRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sessions")
 	m := NewPersistentSessionManager(path, quietLogger())
-	token := m.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m.CreateSession(1, "admin", RoleAdmin)
 
 	// Age the session past its TTL by editing the backing file directly.
 	b, err := os.ReadFile(path)
@@ -106,7 +106,7 @@ func TestExpiredSessionsNotRestored(t *testing.T) {
 
 func TestMemoryOnlyManagerIsIsolated(t *testing.T) {
 	m := NewSessionManager(quietLogger())
-	token := m.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m.CreateSession(1, "admin", RoleAdmin)
 	if _, _, _, ok := m.Validate(token); !ok {
 		t.Fatal("same-manager token invalid")
 	}
@@ -120,7 +120,7 @@ func TestMemoryOnlyManagerIsIsolated(t *testing.T) {
 func TestSessionFileHasNoRawTokens(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sessions")
 	m := NewPersistentSessionManager(path, quietLogger())
-	token := m.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m.CreateSession(1, "admin", RoleAdmin)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestBrokenSessionFileStartsFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := NewPersistentSessionManager(path, quietLogger())
-	token := m.CreateSession(1, "admin", RoleAdmin)
+	token, _ := m.CreateSession(1, "admin", RoleAdmin)
 	if _, _, _, ok := m.Validate(token); !ok {
 		t.Fatal("fresh session invalid after broken file recovery")
 	}

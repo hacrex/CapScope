@@ -668,7 +668,7 @@ func (s *Store) QueryMetrics(ctx context.Context, app, containerID, hostID strin
 	if untilMs > 0 {
 		cl, args = append(cl, "ts <= ?"), append(args, untilMs)
 	}
-	q := `SELECT b, SUM(cpu), SUM(mem), SUM(lim), SUM(rx), SUM(tx) FROM (
+	q := `SELECT b, AVG(cpu), SUM(mem), SUM(lim), SUM(rx), SUM(tx) FROM (
 	  SELECT (ts/?)*? AS b, container_id, AVG(cpu) AS cpu, MAX(mem) AS mem, MAX(mem_limit) AS lim, MAX(net_rx) AS rx, MAX(net_tx) AS tx
 	  FROM metrics WHERE ` + strings.Join(cl, " AND ") + ` GROUP BY b, container_id) GROUP BY b ORDER BY b`
 	rows, err := s.r.QueryContext(ctx, q, args...)
@@ -757,7 +757,7 @@ func (s *Store) AppSummaries(ctx context.Context, hostID string) ([]AppSummary, 
 	if hostID != "" {
 		lc, la = append(lc, "host_id = ?"), append(la, hostID)
 	}
-	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs WHERE ts >= ?`+whereClause(lc)+` GROUP BY app`, append([]any{since}, la...)...)
+	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs`+whereClause(append([]string{"ts >= ?"}, lc...))+` GROUP BY app`, append([]any{since}, la...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1118,19 +1118,26 @@ func (s *Store) SeedFirstUser(name, passwordHash string) (bool, error) {
 }
 
 // UpdateUserRole changes a user's role. Refuses to demote the last admin.
+// The count and the update run in one transaction (like DeleteUser) to close
+// the TOCTOU where two concurrent demotions both observe n==1 and leave zero
+// admins. SQLite serializes writers on s.w, so this is safe.
 func (s *Store) UpdateUserRole(id int64, role string) error {
 	if role != "admin" && role != "viewer" {
 		return fmt.Errorf("invalid role: %s", role)
 	}
+	tx, err := s.w.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	if role == "viewer" {
 		var n int64
-		if err := s.r.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n); err != nil {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n); err != nil {
 			return err
 		}
 		if n <= 1 {
-			// Check if this user is an admin
 			var currentRole string
-			if err := s.r.QueryRow(`SELECT role FROM users WHERE id=?`, id).Scan(&currentRole); err != nil {
+			if err := tx.QueryRow(`SELECT role FROM users WHERE id=?`, id).Scan(&currentRole); err != nil {
 				return err
 			}
 			if currentRole == "admin" {
@@ -1138,8 +1145,10 @@ func (s *Store) UpdateUserRole(id int64, role string) error {
 			}
 		}
 	}
-	_, err := s.w.Exec(`UPDATE users SET role=? WHERE id=?`, role, id)
-	return err
+	if _, err := tx.Exec(`UPDATE users SET role=? WHERE id=?`, role, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // DeleteUser removes a user. Refuses to delete the last admin.
@@ -1662,7 +1671,7 @@ func (s *Store) MetricSamples(ctx context.Context, app string, sinceMs, untilMs 
 		q += ` AND ts<=?`
 		args = append(args, untilMs)
 	}
-	q += ` ORDER BY ts ASC LIMIT ?`
+	q += ` ORDER BY ts DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.r.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -1677,7 +1686,17 @@ func (s *Store) MetricSamples(ctx context.Context, app string, sinceMs, untilMs 
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// The query returns newest-first; reverse so callers (evalMetric) see
+	// ascending samples and pts[len-1] is genuinely the newest sample, not the
+	// 2000th-oldest one. Without this the freshness check on busy apps reads
+	// a stale sample and can suppress a firing alert.
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, nil
 }
 
 // CountAppDeathsSince counts stored deaths of any container of one app at or

@@ -183,7 +183,12 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Snapshots24h: snaps24,
 	}
 	payload := map[string]any{"stats": stats, "apps": cards}
-	s.dash.store(gen, payload)
+	// Only unrestricted assemblies are safe to cache: a restricted viewer's
+	// filtered payload must never be served to admins or anonymous users on a
+	// cache hit (line 60 only reads the cache when !restricted).
+	if !restricted {
+		s.dash.store(gen, payload)
+	}
 	writeJSON(w, payload)
 }
 

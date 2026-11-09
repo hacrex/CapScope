@@ -103,8 +103,8 @@ type Config struct {
 
 	// OIDC (Phase 3.2): when AuthProvider=oidc, CapScope delegates
 	// authentication to an OpenID Connect provider.
-	OIDCIssuer    string // OIDC issuer URL, used for Discovery
-	OIDCClientID  string // OAuth 2.0 client ID
+	OIDCIssuer       string // OIDC issuer URL, used for Discovery
+	OIDCClientID     string // OAuth 2.0 client ID
 	OIDCClientSecret string // OAuth 2.0 client secret
 }
 
@@ -112,47 +112,47 @@ type Config struct {
 func Load() (Config, error) {
 	var errs []error
 	c := Config{
-		Listen:                env("LISTEN", ":8080"),
-		DBPath:                env("DB_PATH", "/data/capscope.db"),
-		DockerHost:            env("DOCKER_HOST", "unix:///var/run/docker.sock"),
-		AuthUser:              env("AUTH_USER", "admin"),
-		AuthPass:              os.Getenv("AUTH_PASS"),
-		AllowNoAuth:           envBool("ALLOW_NO_AUTH", false),
-		AuthProvider:          env("AUTH_PROVIDER", "local"),
-		ProxyUserHeader:       env("PROXY_USER_HEADER", "Remote-User"),
-		MaxDBMB:               int64(envInt("MAX_DB_MB", 1024)),
-		InitialTail:           envInt("INITIAL_TAIL", 200),
-		MaxLineBytes:          envInt("MAX_LINE_BYTES", 16384),
-		Redact:                envBool("REDACT", true),
-		SnapshotLogLines:      envInt("SNAPSHOT_LOG_LINES", 200),
-		SnapshotMetricSamples: envInt("SNAPSHOT_METRIC_SAMPLES", 60),
-		SnapshotKinds:         map[string]bool{},
-		RestartLoopCount:      envInt("RESTART_LOOP_COUNT", 3),
-		AccessLog:             env("ACCESS_LOG", "auto"),
-		AnonIPS:               envBool("ANON_IPS", true),
-		AlertsFile:            env("ALERTS_FILE", "/data/alerts.json"),
-		AlertWebhookURL:       os.Getenv("ALERT_WEBHOOK_URL"),
-		AlertTelegramTok:      os.Getenv("ALERT_TELEGRAM_TOKEN"),
-		AlertTelegramChat:     os.Getenv("ALERT_TELEGRAM_CHAT_ID"),
-		AlertSlackURL:         os.Getenv("ALERT_SLACK_URL"),
-		AlertDiscordURL:       os.Getenv("ALERT_DISCORD_URL"),
-		AlertNtfyURL:          os.Getenv("ALERT_NTFY_URL"),
-		AlertNtfyToken:        os.Getenv("ALERT_NTFY_TOKEN"),
-		UpdateCheck:           envBool("UPDATE_CHECK", true),
-		AgentHostID:           env("AGENT_HOST_ID", os.Getenv("CAPSCOPE_HOST_ID")),
-		AgentHub:              env("AGENT_HUB", ""),
-		AgentCACert:           env("AGENT_CA_CERT", ""),
-		AgentCert:             env("AGENT_CERT", ""),
-		AgentKey:              env("AGENT_KEY", ""),
-		DockerFilter:          env("DOCKER_FILTER", ""),
-		AgentHubListen:        env("AGENT_HUB_LISTEN", ""),
+		Listen:                     env("LISTEN", ":8080"),
+		DBPath:                     env("DB_PATH", "/data/capscope.db"),
+		DockerHost:                 env("DOCKER_HOST", "unix:///var/run/docker.sock"),
+		AuthUser:                   env("AUTH_USER", "admin"),
+		AuthPass:                   os.Getenv("AUTH_PASS"),
+		AllowNoAuth:                envBool("ALLOW_NO_AUTH", false, &errs),
+		AuthProvider:               env("AUTH_PROVIDER", "local"),
+		ProxyUserHeader:            env("PROXY_USER_HEADER", "Remote-User"),
+		MaxDBMB:                    int64(envInt("MAX_DB_MB", 1024, &errs)),
+		InitialTail:                envInt("INITIAL_TAIL", 200, &errs),
+		MaxLineBytes:               envInt("MAX_LINE_BYTES", 16384, &errs),
+		Redact:                     envBool("REDACT", true, &errs),
+		SnapshotLogLines:           envInt("SNAPSHOT_LOG_LINES", 200, &errs),
+		SnapshotMetricSamples:      envInt("SNAPSHOT_METRIC_SAMPLES", 60, &errs),
+		SnapshotKinds:              map[string]bool{},
+		RestartLoopCount:           envInt("RESTART_LOOP_COUNT", 3, &errs),
+		AccessLog:                  env("ACCESS_LOG", "auto"),
+		AnonIPS:                    envBool("ANON_IPS", true, &errs),
+		AlertsFile:                 env("ALERTS_FILE", "/data/alerts.json"),
+		AlertWebhookURL:            os.Getenv("ALERT_WEBHOOK_URL"),
+		AlertTelegramTok:           os.Getenv("ALERT_TELEGRAM_TOKEN"),
+		AlertTelegramChat:          os.Getenv("ALERT_TELEGRAM_CHAT_ID"),
+		AlertSlackURL:              os.Getenv("ALERT_SLACK_URL"),
+		AlertDiscordURL:            os.Getenv("ALERT_DISCORD_URL"),
+		AlertNtfyURL:               os.Getenv("ALERT_NTFY_URL"),
+		AlertNtfyToken:             os.Getenv("ALERT_NTFY_TOKEN"),
+		UpdateCheck:                envBool("UPDATE_CHECK", true, &errs),
+		AgentHostID:                env("AGENT_HOST_ID", os.Getenv("CAPSCOPE_HOST_ID")),
+		AgentHub:                   env("AGENT_HUB", ""),
+		AgentCACert:                env("AGENT_CA_CERT", ""),
+		AgentCert:                  env("AGENT_CERT", ""),
+		AgentKey:                   env("AGENT_KEY", ""),
+		DockerFilter:               env("DOCKER_FILTER", ""),
+		AgentHubListen:             env("AGENT_HUB_LISTEN", ""),
 		AgentHubPinnedFingerprints: env("AGENT_HUB_PINNED_FINGERPRINTS", ""),
-		AgentHubCert:          env("AGENT_HUB_CERT", ""),
-		AgentHubKey:           env("AGENT_HUB_KEY", ""),
-		AgentHubCACert:        env("AGENT_HUB_CA_CERT", ""),
-		OIDCIssuer:            env("OIDC_ISSUER", ""),
-		OIDCClientID:          env("OIDC_CLIENT_ID", ""),
-		OIDCClientSecret:      env("OIDC_CLIENT_SECRET", ""),
+		AgentHubCert:               env("AGENT_HUB_CERT", ""),
+		AgentHubKey:                env("AGENT_HUB_KEY", ""),
+		AgentHubCACert:             env("AGENT_HUB_CA_CERT", ""),
+		OIDCIssuer:                 env("OIDC_ISSUER", ""),
+		OIDCClientID:               env("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:           env("OIDC_CLIENT_SECRET", ""),
 	}
 
 	dur := func(key, def string) time.Duration {
@@ -281,6 +281,13 @@ func Load() (Config, error) {
 	if (c.AlertTelegramTok == "") != (c.AlertTelegramChat == "") {
 		errs = append(errs, errors.New("ALERT_TELEGRAM_TOKEN and ALERT_TELEGRAM_CHAT_ID must be set together"))
 	}
+	// MAX_DB_MB=0 (or negative) would make EnforceSize delete everything on
+	// every maintenance cycle. Require a positive cap; the caller must treat
+	// Load's error as fatal at startup.
+	if c.MaxDBMB <= 0 {
+		errs = append(errs, errors.New("MAX_DB_MB must be a positive number of megabytes"))
+	}
+
 	return c, errors.Join(errs...)
 }
 
@@ -319,20 +326,22 @@ func env(k, def string) string {
 	return def
 }
 
-func envInt(k string, def int) int {
+func envInt(k string, def int, errs *[]error) int {
 	if v := os.Getenv(k); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
+		*errs = append(*errs, fmt.Errorf("%s: not a valid integer: %q", k, v))
 	}
 	return def
 }
 
-func envBool(k string, def bool) bool {
+func envBool(k string, def bool, errs *[]error) bool {
 	if v := os.Getenv(k); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			return b
 		}
+		*errs = append(*errs, fmt.Errorf("%s: not a valid boolean: %q", k, v))
 	}
 	return def
 }

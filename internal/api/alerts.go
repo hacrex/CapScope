@@ -20,6 +20,22 @@ func readBody(r *http.Request, max int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(r.Body, max))
 }
 
+// alertAdmin gates alert configuration: only admins may change rules or fire
+// test webhooks. Proxy-auth deployments have no local session manager, so they
+// must be rejected outright rather than falling through the (short-circuiting)
+// role check below.
+func (s *Server) alertAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return false
+	}
+	if s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
 // alertsList returns the recorded alert history (A1 to A4 firings).
 func (s *Server) alertsList(w http.ResponseWriter, r *http.Request) {
 	if apps, restricted := s.viewerScope(r); restricted && !appInScope(r.URL.Query().Get("app"), apps) {
@@ -98,8 +114,7 @@ func (s *Server) alertsRules(w http.ResponseWriter, r *http.Request) {
 // alertsTest sends a test message through every configured channel, so a
 // user can verify webhooks before an incident.
 func (s *Server) alertsTest(w http.ResponseWriter, r *http.Request) {
-	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
-		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+	if !s.alertAdmin(w, r) {
 		return
 	}
 	if s.eng == nil {
@@ -127,8 +142,7 @@ func (s *Server) alertsTest(w http.ResponseWriter, r *http.Request) {
 // alertsTestRule evaluates a rule against recent log data without saving it.
 // Used by the alert rule builder to preview whether a rule would fire.
 func (s *Server) alertsTestRule(w http.ResponseWriter, r *http.Request) {
-	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
-		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+	if !s.alertAdmin(w, r) {
 		return
 	}
 	if s.eng == nil {
@@ -317,8 +331,7 @@ func parseRulesBody(body []byte) ([]alerts.Rule, error) {
 // alertsRulesValidate dry-runs a rules document without touching disk; the
 // builder UI calls it to show errors before saving.
 func (s *Server) alertsRulesValidate(w http.ResponseWriter, r *http.Request) {
-	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
-		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+	if !s.alertAdmin(w, r) {
 		return
 	}
 	body, err := readBody(r, 1<<20)
@@ -336,8 +349,7 @@ func (s *Server) alertsRulesValidate(w http.ResponseWriter, r *http.Request) {
 // alertsRulesSave replaces the whole rules file with the posted document.
 // The engine hot-reloads and starts evaluating the new rules immediately.
 func (s *Server) alertsRulesSave(w http.ResponseWriter, r *http.Request) {
-	if s.sessions != nil && s.sessions.Role(requestToken(r)) != auth.RoleAdmin {
-		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+	if !s.alertAdmin(w, r) {
 		return
 	}
 	if s.eng == nil {

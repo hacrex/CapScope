@@ -171,38 +171,39 @@ func (p *Provider) AuthorizationURL(redirectURI, redirectTo string) (string, str
 }
 
 // Callback validates the authorization response, exchanges the code for
-// tokens, fetches UserInfo and returns the authenticated username.
-func (p *Provider) Callback(redirectURI, stateParam, code string) (string, error) {
+// tokens, fetches UserInfo and returns the authenticated username together
+// with the post-login redirect target captured in the state parameter.
+func (p *Provider) Callback(redirectURI, stateParam, code string) (name, redirectTo string, err error) {
 	st, err := decodeState(stateParam)
 	if err != nil {
-		return "", fmt.Errorf("oidc: invalid state: %w", err)
+		return "", "", fmt.Errorf("oidc: invalid state: %w", err)
 	}
 
 	// Exchange the code for tokens.
 	tokens, err := p.exchangeCode(code, redirectURI, st.CodeVerifier)
 	if err != nil {
-		return "", fmt.Errorf("oidc: token exchange failed: %w", err)
+		return "", "", fmt.Errorf("oidc: token exchange failed: %w", err)
 	}
 
 	// Fetch UserInfo.
 	userInfo, err := p.fetchUserInfo(tokens.AccessToken)
 	if err != nil {
-		return "", fmt.Errorf("oidc: userinfo failed: %w", err)
+		return "", "", fmt.Errorf("oidc: userinfo failed: %w", err)
 	}
 
 	// Allowlist check: the sub must match AUTH_USER (if AUTH_USER is set).
 	if p.AllowName != "" && userInfo.Sub != p.AllowName {
-		return "", fmt.Errorf("oidc: user %q is not authorized", userInfo.Sub)
+		return "", "", fmt.Errorf("oidc: user %q is not authorized", userInfo.Sub)
 	}
 
-	name := userInfo.Name
+	name = userInfo.Name
 	if name == "" {
 		name = userInfo.Email
 	}
 	if name == "" {
 		name = userInfo.Sub
 	}
-	return name, nil
+	return name, st.RedirectTo, nil
 }
 
 func decodeState(s string) (*state, error) {
