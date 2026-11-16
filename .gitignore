@@ -14,3 +14,14 @@ Thumbs.db
 *.swo
 .env
 .env.local
+
+# local build artifacts and runtime data
+bin/
+capscope-linux
+data/*.db
+data/*.db-shm
+data/*.db-wal
+test_repro.db
+*.log
+out*.txt
+fix_quote.py
