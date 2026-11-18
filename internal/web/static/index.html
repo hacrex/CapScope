@@ -5,32 +5,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CapScope</title>
 <style>
-/* ---- Geist-inspired tokens: monochrome first, one accent, thin borders ---- */
+/* ---- Dozzle-inspired tokens: neutral near-black, one accent, hairline borders,
+       green for CPU/success, amber for memory ---- */
 :root{
   --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --bg:#08090c;--panel:#101319;--panel2:#151923;--line:rgba(255,255,255,0.09);--line2:rgba(255,255,255,0.16);--text:#f2f4f8;--muted:#8b93a7;
-  --accent:#f89c1c;--err:#f87171;--warn:#fbbf24;--ok:#34d399;--dbg:#8b93a7;--mark:rgba(248,156,28,0.28);
-  --err-bg:rgba(248,113,113,0.16);--warn-bg:rgba(251,191,36,0.14);--ok-bg:rgba(52,211,153,0.16);
+  --bg:#0d0d0d;--panel:#161616;--panel2:#1f1f1f;--line:#262626;--line2:#3a3a3a;--text:#ededed;--muted:#8b8b8b;
+  --accent:#f89c1c;--err:#f87171;--warn:#fbbf24;--ok:#22c55e;--mem:#eab308;--dbg:#8b8b8b;--mark:rgba(248,156,28,0.28);
+  --err-bg:rgba(248,113,113,0.16);--warn-bg:rgba(251,191,36,0.14);--ok-bg:rgba(34,197,94,0.16);
   --sel:rgba(248,156,28,0.35);
   --shadow:0 16px 70px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04);
 }
 @media (prefers-color-scheme:light){:root:not([data-theme]){
-  --bg:#ffffff;--panel:#ffffff;--panel2:#f4f6fa;--line:rgba(12,17,33,0.11);--line2:rgba(12,17,33,0.2);--text:#0b1020;--muted:#6b7488;
-  --accent:#b45309;--err:#dc2626;--warn:#b45309;--ok:#059669;--dbg:#6b7488;--mark:#fde68a;
-  --err-bg:rgba(220,38,38,0.09);--warn-bg:rgba(180,83,9,0.14);--ok-bg:rgba(5,150,105,0.10);
+  --bg:#fafafa;--panel:#ffffff;--panel2:#f4f4f5;--line:#e4e4e7;--line2:#d4d4d8;--text:#18181b;--muted:#71717a;
+  --accent:#b45309;--err:#dc2626;--warn:#b45309;--ok:#16a34a;--mem:#ca8a04;--dbg:#71717a;--mark:#fde68a;
+  --err-bg:rgba(220,38,38,0.09);--warn-bg:rgba(180,83,9,0.14);--ok-bg:rgba(22,163,74,0.10);
   --sel:rgba(0,112,243,0.22);
   --shadow:0 16px 70px rgba(0,0,0,0.12),0 0 0 1px rgba(0,0,0,0.04);}}
 :root[data-theme=light]{
-  --bg:#ffffff;--panel:#ffffff;--panel2:#f4f6fa;--line:rgba(12,17,33,0.11);--line2:rgba(12,17,33,0.2);--text:#0b1020;--muted:#6b7488;
-  --accent:#b45309;--err:#dc2626;--warn:#b45309;--ok:#059669;--dbg:#6b7488;--mark:#fde68a;
-  --err-bg:rgba(220,38,38,0.09);--warn-bg:rgba(180,83,9,0.14);--ok-bg:rgba(5,150,105,0.10);
+  --bg:#fafafa;--panel:#ffffff;--panel2:#f4f4f5;--line:#e4e4e7;--line2:#d4d4d8;--text:#18181b;--muted:#71717a;
+  --accent:#b45309;--err:#dc2626;--warn:#b45309;--ok:#16a34a;--mem:#ca8a04;--dbg:#71717a;--mark:#fde68a;
+  --err-bg:rgba(220,38,38,0.09);--warn-bg:rgba(180,83,9,0.14);--ok-bg:rgba(22,163,74,0.10);
   --sel:rgba(0,112,243,0.22);
   --shadow:0 16px 70px rgba(0,0,0,0.12),0 0 0 1px rgba(0,0,0,0.04);}
 :root[data-theme=dark]{
-  --bg:#08090c;--panel:#101319;--panel2:#151923;--line:rgba(255,255,255,0.09);--line2:rgba(255,255,255,0.16);--text:#f2f4f8;--muted:#8b93a7;
-  --accent:#f89c1c;--err:#f87171;--warn:#fbbf24;--ok:#34d399;--dbg:#8b93a7;--mark:rgba(248,156,28,0.28);
-  --err-bg:rgba(248,113,113,0.16);--warn-bg:rgba(251,191,36,0.14);--ok-bg:rgba(52,211,153,0.16);
+  --bg:#0d0d0d;--panel:#161616;--panel2:#1f1f1f;--line:#262626;--line2:#3a3a3a;--text:#ededed;--muted:#8b8b8b;
+  --accent:#f89c1c;--err:#f87171;--warn:#fbbf24;--ok:#22c55e;--mem:#eab308;--dbg:#8b8b8b;--mark:rgba(248,156,28,0.28);
+  --err-bg:rgba(248,113,113,0.16);--warn-bg:rgba(251,191,36,0.14);--ok-bg:rgba(34,197,94,0.16);
   --sel:rgba(248,156,28,0.35);
   --shadow:0 16px 70px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04);}
 *{box-sizing:border-box}
@@ -42,11 +43,27 @@ body{background:var(--bg);color:var(--text);font:14px/1.5 var(--font-sans);displ
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
 ::-webkit-scrollbar-track{background:transparent}
-header{height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--bg);flex:none}
-header .logo{display:flex;align-items:center;gap:8px;color:var(--text)}
+header{height:48px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--bg);flex:none}
+header .logo{display:flex;align-items:center;gap:8px;color:var(--text);flex:none;width:216px;overflow:hidden;transition:width .15s ease}
+header .logo h1{white-space:nowrap}
+body.side-narrow header .logo{width:auto}
 header .logo svg{display:block}
 header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:-.02em}
 header .sp{flex:1}
+/* Dozzle-style global search: sits where the main content begins, opens the ⌘K palette */
+.searchbox{display:flex;align-items:center;gap:8px;height:32px;min-width:200px;max-width:440px;flex:0 1 420px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0 8px 0 10px;color:var(--muted);cursor:text;transition:border-color .15s}
+.searchbox:hover{border-color:var(--line2)}
+.searchbox svg{flex:none;opacity:.8}
+.searchbox input{flex:1;min-width:0;height:100%;border:0;background:none;color:var(--text);padding:0;font:inherit;font-size:13px;cursor:text}
+.searchbox input:focus{outline:none}
+.searchbox input::placeholder{color:var(--muted)}
+.searchbox .kbd{display:flex;gap:3px;flex:none}
+kbd{font:10px/16px var(--font-mono);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--muted)}
+.iconbtn{width:30px;height:30px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:none;border-radius:8px;color:var(--muted);cursor:pointer;padding:0;transition:background-color .15s,color .15s}
+.iconbtn:hover{background:var(--panel2);color:var(--text)}
+.iconbtn.on{color:var(--accent);background:var(--panel2)}
+.avatar{width:28px;height:28px;flex:none;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--text);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.avatar:hover{border-color:var(--line2)}
 .chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;background:var(--panel);white-space:nowrap}
 .chip.live{color:var(--ok);border-color:transparent;background:var(--ok-bg);animation:connPulse 2s infinite ease-in-out}
 .chip.bad{color:var(--err);border-color:transparent;background:var(--err-bg)}
@@ -100,8 +117,17 @@ aside{width:240px;border-right:1px solid var(--line);background:var(--bg);overfl
 main.narrow aside{width:46px;overflow:hidden}
 main.narrow aside h2{display:none}
 main.narrow aside #apps{display:none}
+main.narrow aside .side-top{flex-direction:column;align-items:flex-start}
+main.narrow aside .side-pill{display:none}
 #sideToggle{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:5px 7px;margin:8px 0 8px 8px;display:block}
 #sideToggle:hover{color:var(--text);border-color:var(--line2)}
+/* sidebar header: collapse + Hosts/Services-style mode pill */
+.side-top{display:flex;align-items:center;gap:8px;padding:8px 8px 2px}
+.side-top #sideToggle{margin:0}
+.side-pill{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:2px}
+.side-pill button{border:0;background:none;color:var(--muted);font:inherit;font-size:11px;font-weight:500;padding:3px 11px;border-radius:999px;cursor:pointer;transition:background-color .15s,color .15s}
+.side-pill button:hover{color:var(--text)}
+.side-pill button.on{background:var(--panel2);color:var(--text)}
 /* v0.7-C: collapsed duplicate-line run */
 .ln.collapse{cursor:pointer;color:var(--muted);font-style:italic;background:var(--panel2);border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
 .ln.collapse:hover{color:var(--text)}
@@ -115,6 +141,33 @@ main.narrow aside #apps{display:none}
 .incident h2{margin:0 0 6px;font-size:16px}
 .incident .ibar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 aside h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:18px 14px 8px}
+/* host rows (multi-host) + Running group header, Dozzle-sidebar style */
+.hostrow{display:flex;align-items:center;gap:8px;margin:4px 8px;padding:7px 10px;cursor:pointer;border-radius:6px;font-size:13px;font-weight:600;color:var(--text)}
+.hostrow:hover{background:var(--panel2)}
+.hostrow.sel{background:var(--panel2)}
+.hostrow .hn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.hostrow .hsub{margin-left:auto;font-size:11px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.grouphead{display:flex;align-items:center;gap:7px;width:calc(100% - 16px);margin:8px 8px 2px;padding:5px 8px;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;border-radius:6px;text-align:left}
+.grouphead:hover{background:var(--panel2);color:var(--text)}
+.grouphead .cnt{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:0 6px;font-size:10px;line-height:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.grouphead .chev{font-size:9px;opacity:.7}
+/* app group header inside the flat container list */
+.apphead{display:flex;align-items:center;gap:7px;margin:2px 8px;padding:5px 8px;cursor:pointer;border-radius:6px;border-left:2px solid transparent;font-size:12px;font-weight:600;color:var(--text);min-width:0}
+.apphead:hover{background:var(--panel2)}
+.apphead.sel{background:var(--panel2);border-left-color:var(--accent)}
+.apphead .hn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.apphead .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted);box-shadow:none}
+.apphead .dot.on{background:var(--ok);box-shadow:0 0 5px color-mix(in srgb,var(--ok) 60%,transparent)}
+.apphead .badges{display:flex;gap:4px;flex:none}
+/* one row per container: status dot + icon + name */
+.crow{display:flex;align-items:center;gap:8px;margin:1px 8px;padding:5px 9px;cursor:pointer;border-radius:6px;border-left:2px solid transparent;font-size:13px;color:var(--text);min-width:0}
+.crow:hover{background:var(--panel2)}
+.crow.sel{background:var(--panel2);border-left-color:var(--accent)}
+.crow .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--ok);box-shadow:0 0 5px color-mix(in srgb,var(--ok) 60%,transparent)}
+.crow .dot.off{background:var(--muted);box-shadow:none}
+.crow .cico{flex:none;font-size:13px;line-height:1;filter:saturate(.9)}
+.crow .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.crow .crep{flex:none;font-size:10px;color:var(--muted);font-family:var(--font-mono)}
 .app{margin:1px 8px;padding:7px 10px;cursor:pointer;border-radius:6px;border-left:2px solid transparent;display:flex;flex-direction:column}
 .app:hover{background:var(--panel2)}
 .app.sel{background:var(--panel2);border-left-color:var(--accent)}
@@ -127,8 +180,8 @@ aside h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:
 .app-meter .track{width:34px;height:4px;background:var(--line2);border-radius:2px;overflow:hidden;margin-top:1px}
 .app-meter .fill{display:block;height:100%;border-radius:2px;background:var(--ok);transition:width .5s ease,background-color .3s ease}
 .app-meter.cpu .fill{background:var(--ok)}
-.app-meter.mem .fill{background:var(--accent)}
-#appFilter{margin:2px 8px 6px;width:calc(100% - 16px);padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px}
+.app-meter.mem .fill{background:var(--mem)}
+#appFilter{margin:6px 8px 4px;width:calc(100% - 16px);padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px}
 #appFilter:focus{outline:none;border-color:var(--accent)}
 #appFilter::placeholder{color:var(--muted)}
 main.narrow aside #appFilter{display:none}
@@ -193,7 +246,82 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
 .card h3{margin:0 0 12px;font-size:12px;color:var(--muted);font-weight:500}
 canvas{width:100%;height:200px;display:block}
-table{border-collapse:collapse;width:100%;font-size:13px}
+.metric canvas{height:30px;margin-top:8px}
+.spark{height:18px!important}
+/* callout (error/status banners used across views) */
+.callout{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--text)}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+.callout.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+/* Dozzle-style collapsible section header: ▾ TITLE + count badge + actions */
+.sec{display:flex;align-items:center;gap:8px;padding:14px 2px 8px;color:var(--muted)}
+.sec .chev{border:0;background:none;color:var(--muted);cursor:pointer;font-size:10px;padding:2px 4px;line-height:1;border-radius:4px}
+.sec .chev:hover{color:var(--text);background:var(--panel2)}
+.sec .t{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text)}
+.sec .cnt{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:0 7px;font-size:11px;line-height:17px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.sec .sp{flex:1}
+.sec .acts{display:flex;gap:4px;align-items:center}
+/* host card: header facts + chips, then CPU/Memory metric panels */
+.hostcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.hostcard .hh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.hostcard .hico{position:relative;flex:none;width:28px;height:28px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.hostcard .hico .sdot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--ok);border:2px solid var(--panel);box-shadow:0 0 5px color-mix(in srgb,var(--ok) 60%,transparent)}
+.hostcard .hname{font-size:16px;font-weight:600;letter-spacing:-.01em;cursor:pointer}
+.hostcard .hname:hover{text-decoration:underline;text-underline-offset:3px}
+.hostcard .hfacts{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hostcard .hchips{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hchip{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 9px;font-size:11px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:7px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hchip b{color:var(--text);font-weight:600}
+.hchip .track{width:44px;height:5px;background:var(--line2);border-radius:999px;overflow:hidden}
+.hchip .fill{display:block;height:100%;background:var(--mem);border-radius:inherit}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+@media (max-width:860px){.mgrid{grid-template-columns:1fr}}
+.metric{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:10px 12px 8px;min-width:0}
+.metric .mh{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.metric .mh .cap{margin-left:auto;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.metric.cpu .mh{color:var(--ok)}
+.metric.mem .mh{color:var(--mem)}
+.metric .mv{font-size:22px;font-weight:600;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums;color:var(--text)}
+.metric .ms{font-size:11px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric .ms b{color:var(--text);font-weight:500}
+/* slim stat strip (restarts / crash loops / db size) */
+.statstrip{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.statstrip .schip{display:inline-flex;align-items:baseline;gap:6px;height:26px;padding:0 10px;background:var(--panel);border:1px solid var(--line);border-radius:7px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.statstrip .schip b{font-size:12px;color:var(--text);font-weight:600}
+/* containers table (Dozzle): rounded wrapper, uppercase sortable header, dense rows */
+.tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.ctable{width:100%;border-collapse:collapse;font-size:13px}
+.ctable thead th{background:var(--panel2);font-size:10.5px;font-weight:600;letter-spacing:.05em;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;user-select:none;cursor:pointer;text-transform:uppercase}
+:root[data-theme=light] .ctable thead th{background:#f7f7f8}
+.ctable thead th:hover{color:var(--text)}
+.ctable thead th.sorted{color:var(--text)}
+.ctable thead th .arw{display:inline-block;font-size:9px;margin-left:4px;opacity:0;transition:opacity .15s,transform .15s;vertical-align:1px}
+.ctable thead th.sorted .arw{opacity:1}
+.ctable thead th.sorted.asc .arw{transform:rotate(180deg)}
+.ctable tbody td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle;white-space:nowrap}
+:root[data-theme=light] .ctable tbody td{border-bottom-color:rgba(0,0,0,.06)}
+.ctable tbody tr:last-child td{border-bottom:0}
+.ctable tbody tr{cursor:pointer;transition:background-color .1s}
+.ctable tbody tr:hover{background:var(--panel2)}
+.ctable .c-name{display:flex;align-items:center;gap:9px;min-width:0;max-width:340px}
+.ctable .c-name .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ok);box-shadow:0 0 5px color-mix(in srgb,var(--ok) 55%,transparent)}
+.ctable .c-name .dot.off{background:var(--muted);box-shadow:none}
+.ctable .c-name .ico{flex:none;font-size:15px;line-height:1}
+.ctable .c-name .txt{min-width:0}
+.ctable .c-name .nm{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.ctable .c-name .sub{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctable .c-name .sub .mono{font-family:var(--font-mono)}
+.ctable td.num{font-variant-numeric:tabular-nums}
+.ctable td.chart{min-width:170px;width:26%}
+.ctable td.chart .inner{display:flex;align-items:center;gap:8px}
+.ctable td.chart canvas{flex:1;height:18px;min-width:60px}
+.ctable td.chart .v{min-width:44px;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--text)}
+.ctable td.created{color:var(--muted);font-size:12.5px}
+.ctable td.net{font-family:var(--font-mono);font-size:11.5px;line-height:1.5;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.ctable td.net .in{color:var(--ok)}
+.ctable td.net .out{color:var(--accent)}
+.ctable td.disk{font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.ctable td.na{color:var(--muted);opacity:.55}
+.table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 tr.row{cursor:pointer}
@@ -255,19 +383,39 @@ h2{font-weight:600;letter-spacing:-.02em}
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="4" fill="currentColor"/><path d="M4.5 5.5L7 8L4.5 10.5" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M8.5 10.5H11.5" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
     <h1>CapScope</h1>
   </span>
-  <span class="chip" id="conn">connecting</span>
+  <div class="searchbox" id="searchbox" title="Search containers, apps and actions (Ctrl+K)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input type="text" id="topSearch" placeholder="Search containers…" autocomplete="off" spellcheck="false" readonly>
+    <span class="kbd"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+  </div>
   <span class="sp"></span>
+  <span class="chip" id="conn">connecting</span>
   <span class="chip" id="crashchip" title="Crash snapshots in the last 24h" style="cursor:pointer;display:none"></span>
-  <span class="chip" id="hostchip" title="Filter by Docker host" style="cursor:pointer;display:none;margin-left:6px">All hosts</span>
+  <span class="chip" id="hostchip" title="Filter by Docker host" style="cursor:pointer;display:none">All hosts</span>
   <span class="chip" id="contStat" title="Selected container" style="display:none"></span>
-  <button class="b" id="paletteBtn" title="Command palette (Ctrl+K)">⌘K</button>
-  <button class="b" id="shareBtn" title="Copy an expiring share link for the current view (valid 7 days)">Share</button>
-  <button class="b" id="tzBtn" title="Display times in browser-local or UTC">Local</button>
-  <button class="b" id="themeBtn" title="Color theme">Auto</button>
-  <button class="b" id="logoutBtn" title="Log out" style="display:none">Log out</button>
+  <button class="iconbtn" id="shareBtn" title="Copy an expiring share link for the current view (valid 7 days)" aria-label="Share view">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3A5 5 0 0 0 13.5 3.5l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3A5 5 0 0 0 10.5 20.5l1.7-1.7"/></svg>
+  </button>
+  <button class="iconbtn" id="tzBtn" title="Display times in browser-local or UTC" aria-label="Time zone">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+  </button>
+  <button class="iconbtn" id="themeBtn" title="Color theme" aria-label="Color theme">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+  <button class="avatar" id="logoutBtn" title="Log out" style="display:none">?</button>
 </header>
 <main id="main">
-  <aside><button id="sideToggle" title="Collapse sidebar">⟨⟨</button><h2>Apps</h2><input type="search" id="appFilter" placeholder="Filter apps" autocomplete="off" spellcheck="false"><div id="apps"></div></aside>
+  <aside>
+    <div class="side-top">
+      <button id="sideToggle" title="Collapse sidebar">⟨⟨</button>
+      <div class="side-pill" id="sideMode" role="tablist" aria-label="Sidebar mode">
+        <button data-m="containers" class="on" role="tab" aria-selected="true" title="Flat list of running containers, grouped by app">Containers</button>
+        <button data-m="apps" role="tab" aria-selected="false" title="One row per app with resource meters and error badges">Apps</button>
+      </div>
+    </div>
+    <input type="search" id="appFilter" placeholder="Filter apps" autocomplete="off" spellcheck="false">
+    <div id="apps"></div>
+  </aside>
   <section class="content">
     <nav class="tabs" id="tabs">
       <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button><button data-t="admin" id="adminTab" style="display:none">Admin</button>
@@ -359,7 +507,7 @@ const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
 function showLogin(){$('#loginOverlay').style.display='flex';}
 function hideLogin(){$('#loginOverlay').style.display='none';}
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sessionExpires:0,user:'anonymous',role:'viewer'};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -367,7 +515,7 @@ const THEME_LABEL={auto:'Auto',dark:'Dark',light:'Light'};
 function applyTheme(t){
   if(t==='auto')document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme',t);
-  $('#themeBtn').textContent=THEME_LABEL[t]||'Auto';
+  $('#themeBtn').title='Theme: '+(THEME_LABEL[t]||'Auto')+' — click to cycle';
 }
 applyTheme(S.theme);
 $('#themeBtn').onclick=()=>{
@@ -377,7 +525,7 @@ $('#themeBtn').onclick=()=>{
 };
 /* Time display: browser-local or UTC (survives reload; panes re-render lazily). */
 function applyTz(){
-  $('#tzBtn').textContent=S.tz==='utc'?'UTC':'Local';
+  $('#tzBtn').title='Times shown in '+(S.tz==='utc'?'UTC':'browser local')+' — click to switch';
   for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.schedule(); // repaint visible rows only
 }
 applyTz();
@@ -472,7 +620,8 @@ $('#paletteInput').onkeydown=e=>{
   else if(e.key==='Enter'){e.preventDefault();runPalette();}
 };
 $('#paletteOverlay').onclick=e=>{if(e.target.id==='paletteOverlay')closePalette();};
-$('#paletteBtn').onclick=openPalette;
+/* the header search box opens the palette (it is readonly: typing happens inside) */
+$('#searchbox').onclick=()=>openPalette();
 addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();paletteOpen?closePalette():openPalette();return;}
   if(!paletteOpen)return;
@@ -561,51 +710,117 @@ async function refreshApps(){
       box.append(empty);$('#conn').textContent='offline';$('#conn').className='chip bad';
       fillReplicas();fillMetricsContainers();updateContainerStat();return;
     }
-    const row=(n,label,cs,cpu,mem,errs,warns,crashes)=>{
-      const el=document.createElement('div');el.className='app'+(n===S.app||(!n&&!S.app)?' sel':'');el.dataset.n=n;
-      const nm=document.createElement('div');nm.className='n';
-      const icon=cs[0]?.image?appIcon(cs[0].image):'📦';
-      const t=document.createElement('span');t.textContent=icon+' '+label;nm.append(t);
-      const b=document.createElement('span');
-      if(crashes){const d=document.createElement('span');d.className='badge e';d.textContent=crashes+' crash'+(crashes>1?'es':'');d.title='crash snapshots in the last 24h';b.append(d,' ');}
-      if(errs){const e=document.createElement('span');e.className='badge e';e.textContent=errs;e.title='errors in the last hour';b.append(e,' ');}
-      if(warns){const w=document.createElement('span');w.className='badge w';w.textContent=warns;w.title='warnings in the last hour';b.append(w);}
-      nm.append(b);
-      const m=document.createElement('div');m.className='m';
-      const totalMem=cs.reduce((t,x)=>t+x.mem_limit,0);
-      const usedMem=cs.reduce((t,x)=>t+x.mem,0);
-      const memPct=totalMem>0?usedMem/totalMem*100:0;
-      m.textContent=cs.length?`${cs.length} running`:'not running';
-      const meters=document.createElement('div');meters.className='meters';
-      const cpuMeter=document.createElement('div');cpuMeter.className='app-meter cpu';
-      const cpuVal=document.createElement('span');cpuVal.className='val';cpuVal.textContent=cpu.toFixed(0)+'%';
-      const cpuTrack=document.createElement('div');cpuTrack.className='track';
-      const cpuFill=document.createElement('div');cpuFill.className='fill';cpuFill.style.width=Math.min(100,Math.max(0,cpu))+'%';
-      cpuTrack.append(cpuFill);cpuMeter.append(cpuVal,cpuTrack);
-      const memMeter=document.createElement('div');memMeter.className='app-meter mem';
-      const memVal=document.createElement('span');memVal.className='val';memVal.textContent=memPct.toFixed(0)+'%';
-      const memTrack=document.createElement('div');memTrack.className='track';
-      const memFill=document.createElement('div');memFill.className='fill';memFill.style.width=Math.min(100,Math.max(0,memPct))+'%';
-      memTrack.append(memFill);memMeter.append(memVal,memTrack);
-      meters.append(cpuMeter,memMeter);
-      m.append(meters);
-      el.append(nm,m);el.onclick=()=>selectApp(n);box.append(el);
-    };
-    // "All apps": one merged timeline over every app (V7)
-    const appList=[...names].map(n=>{const h=byName[n]||{};return{name:n,errs:h.errors_1h||0,warns:h.warns_1h||0,crashes:S.appCrashes.get(n)||0,cs:live[n]||[]};});
+    const appList=[...names].map(n=>{const h=byName[n]||{};return{name:n,errs:h.errors_1h||0,warns:h.warns_1h||0,crashes:S.appCrashes.get(n)||0,cs:(live[n]||[]).slice().sort((x,y)=>String(x.replica||x.name)<String(y.replica||y.name)?-1:1)};});
     appList.sort((x,y)=>(y.crashes-x.crashes)||(y.errs-x.errs)||(x.name<y.name?-1:x.name>y.name?1:0));
-    row('','All apps',S.conts,
-      S.conts.reduce((t,x)=>t+x.cpu,0),S.conts.reduce((t,x)=>t+x.mem,0),
-      a.apps.reduce((t,x)=>t+(x.errors_1h||0),0),a.apps.reduce((t,x)=>t+(x.warns_1h||0),0),S.appCrashes.get('')||0);
-    appList.forEach(({name:n,errs,warns,crashes,cs})=>{
-      row(n,n,cs,cs.reduce((t,x)=>t+x.cpu,0),cs.reduce((t,x)=>t+x.mem,0),errs,warns,crashes);
-    });
+    if(S.sideMode==='containers')renderContainerList(box,appList,a);
+    else renderAppList(box,appList,a);
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
     if(S.app===null&&S.selCont===null&&appList.length&&S.tab!=='dashboard')selectApp(appList[0].name);
+    markSidebar(); // selection may have changed above; keep rows in step
     applyAppFilter(); // re-apply any active sidebar filter after the rebuild
     fillReplicas();fillMetricsContainers();
     updateContainerStat();
   }catch(e){$('#conn').textContent='offline';$('#conn').className='chip bad';console.error('capscope: refreshApps failed',e);}
+}
+/* Sidebar, "Apps" mode: one row per app with resource meters and error badges. */
+function renderAppList(box,appList,a){
+  const row=(n,label,cs,cpu,mem,errs,warns,crashes)=>{
+    const el=document.createElement('div');el.className='app';el.dataset.n=n;
+    const nm=document.createElement('div');nm.className='n';
+    const icon=cs[0]?.image?appIcon(cs[0].image):'📦';
+    const t=document.createElement('span');t.textContent=icon+' '+label;nm.append(t);
+    const b=document.createElement('span');
+    if(crashes){const d=document.createElement('span');d.className='badge e';d.textContent=crashes+' crash'+(crashes>1?'es':'');d.title='crash snapshots in the last 24h';b.append(d,' ');}
+    if(errs){const e=document.createElement('span');e.className='badge e';e.textContent=errs;e.title='errors in the last hour';b.append(e,' ');}
+    if(warns){const w=document.createElement('span');w.className='badge w';w.textContent=warns;w.title='warnings in the last hour';b.append(w);}
+    nm.append(b);
+    const m=document.createElement('div');m.className='m';
+    const totalMem=cs.reduce((t,x)=>t+x.mem_limit,0);
+    const usedMem=cs.reduce((t,x)=>t+x.mem,0);
+    const memPct=totalMem>0?usedMem/totalMem*100:0;
+    m.textContent=cs.length?`${cs.length} running`:'not running';
+    const meters=document.createElement('div');meters.className='meters';
+    const cpuMeter=document.createElement('div');cpuMeter.className='app-meter cpu';
+    const cpuVal=document.createElement('span');cpuVal.className='val';cpuVal.textContent=cpu.toFixed(0)+'%';
+    const cpuTrack=document.createElement('div');cpuTrack.className='track';
+    const cpuFill=document.createElement('div');cpuFill.className='fill';cpuFill.style.width=Math.min(100,Math.max(0,cpu))+'%';
+    cpuTrack.append(cpuFill);cpuMeter.append(cpuVal,cpuTrack);
+    const memMeter=document.createElement('div');memMeter.className='app-meter mem';
+    const memVal=document.createElement('span');memVal.className='val';memVal.textContent=memPct.toFixed(0)+'%';
+    const memTrack=document.createElement('div');memTrack.className='track';
+    const memFill=document.createElement('div');memFill.className='fill';memFill.style.width=Math.min(100,Math.max(0,memPct))+'%';
+    memTrack.append(memFill);memMeter.append(memVal,memTrack);
+    meters.append(cpuMeter,memMeter);
+    m.append(meters);
+    el.append(nm,m);el.onclick=()=>selectApp(n);box.append(el);
+  };
+  // "All apps": one merged timeline over every app (V7)
+  row('','All apps',S.conts,
+    S.conts.reduce((t,x)=>t+x.cpu,0),S.conts.reduce((t,x)=>t+x.mem,0),
+    a.apps.reduce((t,x)=>t+(x.errors_1h||0),0),a.apps.reduce((t,x)=>t+(x.warns_1h||0),0),S.appCrashes.get('')||0);
+  appList.forEach(({name:n,errs,warns,crashes,cs})=>{
+    row(n,n,cs,cs.reduce((t,x)=>t+x.cpu,0),cs.reduce((t,x)=>t+x.mem,0),errs,warns,crashes);
+  });
+}
+/* Sidebar, "Containers" mode (Dozzle-style): host rows when several hosts are
+   registered, then one group per app with a row per running container — status
+   dot, image icon, name. The group header doubles as the app selector, so apps
+   with no live container (history only) stay reachable. */
+function renderContainerList(box,appList,a){
+  if(S.hosts.length>1){
+    const counts={};for(const x of S.conts)counts[x.host_id]=(counts[x.host_id]||0)+1;
+    [['','All hosts',S.conts.length],...S.hosts.map(h=>[h,h,counts[h]||0])].forEach(([id,label,n])=>{
+      const el=document.createElement('div');
+      el.className='hostrow'+(S.host===id?' sel':'');
+      el.dataset.host=id;el.title='Filter by host: '+label;
+      el.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span class="hn"></span><span class="hsub"></span>';
+      el.querySelector('.hn').textContent=label;
+      el.querySelector('.hsub').textContent=n;
+      el.onclick=()=>setHost(id);
+      box.append(el);
+    });
+  }
+  const gh=document.createElement('button');
+  gh.className='grouphead';gh.dataset.n='';
+  gh.innerHTML='<span class="chev">▾</span><span>Running</span><span class="cnt"></span>';
+  gh.querySelector('.cnt').textContent=S.conts.length;
+  gh.title='All apps — one merged timeline';
+  gh.onclick=()=>selectApp('');
+  box.append(gh);
+  for(const {name,errs,warns,crashes,cs} of appList){
+    const grp=document.createElement('div');grp.className='appgroup';grp.dataset.app=name;
+    const head=document.createElement('div');
+    head.className='apphead';head.dataset.n=name;
+    head.title=name+' — open app logs ('+cs.length+' running)';
+    head.innerHTML='<span class="dot"></span><span class="hn"></span><span class="badges"></span>';
+    head.querySelector('.dot').classList.toggle('on',cs.length>0);
+    head.querySelector('.hn').textContent=name;
+    const bl=head.querySelector('.badges');
+    const badge=(cls,txt,title)=>{const b=document.createElement('span');b.className=cls;b.textContent=txt;b.title=title;bl.append(b);};
+    if(crashes)badge('badge e',crashes+' crash'+(crashes>1?'es':''),'crash snapshots in the last 24h');
+    if(errs)badge('badge e',errs,'errors in the last hour');
+    if(warns)badge('badge w',warns,'warnings in the last hour');
+    head.onclick=()=>selectApp(name);
+    grp.append(head);
+    for(const c of cs){
+      const row=document.createElement('div');
+      row.className='crow';row.dataset.id=c.id;row.dataset.n=name;row.dataset.c=c.name;
+      row.title=c.name+(c.image?' — '+c.image:'')+' — open logs';
+      row.innerHTML='<span class="dot"></span><span class="cico"></span><span class="cn"></span>';
+      row.querySelector('.cico').textContent=appIcon(c.image);
+      row.querySelector('.cn').textContent=c.name;
+      row.onclick=()=>{selectContainer(c.id,c);if(S.tab!=='logs')setTab('logs');};
+      grp.append(row);
+    }
+    box.append(grp);
+  }
+}
+/* Reflect S.app / S.selCont onto whatever sidebar mode is rendered. */
+function markSidebar(){
+  const appSel=n=>n===S.app||(!n&&!S.app);
+  document.querySelectorAll('.app,.apphead').forEach(e=>e.classList.toggle('sel',appSel(e.dataset.n)));
+  document.querySelectorAll('.grouphead').forEach(e=>e.classList.toggle('sel',!S.app));
+  document.querySelectorAll('.crow[data-id]').forEach(e=>e.classList.toggle('sel',!!S.selCont&&e.dataset.id===S.selCont.id));
 }
 /* ---------- host selector (Phase 4.5) ---------- */
 // Fetch registered hosts from the hub (agent-ingested) and local host (serve mode).
@@ -625,17 +840,23 @@ async function loadHosts(){
     }
   }catch(e){/* /api/hosts may not exist on older builds; hide the chip */}
 }
+/* Apply a host filter (chip cycle, sidebar host row, permalinks) and refresh
+   every host-sensitive view. One entry point so the chip and sidebar agree. */
+function setHost(h){
+  if(S.host===h)return;
+  S.host=h;
+  $('#hostchip').textContent=h?h:'All hosts';
+  syncURL();
+  refreshApps();
+  if(S.tab==='crashes')loadCrashes();
+  if(S.tab==='dashboard' && !S.app)loadOverview();
+  if(S.tab==='metrics')loadMetrics();
+}
 $('#hostchip').onclick=()=>{
   if(!S.hosts.length)return;
   const cur=S.hosts.indexOf(S.host);
   const nxt=(cur+1)%(S.hosts.length+1); // +1 for the "All hosts" off-state
-  S.host=nxt<S.hosts.length?S.hosts[nxt]:'';
-  $('#hostchip').textContent=S.host?S.host:'All hosts';
-  syncURL();
-  refreshApps();
-  if(S.tab==='crashes')loadCrashes();
-  if(S.tab==='dashboard' && !S.app)loadDashboard();
-  if(S.tab==='metrics')loadMetrics();
+  setHost(nxt<S.hosts.length?S.hosts[nxt]:'');
 };
 function fillMetricsContainers(){
   const sel=$('#mcont'),cur=sel.value;
@@ -645,8 +866,7 @@ function fillMetricsContainers(){
 }
 function selectApp(n){
   S.app=n;S.sel.clear();S.selCont=null;
-  document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===n));
-  document.querySelectorAll('.cont').forEach(e=>e.classList.remove('sel'));
+  markSidebar();
   fillReplicas();fillMetricsContainers();
   syncURL();
   show();
@@ -654,8 +874,7 @@ function selectApp(n){
 }
 function selectContainer(id,c){
   S.app=c.app;S.sel=new Set([c.name]);S.selCont=c;
-  document.querySelectorAll('.app').forEach(e=>e.classList.remove('sel'));
-  document.querySelectorAll('.cont').forEach(e=>e.classList.toggle('sel',e.dataset.id===id));
+  markSidebar();
   fillReplicas();fillMetricsContainers();
   restartLogs();
   updateContainerStat();
@@ -730,11 +949,29 @@ $('#crashchip').onclick=()=>setTab('crashes');
 function setSidebar(narrow){
   S.sideNarrow=narrow;localStorage.setItem('sideNarrow',narrow?'1':'0');
   $('#main').classList.toggle('narrow',narrow);
+  document.body.classList.toggle('side-narrow',narrow);
   $('#sideToggle').textContent=narrow?'⟩⟩':'⟨⟨';
   $('#sideToggle').title=narrow?'Expand sidebar':'Collapse sidebar';
 }
 $('#sideToggle').onclick=()=>setSidebar(!S.sideNarrow);
 setSidebar(localStorage.getItem('sideNarrow')==='1');
+/* Sidebar mode pill: "Containers" (Dozzle-style flat list) vs "Apps" (meters). */
+function syncSideMode(){
+  document.querySelectorAll('#sideMode button').forEach(b=>{
+    const on=b.dataset.m===S.sideMode;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-selected',on?'true':'false');
+  });
+  $('#appFilter').placeholder=S.sideMode==='containers'?'Filter containers':'Filter apps';
+}
+document.querySelectorAll('#sideMode button').forEach(b=>{
+  b.onclick=()=>{
+    if(S.sideMode===b.dataset.m)return;
+    S.sideMode=b.dataset.m;localStorage.setItem('sideMode',S.sideMode);
+    syncSideMode();refreshApps();
+  };
+});
+syncSideMode();
 function syncURL(){
   const p=new URLSearchParams();
   if(S.tab&&S.tab!=='dashboard')p.set('tab',S.tab);
@@ -768,7 +1005,7 @@ async function copyShareLink(days){
 addEventListener('popstate',()=>{const q=new URLSearchParams(location.search);applyURL(q);});
 function applyURL(q){
   const t=q.get('tab');if(t&&TABS.includes(t)){S.tab=t;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));}
-  const a=q.get('app');if(a!==null&&a!==S.app){S.app=a;document.querySelectorAll('.app').forEach(e=>e.classList.toggle('sel',e.dataset.n===a));fillReplicas();fillMetricsContainers();updateContainerStat();}
+  const a=q.get('app');if(a!==null&&a!==S.app){S.app=a;markSidebar();fillReplicas();fillMetricsContainers();updateContainerStat();}
   const h=q.get('host');if(h!==null&&h!==S.host){S.host=h;$('#hostchip').textContent=h||'All hosts';$('#hostchip').style.display='';}
   const r=q.get('range');if(r&&(RANGE_MS[r]||r==='5m')){S.range=r;setRangeChip();}
 }
@@ -784,7 +1021,7 @@ function show(){
   // Dashboard is the all-apps overview: leave it and open the selected app's
   // logs instead of rendering a per-app dashboard.
   if(S.tab==='dashboard'&&S.app)setTab('logs');
-  if(S.tab==='dashboard' && !S.app)loadDashboard();
+  if(S.tab==='dashboard' && !S.app)loadOverview();
   if(S.tab==='metrics')loadMetrics();
   if(S.tab==='access')loadAccess();
   if(S.tab==='crashes')loadCrashes();
@@ -1090,7 +1327,9 @@ function createPane(host,container,split){
 function openStream(pane,first){
   // Require a valid session before opening the live-tail stream.
   // Without one, EventSource gets 401 and retries forever silently.
-  if(!localStorage.getItem('capscope_token')){
+  // (When the server runs with auth disabled there is no token to hold —
+  // don't bounce the user to a login form they can never complete.)
+  if(!localStorage.getItem('capscope_token')&&S.authEnabled){
     if(!pane.gone)showLogin();
     return;
   }
@@ -1115,7 +1354,7 @@ function openStream(pane,first){
   my.onerror=()=>{
     if(pane.gone)return;
     // If we lost our session, stop retrying and show the login overlay.
-    if(!localStorage.getItem('capscope_token')){
+    if(!localStorage.getItem('capscope_token')&&S.authEnabled){
       if(my.readyState!==EventSource.CLOSED)my.close();
       pane.es=null;
       showLogin();
@@ -1185,7 +1424,22 @@ $('#group').classList.toggle('on',S.groupLines);
 $('#group').onclick=()=>{S.groupLines=!S.groupLines;localStorage.setItem('groupLines',S.groupLines?'1':'0');$('#group').classList.toggle('on',S.groupLines);toast('Stack-trace grouping '+(S.groupLines?'on':'off'));for(const p of S.panes)if(p.vl&&p.vl.rows)p.vl.reset(p.vl.rows);};
 function applyAppFilter(){
   const v=$('#appFilter').value.toLowerCase();
-  $('#apps').querySelectorAll('.app').forEach(e=>{e.style.display=e.dataset.n.toLowerCase().includes(v)?'':'none';});
+  const box=$('#apps');
+  // Apps mode: plain per-app rows match on the app name.
+  box.querySelectorAll('.app').forEach(e=>{e.style.display=e.dataset.n.toLowerCase().includes(v)?'':'none';});
+  // Containers mode: match on app name or container name; hide groups left empty.
+  box.querySelectorAll('.appgroup').forEach(g=>{
+    let shown=0;
+    g.querySelectorAll('.crow').forEach(r=>{
+      const hit=!v||r.dataset.n.toLowerCase().includes(v)||String(r.dataset.c||'').toLowerCase().includes(v);
+      r.style.display=hit?'':'none';
+      if(hit)shown++;
+    });
+    g.style.display=(!v||shown||g.dataset.app.toLowerCase().includes(v))?'':'none';
+  });
+  box.querySelectorAll('.hostrow').forEach(e=>{e.style.display=(!v||e.textContent.toLowerCase().includes(v))?'':'none';});
+  // The "Running" summary header is meaningless while a filter is active.
+  box.querySelectorAll('.grouphead').forEach(e=>{e.style.display=v?'none':'';});
 }
 $('#appFilter').addEventListener('input',applyAppFilter);
 $('#appFilter').addEventListener('keydown',e=>{
@@ -1582,7 +1836,9 @@ async function loadCrashes(){
     }else td.textContent=c;tr.append(td);});
     tr.onclick=()=>openCrash(s.id);tb.append(tr);
   });
-  box.append(tb);
+  const sec=secBlock('CRASH SNAPSHOTS',d.snapshots.length);
+  sec.body.append(tb);
+  box.append(sec.wrap);
 }
 async function openCrash(id){
   let s;
@@ -1673,7 +1929,13 @@ function sessionWarning(){
 async function loadAdmin(){
   const box=$('#view-admin');
   if(S.role!=='admin')return;
-  box.innerHTML='<div class="card"><h2>Admin</h2><p style="color:var(--muted)">Manage users, roles, and application scopes. Viewer accounts can access only explicitly assigned applications; admins have access to all. Passwords are never displayed.</p><div id="adminStatus" class="callout" style="display:none"></div><form id="userForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:16px 0"><label style="display:flex;flex-direction:column;gap:4px">Username<input name="name" required autocomplete="off" placeholder="username"></label><label style="display:flex;flex-direction:column;gap:4px">Password<input name="password" required type="password" minlength="8" autocomplete="new-password" placeholder="at least 8 characters"></label><label style="display:flex;flex-direction:column;gap:4px">Role<select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label><button class="b" type="submit">Create user</button></form><table id="usersTable" style="width:100%"></table></div>';
+  box.innerHTML='<div class="card"><p style="color:var(--muted);margin-top:0">Manage users, roles, and application scopes. Viewer accounts can access only explicitly assigned applications; admins have access to all. Passwords are never displayed.</p><div id="adminStatus" class="callout" style="display:none"></div><form id="userForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:16px 0"><label style="display:flex;flex-direction:column;gap:4px">Username<input name="name" required autocomplete="off" placeholder="username"></label><label style="display:flex;flex-direction:column;gap:4px">Password<input name="password" required type="password" minlength="8" autocomplete="new-password" placeholder="at least 8 characters"></label><label style="display:flex;flex-direction:column;gap:4px">Role<select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label><button class="b" type="submit">Create user</button></form><table id="usersTable" style="width:100%"></table></div>';
+  // Dozzle-style section header wraps the settings card (h2 lives in the header)
+  const sec=secBlock('ADMIN',null);
+  const card=box.firstElementChild;
+  const h2=card.querySelector('h2');if(h2)h2.remove();
+  sec.body.append(card);
+  box.append(sec.wrap);
   const status=$('#adminStatus');
   const note=(msg,kind)=>{status.textContent=msg;status.className='callout '+(kind||'');status.style.display='';};
   const render=async()=>{
@@ -1698,10 +1960,281 @@ async function loadAdmin(){
   $('#userForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/users',{method:'POST',body:JSON.stringify({name:f.get('name'),password:f.get('password'),role:f.get('role')})});e.currentTarget.reset();note('User created','ok');await render();}catch(ex){note('Create failed: '+(ex.message||ex),'err');}};
   await render();
 }
-/* ---------- global dashboard (v0.7) ---------- */
+/* ---------- Dozzle-style overview (v0.8) ----------
+   GET /api/overview[?host=] → {host, window_ms, cpu, mem, containers[]}.
+   hist = 10-minute window in ≤60 buckets {t0, step_ms, v[]}; avg/pk and the
+   net/blk rates are 5-minute aggregates; container cpu numbers are
+   docker-stats core-percent (100 = one full core), so avg_cpu/ncpu is the
+   share of the whole host — the figure Dozzle's table shows. */
 let dashTimer=0;
 let dashGen=0;
-async function loadDashboard(){
+let ovData=null;              // last payload: header clicks re-sort from it without refetching
+const ovSort={k:'name',d:1};  // table sort: column key + direction (1 = asc, -1 = desc)
+function fmtBytes(b,dec){
+  if(b==null||!isFinite(b)||b<0)return '—';
+  if(b<1024)return Math.round(b)+' Bytes';
+  const u=['KB','MB','GB','TB','PB'];let i=-1,v=b;
+  do{v/=1024;i++;}while(v>=1024&&i<u.length-1);
+  if(dec==null)dec=v<100?1:2;
+  return v.toFixed(dec)+' '+u[i];
+}
+function fmtRate(v){ // bytes/second → "1.2 MB/s"
+  if(v==null||!isFinite(v)||v<0)return '—';
+  if(v<1)return v.toFixed(2)+' B/s';
+  return fmtBytes(v,1)+'/s';
+}
+function fmtDur(sec){ // 123456 → "1d 10h"
+  if(!isFinite(sec)||sec<0)return '—';
+  sec=Math.round(sec);
+  const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60);
+  if(d)return d+'d'+(h?' '+h+'h':'');
+  if(h)return h+'h'+(m?' '+m+'m':'');
+  if(m)return m+'m';
+  return sec+'s';
+}
+/* Dozzle bar chart: one rounded bar per bucket. Points are bucket-averaged
+   down when more arrive than fit, scaled to peak*1.25 (or a fixed max), and
+   coloured by how close the value is to `scale` (=100%):
+   ≤50 green, ≤70 amber, ≤90 warn, above → red. */
+function drawBars(cv,vals,o){
+  o=o||{};
+  if(!cv||!cv.getContext)return; // canvas detached mid-render
+  const dpr=devicePixelRatio||1,w=Math.max(20,cv.clientWidth||160),h=Math.max(8,cv.clientHeight||18);
+  cv.width=w*dpr;cv.height=h*dpr;
+  const g=cv.getContext('2d');g.scale(dpr,dpr);
+  const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
+  g.clearRect(0,0,w,h);
+  vals=(vals||[]).map(v=>Number(v)).filter(v=>isFinite(v));
+  if(!vals.length){g.fillStyle=col('--muted');g.font='10px system-ui';g.fillText('no samples yet',3,h/2+3);return;}
+  const gap=2,bw=3;
+  const maxBars=Math.max(1,Math.floor((w+gap)/(bw+gap)));
+  if(vals.length>maxBars){ // bucket-average down to the bars that fit
+    const out=[],per=vals.length/maxBars;
+    for(let i=0;i<maxBars;i++){
+      const a=Math.floor(i*per),b=Math.max(a+1,Math.floor((i+1)*per));
+      let s=0,c=0;for(let j=a;j<b&&j<vals.length;j++){s+=vals[j];c++;}
+      out.push(c?s/c:0);
+    }
+    vals=out;
+  }
+  const n=vals.length,pitch=(w+gap)/n;
+  const max=o.max||Math.max.apply(null,vals)*1.25||1;
+  const scale=o.scale||100; // value that reads as 100% for colouring
+  const color=v=>{const p=v/scale*100;return p>90?col('--err'):p>70?col('--warn'):p>50?col('--mem'):col('--ok');};
+  g.lineWidth=Math.max(1,Math.min(bw,pitch-gap));
+  g.lineCap='round';
+  for(let i=0;i<n;i++){
+    const v=vals[i],x=Math.round(i*pitch+pitch/2)+.5;
+    const y=h-1-Math.max(0,Math.min(1,v/max))*(h-2);
+    g.strokeStyle=color(v);
+    g.beginPath();g.moveTo(x,h-1);g.lineTo(x,Math.max(y,1));g.stroke();
+  }
+}
+/* Collapsible ▾ SECTION header (Dozzle): title + count badge, body toggles. */
+function secBlock(title,count){
+  const wrap=document.createElement('div');
+  const head=document.createElement('div');head.className='sec';
+  const chev=document.createElement('button');chev.className='chev';chev.textContent='▾';chev.title='Collapse section';
+  const t=document.createElement('span');t.className='t';t.textContent=title;
+  head.append(chev,t);
+  if(count!=null){const c=document.createElement('span');c.className='cnt';c.textContent=count;head.append(c);}
+  const sp=document.createElement('span');sp.className='sp';head.append(sp);
+  const body=document.createElement('div');
+  chev.onclick=()=>{const hid=body.style.display==='none';body.style.display=hid?'':'none';chev.textContent=hid?'▾':'▸';chev.title=hid?'Collapse section':'Expand section';};
+  wrap.append(head,body);
+  return {wrap,body};
+}
+/* One host metric panel: title, current value, avg/peak line, bar chart. */
+function metricPanel(kind,title,m,fmt,scale){
+  const el=document.createElement('div');el.className='metric '+kind;
+  const mh=document.createElement('div');mh.className='mh';
+  const tt=document.createElement('span');tt.textContent=title;
+  const cap=document.createElement('span');cap.className='cap';
+  const hv=m&&m.hist&&m.hist.v||[];
+  cap.textContent=hv.length&&m.hist.step_ms?Math.round(hv.length*m.hist.step_ms/60000)+' min':'10 min';
+  mh.append(tt,cap);
+  const mv=document.createElement('div');mv.className='mv';
+  mv.textContent=m&&isFinite(Number(m.value))?fmt(Number(m.value)):'—';
+  const ms=document.createElement('div');ms.className='ms';
+  if(m&&isFinite(Number(m.avg))){
+    ms.innerHTML='avg <b></b> · peak <b></b>';
+    const bs=ms.querySelectorAll('b');
+    bs[0].textContent=fmt(Number(m.avg));
+    bs[1].textContent=fmt(Number(m.pk));
+  }else ms.textContent='no samples in this window';
+  const cv=document.createElement('canvas');
+  el.append(mh,mv,ms,cv);
+  requestAnimationFrame(()=>drawBars(cv,hv,{scale}));
+  return el;
+}
+/* HOSTS card: identity + facts + disk chips, then CPU / Memory panels. */
+function hostCard(h){
+  const card=document.createElement('div');card.className='hostcard';
+  const hh=document.createElement('div');hh.className='hh';
+  const ico=document.createElement('div');ico.className='hico';
+  ico.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span class="sdot"></span>';
+  const nm=document.createElement('div');nm.className='hname';
+  nm.textContent=h.name||h.id||'local host';
+  if(h.id){nm.title='Filter everything to '+h.id;nm.onclick=()=>setHost(h.id);}
+  const facts=document.createElement('div');facts.className='hfacts';
+  const f=[h.ncpu?h.ncpu+' CPU':null,h.mem_total?fmtBytes(h.mem_total,1)+' RAM':null,
+    h.docker_version?'Docker '+h.docker_version:null,h.uptime_s?fmtDur(h.uptime_s)+' up':null].filter(Boolean);
+  facts.textContent=f.length?f.join(' · '):'No host metrics for this filter';
+  const chips=document.createElement('div');chips.className='hchips';
+  if(Number(h.disk_total)>0){
+    const c=document.createElement('span');c.className='hchip';
+    const usedPct=Math.max(0,Math.min(100,(1-Number(h.disk_free)/Number(h.disk_total))*100));
+    c.innerHTML='Disk <b class="dv"></b><span class="track"><span class="fill" style="width:'+usedPct.toFixed(0)+'%"></span></span>';
+    c.querySelector('.dv').textContent=fmtBytes(Number(h.disk_free),1)+' free';
+    c.title=fmtBytes(Number(h.disk_free),1)+' free of '+fmtBytes(Number(h.disk_total),1)+' ('+usedPct.toFixed(0)+'% used)';
+    chips.append(c);
+  }
+  if(Number(h.reclaimable)>0){
+    const c=document.createElement('span');c.className='hchip';c.title='Docker data eligible for reclamation (dangling images, stopped containers, build cache)';
+    const b=document.createElement('b');b.textContent=fmtBytes(Number(h.reclaimable),0);
+    c.append(document.createTextNode('Reclaimable '),b);
+    chips.append(c);
+  }
+  hh.append(ico,nm,facts,chips);
+  card.append(hh);
+  const grid=document.createElement('div');grid.className='mgrid';
+  const cpu=h.cpu||{},mem=h.mem||{};
+  grid.append(
+    metricPanel('cpu','CPU',cpu,v=>v.toFixed(1)+'%',100),
+    metricPanel('mem','Memory',mem,v=>fmtBytes(v,1),Number(h.mem_total)||0),
+  );
+  card.append(grid);
+  return card;
+}
+/* Slim chips under the host card (from /api/dashboard stats). */
+function statStrip(st){
+  const s=document.createElement('div');s.className='statstrip';
+  const chip=(val,label,title)=>{const c=document.createElement('span');c.className='schip';c.title=title||'';
+    const b=document.createElement('b');b.textContent=val;
+    c.append(b,document.createTextNode(' '+label));return c;};
+  s.append(
+    chip(String(st.containers??'—'),'running','Live containers reported by Docker'),
+    chip(String(st.restarts_24h??0),'restarts / 24h','Crash snapshots recorded in the last 24 hours'),
+    chip(String(st.crash_loops??0),'crash loops','Apps with ≥3 deaths inside a restart-loop window'),
+    chip(mib(st.db_bytes||0),'db size','SQLite storage in use'),
+  );
+  return s;
+}
+const OV_COLS=[
+  {k:'name',t:'Name'},{k:'cpu',t:'CPU'},{k:'mem',t:'Memory'},
+  {k:'net',t:'Network'},{k:'disk',t:'Disk'},{k:'started',t:'Created'},
+];
+function ovVal(c,k){
+  switch(k){
+    case 'cpu':return Number(c.avg_cpu||0);
+    case 'mem':return Number(c.mem||0);
+    case 'net':return Number(c.net_rx_rate||0)+Number(c.net_tx_rate||0);
+    case 'disk':return Number(c.size_rw)>0?Number(c.size_rw):Number(c.blk_r_rate||0)+Number(c.blk_w_rate||0);
+    case 'started':return Number(c.started||0);
+    default:return String(c.name||'').toLowerCase();
+  }
+}
+function ovRow(c,multi){
+  const tr=document.createElement('tr');
+  tr.title='Open logs for '+c.name;
+  // Name: status dot + image icon + name, app/image as the sub-line
+  const name=document.createElement('td');
+  const cw=document.createElement('div');cw.className='c-name';
+  const dot=document.createElement('span');dot.className='dot';
+  const ico=document.createElement('span');ico.className='ico';ico.textContent=appIcon(c.image);
+  const txt=document.createElement('div');txt.className='txt';
+  const nm=document.createElement('div');nm.className='nm';nm.textContent=c.name;
+  const sub=document.createElement('div');sub.className='sub';
+  sub.textContent=(c.app||'')+(multi&&c.host_id?' · '+c.host_id:'');
+  if(c.image){const im=document.createElement('span');im.className='mono';im.textContent=' · '+c.image;sub.append(im);}
+  txt.append(nm,sub);cw.append(dot,ico,txt);name.append(cw);tr.append(name);
+  // CPU: host-share % +10-minute bar chart (ncpu comes from the host block —
+  // container rows don't carry it)
+  const ncpu=Number(c.ncpu)||Number(ovData&&ovData.host&&ovData.host.ncpu)||1;
+  const cpu=document.createElement('td');cpu.className='chart';
+  const inner=document.createElement('div');inner.className='inner';
+  const cv=document.createElement('canvas');
+  cv._hist=(c.cpu_hist&&c.cpu_hist.v)||[];
+  cv._scale=ncpu*100;
+  const v=document.createElement('span');v.className='v';
+  const share=Number(c.avg_cpu||0)/ncpu;
+  v.textContent=isFinite(share)?share.toFixed(share>=10?1:2)+'%':'—';
+  inner.append(cv,v);cpu.append(inner);
+  const hv=cv._hist,pk=hv.length?Math.max.apply(null,hv)/ncpu:Number(c.cpu||0)/ncpu;
+  cpu.title='avg '+share.toFixed(2)+'% of host · now '+(Number(c.cpu||0)/ncpu).toFixed(2)+'% · peak '+pk.toFixed(2)+'% (10 min)';
+  tr.append(cpu);
+  // Memory: current usage (+ % of limit), avg/limit in the tooltip
+  const mem=document.createElement('td');mem.className='num';
+  mem.textContent=fmtBytes(Number(c.mem||0),1);
+  if(Number(c.mem_limit)>0){
+    const pc=Number(c.mem||0)/Number(c.mem_limit)*100;
+    const sp=document.createElement('span');sp.style.color='var(--muted)';sp.style.fontSize='11px';
+    sp.textContent=' ('+pc.toFixed(0)+'%)';mem.append(sp);
+  }
+  mem.title='now '+fmtBytes(Number(c.mem||0),1)+' · avg '+fmtBytes(Number(c.avg_mem||0),1)+' · limit '+(Number(c.mem_limit)>0?fmtBytes(Number(c.mem_limit),1):'unlimited');
+  tr.append(mem);
+  // Network: receive / transmit rates over the last 5 minutes
+  const net=document.createElement('td');net.className='net';
+  const ri=document.createElement('div');ri.className='in';ri.title='receive rate (5 min)';ri.textContent='↓ '+fmtRate(Number(c.net_rx_rate));
+  const to=document.createElement('div');to.className='out';to.title='transmit rate (5 min)';to.textContent='↑ '+fmtRate(Number(c.net_tx_rate));
+  net.append(ri,to);tr.append(net);
+  // Disk: total read+write since start, with block rates underneath
+  const disk=document.createElement('td');disk.className='disk';
+  const dm=document.createElement('div');
+  if(c.size_rw==null||Number(c.size_rw)<0){dm.textContent='—';dm.style.opacity='.55';}
+  else dm.textContent=fmtBytes(Number(c.size_rw),1);
+  const ds=document.createElement('div');ds.style.fontSize='10.5px';ds.style.opacity='.75';
+  ds.textContent='R '+fmtRate(Number(c.blk_r_rate))+' · W '+fmtRate(Number(c.blk_w_rate));
+  disk.append(dm,ds);
+  disk.title=(c.size_rw==null||Number(c.size_rw)<0)?'Read/write total not measured yet':'total read+write since start';
+  tr.append(disk);
+  // Created
+  const cr=document.createElement('td');cr.className='created';
+  cr.textContent=c.started?ago(Number(c.started)):'—';
+  if(c.started)cr.title=fmtDT(Number(c.started));
+  tr.append(cr);
+  tr.onclick=()=>{selectContainer(c.id,c);if(S.tab!=='logs')setTab('logs');};
+  return tr;
+}
+function renderCtable(){
+  const wrap=document.createElement('div');wrap.className='tablewrap';
+  const tb=document.createElement('table');tb.className='ctable';
+  const thead=document.createElement('thead'),hr=document.createElement('tr');
+  OV_COLS.forEach(c=>{
+    const th=document.createElement('th');
+    th.append(document.createTextNode(c.t));
+    if(ovSort.k===c.k){th.classList.add('sorted');if(ovSort.d<0)th.classList.add('asc');}
+    const arw=document.createElement('span');arw.className='arw';arw.textContent='▲';th.append(arw);
+    th.title='Sort by '+c.t;
+    th.onclick=()=>{if(ovSort.k===c.k)ovSort.d=-ovSort.d;else{ovSort.k=c.k;ovSort.d=c.k==='name'?1:-1;}paint();};
+    hr.append(th);
+  });
+  thead.append(hr);tb.append(thead);
+  const body=document.createElement('tbody');tb.append(body);
+  wrap.append(tb);
+  function paint(){
+    body.replaceChildren();
+    const old=wrap.querySelector('.empty');if(old)old.remove();
+    const rows=((ovData&&ovData.containers)||[]).slice();
+    rows.sort((a,b)=>{
+      const x=ovVal(a,ovSort.k),y=ovVal(b,ovSort.k);
+      const r=typeof x==='string'?x.localeCompare(y):x-y;
+      return (r||String(a.name||'').localeCompare(String(b.name||'')))*ovSort.d;
+    });
+    if(!rows.length){
+      const e=document.createElement('div');e.className='empty';
+      e.textContent='No containers are running'+(S.host?' on '+S.host:'')+'.';
+      wrap.append(e);return;
+    }
+    const multi=S.hosts.length>1;
+    rows.forEach(c=>body.append(ovRow(c,multi)));
+    // sparklines need layout (clientWidth) — draw once the rows are in the DOM
+    requestAnimationFrame(()=>{body.querySelectorAll('canvas').forEach(cv=>drawBars(cv,cv._hist||[],{scale:cv._scale||100}));});
+  }
+  paint();
+  return wrap;
+}
+async function loadOverview(){
   clearTimeout(dashTimer);
   const box=$('#view-dashboard');
   const host=S.host;
@@ -1712,70 +2245,50 @@ async function loadDashboard(){
   // so re-renders never flash "Loading…".
   const hasContent=box.childElementCount>0&&!box.firstElementChild?.classList.contains('sk-row');
   if(!hasContent)box.innerHTML='<div class="sk-row"><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div></div><div class="sk-grid"><div class="sk sk-tile"></div><div class="sk sk-tile"></div><div class="sk sk-tile"></div></div>';
-  let d;
-  try{d=await api('/api/dashboard'+(host?'?host='+encodeURIComponent(host):''));}
-  catch(e){if(!hasContent){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);}return;}
-  // A newer loadDashboard has started (host switch / tab re-entry): discard this stale result.
-  if(gen!==dashGen||S.tab!=='dashboard'||S.app||S.host!==host)return;
-  box.innerHTML='';
-  if(!d||typeof d!=='object'){box.innerHTML='<div class="callout warn">Dashboard returned unexpected data.</div>';return;}
-  const st=d.stats||{},apps=d.apps||[];
-  // stat row
-  const row=document.createElement('div');row.className='grid';row.style.gridTemplateColumns='repeat(auto-fit,minmax(160px,1fr))';row.style.marginBottom='16px';
-  const gb=(v,lbl,title)=>{const c=document.createElement('div');c.className='card';c.title=title||'';
-    const b=document.createElement('div');b.style.fontSize='26px';b.style.fontWeight='700';b.textContent=v;
-    const l=document.createElement('div');l.className='chip';l.style.marginTop='6px';l.textContent=lbl;
-    c.append(b,l);return c;};
-  row.append(
-    gb(st.containers+' running','containers','Live containers reported by Docker'),
-    gb(String(st.restarts_24h||0),'restarts / 24h','Crash snapshots recorded in the last 24 hours'),
-    gb(String(st.crash_loops||0),'crash loops','Apps with ≥3 deaths inside a restart-loop window'),
-    gb(mib(st.db_bytes||0),'db size','SQLite storage in use'),
-  );
-  box.append(row);
-  // per-app health cards
-  const grid=document.createElement('div');grid.className='grid';
-  for(const a of apps){
-    const c=document.createElement('div');c.className='card';
-    const h=document.createElement('h3');
-    h.textContent=a.app;
-    if(a.crash_loop){const badge=document.createElement('span');badge.className='k loop';badge.textContent='↻ crash loop';badge.style.marginLeft='8px';h.append(badge);}
-    const hdr=document.createElement('div');hdr.style.display='flex';hdr.style.justifyContent='space-between';hdr.style.alignItems='center';
-    const open=document.createElement('button');open.className='b';open.style.fontSize='11px';open.textContent='Open logs →';
-    open.onclick=()=>{selectApp(a.app);setTab('logs');};
-    hdr.append(h,open);
-    const meta=document.createElement('div');meta.className='chip';meta.style.margin='4px 0 8px';
-    meta.textContent=`${a.running}/${a.containers} running · ${a.errors_1h} err/h · ${a.warns_1h} warn/h · ${a.restarts_24h} restarts/24h`;
-    const cv=document.createElement('canvas');cv.style.height='90px';c.append(hdr,meta,cv);
-    drawSpark(cv,a.spark||[]);
-    if(a.last_crash){
-      const lc=document.createElement('div');lc.style.fontSize='12px';lc.style.color='var(--muted)';lc.style.marginTop='6px';lc.style.cursor='pointer';
-      lc.textContent='Last crash: '+ago(a.last_crash)+' — view incident';
-      lc.onclick=()=>{S.crashOnlyApp=true;setTab('crashes');};
-      c.append(lc);
-    }
-    grid.append(c);
+  const q=host?'?host='+encodeURIComponent(host):'';
+  let d=null,st=null;
+  try{
+    const rs=await Promise.allSettled([api('/api/overview'+q),api('/api/dashboard'+q)]);
+    if(rs[0].status==='fulfilled')d=rs[0].value;else throw rs[0].reason;
+    if(rs[1].status==='fulfilled')st=rs[1].value&&rs[1].value.stats;
+  }catch(e){
+    if(gen!==dashGen)return;
+    if(!hasContent){box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Dashboard failed to load: '+(e.message||e);box.append(err);}
+    return;
   }
-  if(!apps.length){const e=document.createElement('div');e.className='empty';e.textContent='No apps yet. CapScope needs at least one container it can see.';grid.append(e);}
-  box.append(grid);
-  // recent crashes strip (fetch snapshots directly — loadCrashes() renders the
-  // crashes view and returns undefined, so it can't supply data here)
-  const snaps=((await api('/api/snapshots?limit=100'+(S.host?'&host='+encodeURIComponent(S.host):'')).catch(()=>({}))).snapshots||[]).filter(s=>s.ts&&Date.now()-s.ts<864e5);
+  // A newer loadOverview has started (host switch / tab re-entry): discard this stale result.
+  if(gen!==dashGen||S.tab!=='dashboard'||S.app||S.host!==host)return;
+  if(!d||typeof d!=='object'){box.innerHTML='<div class="callout warn">Overview returned unexpected data.</div>';return;}
+  ovData=d;
+  box.innerHTML='';
+  // HOSTS — one card for the host this view is scoped to
+  const hs=secBlock('HOSTS',1);
+  hs.body.append(hostCard(d.host||{}));
+  if(st)hs.body.append(statStrip(st));
+  box.append(hs.wrap);
+  // CONTAINERS — sortable Dozzle-style table
+  const list=d.containers||[];
+  const cs=secBlock('CONTAINERS',list.length);
+  cs.body.append(renderCtable());
+  box.append(cs.wrap);
+  // Recent crashes (24h) — fetch snapshots directly: loadCrashes() renders the
+  // crashes view and returns undefined, so it can't supply data here
+  const snaps=((await api('/api/snapshots?limit=100'+(host?'&host='+encodeURIComponent(host):'')).catch(()=>({}))).snapshots||[]).filter(sn=>sn.ts&&Date.now()-sn.ts<864e5);
   if(snaps.length){
-    const strip=document.createElement('div');strip.className='card';strip.style.marginTop='16px';
-    const t=document.createElement('h3');t.textContent='Recent crashes (24h) — click to deep-link';strip.append(t);
-    const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.marginTop='8px';
-    snaps.slice().reverse().slice(0,15).forEach(s=>{
-      const chip=document.createElement('span');chip.className='k '+s.kind;chip.style.cursor='pointer';
-      chip.textContent=`${s.app} · ${s.kind.replace('_',' ')} · exit ${s.exit_code}${s.restarts_window>=2?' ↻'+s.restarts_window:''}`;
-      chip.title=fmtDT(s.ts)+' — open incident permalink';
-      chip.onclick=()=>{location.hash='crash='+s.id;setTab('crashes');};
+    const rs2=secBlock('RECENT CRASHES (24H)',snaps.length);
+    const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+    snaps.slice().reverse().slice(0,15).forEach(sn=>{
+      const chip=document.createElement('span');chip.className='k '+sn.kind;chip.style.cursor='pointer';
+      chip.textContent=`${sn.app} · ${sn.kind.replace('_',' ')} · exit ${sn.exit_code}${sn.restarts_window>=2?' ↻'+sn.restarts_window:''}`;
+      chip.title=fmtDT(sn.ts)+' — open incident permalink';
+      chip.onclick=()=>{location.hash='crash='+sn.id;setTab('crashes');};
       line.append(chip);
     });
-    strip.append(line);box.append(strip);
+    rs2.body.append(line);
+    box.append(rs2.wrap);
   }
   // auto-refresh while visible
-  dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadDashboard();},15000);
+  dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }
 function drawSpark(canvas,pts){
   if(!canvas||!canvas.getContext)return; // guard: canvas detached mid-render
@@ -1821,13 +2334,13 @@ async function loadAlerts(){
   };
   bar.append(t);box.append(bar);
 
+  const rsec=secBlock('RULES',meta.rules.length);
   const rc=document.createElement('div');rc.className='card';
-  const h3=document.createElement('h3');h3.textContent='Rules';
-  const addBtn=document.createElement('button');addBtn.className='b';addBtn.style.cssText='float:right;font-size:11px;padding:2px 8px';addBtn.textContent='+ New rule';
+  const addBtn=document.createElement('button');addBtn.className='b';addBtn.style.cssText='font-size:11px;padding:2px 8px';addBtn.textContent='+ New rule';
   addBtn.disabled=!meta.enabled&&!meta.rules.length;
   addBtn.title='Create an alert rule in the browser (writes ALERTS_FILE via the API)';
   addBtn.onclick=()=>openRuleBuilder(meta,hist,loadAlerts);
-  h3.append(addBtn);rc.append(h3);
+  rsec.wrap.querySelector('.sec').append(addBtn);
   if(!meta.rules.length){
     const p=document.createElement('div');p.className='empty';
     p.textContent=meta.enabled?'No rules loaded. Click "+ New rule" to create one, or edit the JSON rules file (ALERTS_FILE) directly.':'Alerting is off: no rules file found. Click "+ New rule" to create the first one.';
@@ -1864,12 +2377,13 @@ async function loadAlerts(){
     });
     rc.append(tb);
   }
-  box.append(rc);
+  rsec.body.append(rc);
+  box.append(rsec.wrap);
 
-  const ac=document.createElement('div');ac.className='card';ac.style.marginTop='12px';
-  ac.innerHTML='<h3>Recent alerts</h3>';
   hist={alerts:[]};
   try{hist=await api('/api/alerts?limit=100');}catch(e){connBad('alerts history failed');}
+  const asec=secBlock('HISTORY',hist.alerts.length);
+  const ac=document.createElement('div');ac.className='card';ac.style.marginTop='0';
   if(!hist.alerts.length){
     const p=document.createElement('div');p.className='empty';p.textContent='No alerts have fired yet.';ac.append(p);
   }else{
@@ -1889,7 +2403,8 @@ async function loadAlerts(){
     });
     ac.append(tb);
   }
-  box.append(ac);
+  asec.body.append(ac);
+  box.append(asec.wrap);
 }
 
 /* ---------- alert rule builder (writes ALERTS_FILE via the API) ---------- */
@@ -2043,9 +2558,14 @@ addEventListener('DOMContentLoaded',()=>{
     const s=await checkSession();
     if(s.ok){
       S.sessionExpires=s.expiresAt;
-      S.user=s.user;S.role=s.role;
+      S.user=s.user;S.role=s.role;S.authEnabled=s.authEnabled;
       $('#adminTab').style.display=S.role==='admin'?'':'none';
-      if(s.authEnabled)$('#logoutBtn').style.display='';
+      if(s.authEnabled){
+        $('#logoutBtn').style.display='';
+        const initials=(S.user||'?').trim();
+        $('#logoutBtn').textContent=(initials.charAt(0)||'?').toUpperCase();
+        $('#logoutBtn').title='Log out ('+S.user+')';
+      }
       hideLogin();
       await loadCrashCounts();
       await loadHosts();
