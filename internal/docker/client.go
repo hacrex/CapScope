@@ -89,6 +89,40 @@ type Inspect struct {
 	} `json:"HostConfig"`
 }
 
+// Info is the subset of GET /info the overview endpoint needs. "Name" is the
+// daemon host's machine hostname.
+type Info struct {
+	Name          string `json:"Name"`
+	NCPU          int    `json:"NCPU"`
+	MemTotal      int64  `json:"MemTotal"`
+	DockerRootDir string `json:"DockerRootDir"`
+	ServerVersion string `json:"ServerVersion"`
+}
+
+// SystemDF is the subset of GET /system/df used to estimate reclaimable
+// storage (the RECLAIMABLE column of `docker system df`).
+type SystemDF struct {
+	Images []struct {
+		Size       int64 `json:"Size"`
+		SharedSize int64 `json:"SharedSize"`
+		Containers int   `json:"Containers"` // containers currently using the image
+	} `json:"Images"`
+	Containers []struct {
+		SizeRw int64  `json:"SizeRw"`
+		State  string `json:"State"`
+	} `json:"Containers"`
+	Volumes []struct {
+		UsageData struct {
+			Size     int64 `json:"Size"`
+			RefCount int   `json:"RefCount"`
+		} `json:"UsageData"`
+	} `json:"Volumes"`
+	BuildCache []struct {
+		Size  int64 `json:"Size"`
+		InUse bool  `json:"InUse"`
+	} `json:"BuildCache"`
+}
+
 type Event struct {
 	Type   string `json:"Type"`
 	Action string `json:"Action"`
@@ -245,6 +279,81 @@ func (c *Client) ListContainers(ctx context.Context, all bool) ([]Container, err
 func (c *Client) Inspect(ctx context.Context, id string) (Inspect, error) {
 	var out Inspect
 	return out, c.getJSON(ctx, "/containers/"+id+"/json", &out)
+}
+
+// InspectSize reads a container's writable-layer size in bytes via
+// GET /containers/{id}/json?size=true. The daemon walks the layer to measure
+// it, so callers cache the result instead of calling it per request.
+// A missing SizeRw (some daemons omit it) decodes as 0.
+func (c *Client) InspectSize(ctx context.Context, id string) (int64, error) {
+	var out struct {
+		SizeRw int64 `json:"SizeRw"`
+	}
+	return out.SizeRw, c.getJSON(ctx, "/containers/"+id+"/json?size=true", &out)
+}
+
+// Info reads daemon metadata: machine name, CPU count, total memory, docker
+// root directory and server version.
+func (c *Client) Info(ctx context.Context) (Info, error) {
+	var out Info
+	return out, c.getJSON(ctx, "/info", &out)
+}
+
+// Version reads GET /version; the result is the daemon version string
+// ("28.1.1"), used as a fallback when /info omits ServerVersion.
+func (c *Client) Version(ctx context.Context) (string, error) {
+	var out struct {
+		Version string `json:"Version"`
+	}
+	return out.Version, c.getJSON(ctx, "/version", &out)
+}
+
+// SystemDF reads storage usage. It walks every image, volume and build-cache
+// entry and can take seconds on a busy daemon — cache the result.
+func (c *Client) SystemDF(ctx context.Context) (SystemDF, error) {
+	var out SystemDF
+	return out, c.getJSON(ctx, "/system/df", &out)
+}
+
+// Reclaimable approximates the RECLAIMABLE column of `docker system df`: the
+// storage nothing is using right now.
+//
+//   - images no container uses, counting only their unshared part so layers
+//     shared with other images are never counted twice;
+//   - volumes with no referrers (RefCount 0);
+//   - build-cache entries not in use;
+//   - stopped containers' writable layers.
+//
+// Not byte-for-byte identical to the CLI's arithmetic, but the same order of
+// magnitude, and every unknown/negative Size (-1 from the API) is skipped.
+func (df SystemDF) Reclaimable() int64 {
+	var n int64
+	add := func(v int64) {
+		if v > 0 {
+			n += v
+		}
+	}
+	for _, im := range df.Images {
+		if im.Containers == 0 {
+			add(im.Size - im.SharedSize)
+		}
+	}
+	for _, v := range df.Volumes {
+		if v.UsageData.RefCount == 0 {
+			add(v.UsageData.Size)
+		}
+	}
+	for _, b := range df.BuildCache {
+		if !b.InUse {
+			add(b.Size)
+		}
+	}
+	for _, c := range df.Containers {
+		if !strings.EqualFold(c.State, "running") {
+			add(c.SizeRw)
+		}
+	}
+	return n
 }
 
 // Logs follows a container's logs until the stream ends or ctx is cancelled.

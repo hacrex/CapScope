@@ -14,22 +14,26 @@ import (
 // snapshots), and flags learned from Docker events.
 type tracker struct {
 	id, name, app, image, replica, hostID string
-	tty                           bool
-	created                       time.Time // when CapScope started tracking this incarnation
-	started                       time.Time // the container's real start time per Docker (falls back to created)
-	cancel                        context.CancelFunc
-	logDone                       chan struct{} // closed when the log follower has finished
-	accessOnly                    bool          // excluded container kept only for access-log parsing
-	acc                           *access.Stream
+	tty                                   bool
+	created                               time.Time // when CapScope started tracking this incarnation
+	started                               time.Time // the container's real start time per Docker (falls back to created)
+	cancel                                context.CancelFunc
+	logDone                               chan struct{} // closed when the log follower has finished
+	accessOnly                            bool          // excluded container kept only for access-log parsing
+	acc                                   *access.Stream
 
-	mu      sync.Mutex
-	logs    []store.LogRow
-	metrics []store.MetricPoint
-	oom     bool
-	signal  string
-	exited  bool
-	maxLogs int
-	maxMets int
+	mu       sync.Mutex
+	logs     []store.LogRow
+	logBytes int // sum of logRowBytes(logs); guards the byte budget below
+	metrics  []store.MetricPoint
+	oom      bool
+	signal   string
+	exited   bool
+	maxLogs  int
+	maxMets  int
+	// Writable-layer size from inspect?size=true; -1 until the first
+	// measurement (see Manager.sizeLoop). Guarded by mu like the rest.
+	sizeRW int64
 }
 
 // parseStartedAt extracts the container's real start time from an inspect's
@@ -42,13 +46,50 @@ func parseStartedAt(startedAt string, now time.Time) time.Time {
 	return now
 }
 
+// maxLogRingBytes is the per-container byte budget for the in-memory log
+// ring. Rows are counted too (maxLogs), but each row carries its own line
+// text (up to cfg.MaxLineBytes), so a count-only cap lets a container that
+// logs long lines retain hundreds of megabytes across many trackers.
+const maxLogRingBytes = 2 << 20 // 2 MiB per container
+
+// logRowBytes estimates what one retained LogRow costs: the line text (the
+// only per-row allocation; identity strings are shared across rows) plus the
+// struct and string headers.
+func logRowBytes(r store.LogRow) int { return len(r.Line) + 128 }
+
 func (t *tracker) pushLog(r store.LogRow) {
 	t.mu.Lock()
 	t.logs = append(t.logs, r)
-	if len(t.logs) > 2*t.maxLogs {
-		t.logs = append([]store.LogRow(nil), t.logs[len(t.logs)-t.maxLogs:]...)
+	t.logBytes += logRowBytes(r)
+	// Trim when either budget is exceeded. The row budget overshoots by 25%
+	// so a steady stream does not re-copy the slice on every line.
+	if len(t.logs) > t.maxLogs+t.maxLogs/4 || t.logBytes > maxLogRingBytes {
+		t.trimLogs()
 	}
 	t.mu.Unlock()
+}
+
+// trimLogs drops the oldest rows until both the row count and the byte
+// budget hold. The byte target is half the budget so the copy below is
+// amortized over many lines rather than paid on every one.
+func (t *tracker) trimLogs() {
+	start := 0
+	if over := len(t.logs) - t.maxLogs; over > start {
+		start = over
+	}
+	budget := t.logBytes
+	for i := 0; i < start; i++ {
+		budget -= logRowBytes(t.logs[i])
+	}
+	for start < len(t.logs) && budget > maxLogRingBytes/2 {
+		budget -= logRowBytes(t.logs[start])
+		start++
+	}
+	if start <= 0 {
+		return
+	}
+	t.logBytes = budget
+	t.logs = append([]store.LogRow(nil), t.logs[start:]...)
 }
 
 func (t *tracker) pushMetric(p store.MetricPoint) {
@@ -80,13 +121,68 @@ func (t *tracker) recentMetrics() []store.MetricPoint {
 	return append([]store.MetricPoint(nil), s...)
 }
 
-func (t *tracker) lastMetric() (store.MetricPoint, bool) {
+// aggregate walks the metric ring once, under the lock, feeding both
+// accumulators and collecting the window bounds / sums / newest sample that
+// the overview needs. It replaces recentMetrics() plus three separate
+// passes over the copy, which allocated ~7 KB per container per poll.
+//
+// The accumulators are owned by the caller and reset before each call, so
+// they are safe to reuse across trackers.
+func (t *tracker) aggregate(windowStart, nowMs int64, cpu, mem *acc) winAgg {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if len(t.metrics) == 0 {
-		return store.MetricPoint{}, false
+	s := t.metrics
+	if len(s) > t.maxMets {
+		s = s[len(s)-t.maxMets:]
 	}
-	return t.metrics[len(t.metrics)-1], true
+	var wa winAgg
+	for i, p := range s {
+		cpu.add(p.TS, p.CPU)
+		mem.add(p.TS, float64(p.Mem))
+		if p.TS >= windowStart {
+			if wa.n == 0 {
+				wa.first = p
+			}
+			wa.last = p
+			wa.n++
+			wa.sumCPU += p.CPU
+			wa.sumMem += float64(p.Mem)
+		}
+		if i == len(s)-1 {
+			wa.newest, wa.hasNewest = p, true
+		}
+	}
+	return wa
+}
+
+// info renders the live view of this container: identity, start time and the
+// newest metric sample (zero-valued until the first sample arrives). Shared
+// by /api/containers and the /api/overview aggregation.
+func (t *tracker) info() ContainerInfo {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	// Prefer the container's real Docker start time; fall back to when
+	// tracking began (e.g. rebuilt trackers for already-exited containers).
+	startedMS := t.created.UnixMilli()
+	if !t.started.IsZero() && t.started.Before(t.created) {
+		startedMS = t.started.UnixMilli()
+	}
+	ci := ContainerInfo{
+		ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image,
+		HostID: t.hostID, Started: startedMS, SizeRW: t.sizeRW,
+	}
+	if n := len(t.metrics); n > 0 {
+		p := t.metrics[n-1]
+		ci.CPU, ci.Mem, ci.MemLimit, ci.SampleTS = p.CPU, p.Mem, p.MemLimit, p.TS
+	}
+	return ci
+}
+
+// setSizeRW records the measured writable-layer size.
+func (t *tracker) setSizeRW(n int64) {
+	t.mu.Lock()
+	t.sizeRW = n
+	t.mu.Unlock()
 }
 
 func (t *tracker) setOOM() {

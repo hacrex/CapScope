@@ -20,7 +20,11 @@ func TestHighVolumeFanout500(t *testing.T) {
 	h := New()
 	subs := make([]*Sub, 0, subscribers)
 	for i := 0; i < subscribers; i++ {
-		subs = append(subs, h.Subscribe(store.LogQuery{App: "load"}))
+		s, ok := h.Subscribe(store.LogQuery{App: "load"})
+		if !ok {
+			t.Fatalf("subscriber %d rejected under maxSubs", i)
+		}
+		subs = append(subs, s)
 	}
 	var received atomic.Int64
 	var dropped atomic.Int64

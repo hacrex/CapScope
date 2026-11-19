@@ -28,6 +28,7 @@ import (
 	"capscope/internal/auth"
 	"capscope/internal/collector"
 	"capscope/internal/config"
+	"capscope/internal/docker"
 	"capscope/internal/hub"
 	"capscope/internal/store"
 	"capscope/internal/web"
@@ -37,6 +38,17 @@ import (
 // polls on its own cadence; this only prevents overlapping requests from each
 // re-running every aggregation query.
 const dashTTL = 15 * time.Second
+
+// sseWriteTimeout bounds a single SSE write. A client that stops reading
+// (dead tab, suspended laptop, full TCP window) would otherwise block the
+// handler forever, pinning its goroutine and subscriber row buffer; the
+// deadline converts that stall into a write error the handler returns on.
+// It is reset before every write, so it only ever fires on a genuine stall.
+const sseWriteTimeout = 60 * time.Second
+
+// errPNGFull stops the PNG export's row paging once the render budget is
+// met. It is a control-flow signal, not a failure, so the caller ignores it.
+var errPNGFull = errors.New("png export line budget reached")
 
 // dashCache is a tiny single-entry TTL cache for the dashboard payload, with a
 // generation counter so data written after an assembly started cannot be
@@ -85,6 +97,8 @@ type Server struct {
 	eng      *alerts.Engine       // nil when alerting is disabled
 	sessions *auth.SessionManager // session manager (nil when auth is off)
 	dash     dashCache            // short-lived /api/dashboard payload cache
+	dk       *docker.Client       // Docker daemon behind the manager (nil when host info is not wired)
+	host     hostCache            // /info + /system/df cache for /api/overview
 }
 
 // WithAlerts attaches the alert engine so /api/alerts works.
@@ -115,6 +129,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/share", s.shareCreate)
 	mux.HandleFunc("GET /s/{token}", s.sharePage)
 	mux.HandleFunc("GET /api/containers", s.containers)
+	mux.HandleFunc("GET /api/overview", s.overview)
 	mux.HandleFunc("GET /api/hosts", s.hosts)
 	mux.HandleFunc("GET /api/apps", s.apps)
 	mux.HandleFunc("GET /api/logs", s.logs)
@@ -1197,11 +1212,22 @@ func (s *Server) logsExportPNG(w http.ResponseWriter, r *http.Request, q store.L
 	h.Set("Content-Type", "image/png")
 	h.Set("Content-Disposition", `attachment; filename="capscope-logs.png"`)
 	q.Limit = 5000
-	const exportCap = 200_000 // same ceiling as the CSV export
 
+	// The render budget applies during collection, not after: buffering up to
+	// exportCap rows (200k × line text) and only then truncating to maxLines
+	// spent ~120 MB per request — enough to OOM the process on a long range.
+	// maxLines is the real ceiling; the pixel check below stays as a guard.
+	const (
+		maxLineLen = 200  // chars rendered per line
+		maxLines   = 4000 // lines rendered in one PNG
+		maxPixels  = 4_000_000
+	)
 	var rows []store.LogRow
-	_ = s.eachLogRow(r.Context(), q, exportCap, func(l store.LogRow) error {
+	_ = s.eachLogRow(r.Context(), q, maxLines, func(l store.LogRow) error {
 		rows = append(rows, l)
+		if len(rows) >= maxLines {
+			return errPNGFull // stop paging; eachLogRow propagates it
+		}
 		return nil
 	})
 	if len(rows) == 0 {
@@ -1234,19 +1260,9 @@ func (s *Server) logsExportPNG(w http.ResponseWriter, r *http.Request, q store.L
 		maxTextLen = 1
 	}
 
-	// Clamp to a sane render budget so a single export cannot allocate an
-	// unbounded RGBA buffer (and OOM the whole process) from a long log line
-	// or a huge row count.
-	const (
-		maxLineLen = 200  // chars rendered per line
-		maxLines   = 4000 // lines rendered in one PNG
-		maxPixels  = 4_000_000
-	)
+	// Guard: a single very long line still has to fit the canvas budget.
 	if maxTextLen > maxLineLen {
 		maxTextLen = maxLineLen
-	}
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
 	}
 
 	imgW := marginX*2 + maxTextLen*charW
@@ -1435,20 +1451,29 @@ func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 		rng = d
 	}
 	limit, _ := strconv.ParseInt(v.Get("limit"), 10, 64)
-	rows, err := s.st.QueryAccessRowsFiltered(r.Context(), v.Get("app"), v.Get("status"), time.Now().Add(-rng).UnixMilli(), 0, limit)
-	if err != nil {
-		fail(w, 500, err)
-		return
-	}
 	csvHeader(w, "capscope-access.csv")
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"ts", "ts_ms", "container", "app", "ip", "method", "path", "status", "bytes", "referer", "user_agent"})
-	for _, x := range rows {
-		_ = cw.Write([]string{
-			time.UnixMilli(x.TS).UTC().Format(time.RFC3339), itoa64(x.TS),
-			x.Container, x.App, x.IP, x.Method, x.Path, strconv.Itoa(x.Status),
-			itoa64(x.Bytes), x.Referer, x.UA,
+	// Streamed page by page: the previous single query held up to 100000
+	// rows in memory for the whole export.
+	err := s.st.EachAccessRowFiltered(r.Context(), v.Get("app"), v.Get("status"),
+		time.Now().Add(-rng).UnixMilli(), 0, limit, func(batch []store.AccessRow) error {
+			for _, x := range batch {
+				if err := cw.Write([]string{
+					time.UnixMilli(x.TS).UTC().Format(time.RFC3339), itoa64(x.TS),
+					x.Container, x.App, x.IP, x.Method, x.Path, strconv.Itoa(x.Status),
+					itoa64(x.Bytes), x.Referer, x.UA,
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
+	if err != nil {
+		// Headers are already on the wire, so the status cannot change; the
+		// client just sees a shorter file. Record why.
+		s.log.Warn("access export aborted", "err", err)
+		return
 	}
 	cw.Flush()
 }
@@ -1473,7 +1498,7 @@ func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	fl, ok := w.(http.Flusher)
+	_, ok := w.(http.Flusher)
 	if !ok {
 		fail(w, 500, fmt.Errorf("streaming unsupported"))
 		return
@@ -1482,10 +1507,25 @@ func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Accel-Buffering", "no") // keep nginx (CapRover) from buffering the stream
-	sub := s.hub.Subscribe(q)
+	sub, ok := s.hub.Subscribe(q)
+	if !ok {
+		// Reject rather than accept a stream we will silently degrade:
+		// every subscriber owns a row buffer plus this goroutine.
+		fail(w, 503, fmt.Errorf("too many live log streams"))
+		return
+	}
 	defer s.hub.Unsubscribe(sub)
+	// A client that stops reading (closed laptop, wedged tab, full TCP
+	// window) would otherwise block in Fprintf forever, pinning this
+	// goroutine and the subscriber's row buffer for the life of the process.
+	// The deadline turns that blocked write into an error we return on.
+	rc := http.NewResponseController(w)
+	writeDeadline := func() { _ = rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout)) }
+	writeDeadline()
 	fmt.Fprint(w, ": connected\n\n")
-	fl.Flush()
+	if err := rc.Flush(); err != nil {
+		return
+	}
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
 	var lastDropped int64
@@ -1497,17 +1537,31 @@ func (s *Server) logStream(w http.ResponseWriter, r *http.Request) {
 			b, _ := json.Marshal(row)
 			// id: gives the browser its resume cursor — EventSource echoes it
 			// back as Last-Event-ID on the next (auto)reconnect.
-			fmt.Fprintf(w, "id: %d\n", row.ID)
-			fmt.Fprintf(w, "data: %s\n\n", b)
-			fl.Flush()
+			writeDeadline()
+			if _, err := fmt.Fprintf(w, "id: %d\n", row.ID); err != nil {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+				return
+			}
+			if err := rc.Flush(); err != nil {
+				return
+			}
 		case <-ping.C:
+			writeDeadline()
+			var err error
 			if d := sub.Dropped.Load(); d != lastDropped {
 				lastDropped = d
-				fmt.Fprintf(w, "event: dropped\ndata: %d\n\n", d)
+				_, err = fmt.Fprintf(w, "event: dropped\ndata: %d\n\n", d)
 			} else {
-				fmt.Fprint(w, ": ping\n\n")
+				_, err = fmt.Fprint(w, ": ping\n\n")
 			}
-			fl.Flush()
+			if err != nil {
+				return
+			}
+			if err := rc.Flush(); err != nil {
+				return
+			}
 		}
 	}
 }

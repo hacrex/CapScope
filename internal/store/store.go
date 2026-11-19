@@ -192,7 +192,12 @@ var migrations = []string{
 
 // Open creates or migrates the database at path.
 func Open(path string) (*Store, error) {
-	base := "file:" + path + "?_busy_timeout=30000&_journal_mode=WAL&_synchronous=NORMAL"
+	// cache_size is in KiB (negative = KiB). The driver default (2 MiB) is
+	// per connection, and this store keeps 1 writer + 4 readers, so the page
+	// cache alone could reach ~10 MiB with no ceiling of our own. Capping it
+	// keeps RSS predictable; 1 MiB per connection is ample for the small
+	// point lookups and indexed log scans this does.
+	base := "file:" + path + "?_busy_timeout=30000&_journal_mode=WAL&_synchronous=NORMAL&_pragma=cache_size(-1000)"
 	w, err := sql.Open("sqlite", base)
 	if err != nil {
 		return nil, err
@@ -906,15 +911,27 @@ func (s *Store) ListSnapshots(ctx context.Context, app, hostID string, limit int
 // SnapshotsSince is like ListSnapshots but bounded to ts >= sinceMs, which lets
 // the dashboard aggregate a 24h window without scanning the whole table.
 func (s *Store) SnapshotsSince(ctx context.Context, sinceMs int64, hostID string) ([]Snapshot, error) {
-	return s.listSnapshots(ctx, "", hostID, sinceMs, 0)
+	return s.listSnapshots(ctx, "", hostID, sinceMs, snapSinceLimit)
 }
+
+// snapSinceLimit bounds a windowed snapshot scan. Without it the 24h
+// dashboard query has no LIMIT at all (the cap below only applies when no
+// window is set) and materializes every snapshot row in the window — a
+// restart storm turns that into tens of MB held for the whole request.
+const snapSinceLimit = 10_000
 
 func (s *Store) listSnapshots(ctx context.Context, app, hostID string, sinceMs int64, limit int) ([]Snapshot, error) {
 	if limit < 0 {
 		limit = 0
 	}
-	if limit > 500 {
-		limit = 500
+	// Windowed scans (dashboard) carry their own, wider ceiling; everything
+	// else is clamped to a page so a caller cannot ask for the whole table.
+	max := 500
+	if sinceMs > 0 {
+		max = snapSinceLimit
+	}
+	if limit > max {
+		limit = max
 	}
 	q := `SELECT ` + snapCols + ` FROM snapshots`
 	var where []string
@@ -1269,6 +1286,71 @@ func (s *Store) QueryAccessRowsFiltered(ctx context.Context, app, status string,
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// EachAccessRowFiltered pages the same filter as QueryAccessRowsFiltered but
+// hands fn one page at a time, so an export streams to the client instead of
+// materializing up to 100000 AccessRows (each carrying path/referer/UA
+// strings) for the whole request. It follows the same id-ordered keyset
+// pagination as eachLogRow: ids ascend, so `id > last` never repeats or
+// skips a row.
+func (s *Store) EachAccessRowFiltered(ctx context.Context, app, status string, sinceMs, untilMs, limit int64, fn func([]AccessRow) error) error {
+	if limit <= 0 || limit > 100000 {
+		limit = 100000
+	}
+	const page = 2000
+	var lastID int64
+	written := int64(0)
+	for written < limit && ctx.Err() == nil {
+		cl, args := []string{"ts >= ?"}, []any{sinceMs}
+		if untilMs > 0 {
+			cl, args = append(cl, "ts <= ?"), append(args, untilMs)
+		}
+		if app != "" {
+			cl, args = append(cl, "app = ?"), append(args, app)
+		}
+		if lo, hi, ok := accessStatusRange(status); ok {
+			cl, args = append(cl, "status >= ? AND status < ?"), append(args, lo, hi)
+		}
+		if lastID > 0 {
+			cl, args = append(cl, "id > ?"), append(args, lastID)
+		}
+		n := page
+		if left := limit - written; left < int64(n) {
+			n = int(left)
+		}
+		rows, err := s.r.QueryContext(ctx, `SELECT id,ts,container_id,container,app,ip,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, n)...)
+		if err != nil {
+			return err
+		}
+		batch := make([]AccessRow, 0, n)
+		for rows.Next() {
+			var r AccessRow
+			var id int64
+			if err := rows.Scan(&id, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.IP, &r.Method, &r.Path, &r.Status, &r.Bytes, &r.Referer, &r.UA); err != nil {
+				rows.Close()
+				return err
+			}
+			batch = append(batch, r)
+			lastID = id
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := fn(batch); err != nil {
+			return err
+		}
+		written += int64(len(batch))
+		if len(batch) < n {
+			return nil // partial page: result set exhausted
+		}
+	}
+	return nil
 }
 
 // QueryAccess computes the dashboard aggregates over one window.

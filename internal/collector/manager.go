@@ -76,8 +76,13 @@ const (
 func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hub, log *slog.Logger) *Manager {
 	m := &Manager{
 		cfg: cfg, dk: dk, st: st, hub: h, log: log,
-		lines:      make(chan store.LogRow, 8192),
-		accessRows: make(chan store.AccessRow, 4096),
+		// Sized to bridge one writer flush (batches break at 1000 rows or
+		// 250 ms), not to be a deep queue. The slot arrays are allocated
+		// eagerly and each row may carry up to MaxLineBytes of text, so a
+		// deep buffer is retained memory that only ever fills under write
+		// pressure — where the non-blocking send drops and counts instead.
+		lines:      make(chan store.LogRow, 2048),
+		accessRows: make(chan store.AccessRow, 1024),
 		accDet:     access.NewDetector(cfg.AccessLog),
 		tracked:    map[string]*tracker{},
 		lastTS:     map[string]int64{},
@@ -173,6 +178,9 @@ type ContainerInfo struct {
 	Mem      int64   `json:"mem"`
 	MemLimit int64   `json:"mem_limit"`
 	SampleTS int64   `json:"sample_ts"`
+	// SizeRW is the writable-layer size in bytes from inspect?size=true:
+	// -1 until the first measurement (see sizeLoop).
+	SizeRW int64 `json:"size_rw"`
 }
 
 func (m *Manager) Containers(hostID string) []ContainerInfo {
@@ -183,20 +191,16 @@ func (m *Manager) Containers(hostID string) []ContainerInfo {
 		if hostID != "" && t.hostID != hostID {
 			continue
 		}
-		// Prefer the container's real Docker start time; fall back to when
-		// tracking began (e.g. rebuilt trackers for already-exited containers).
-		startedMS := t.created.UnixMilli()
-		if !t.started.IsZero() && t.started.Before(t.created) {
-			startedMS = t.started.UnixMilli()
-		}
-		ci := ContainerInfo{ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image, HostID: t.hostID, Started: startedMS}
-		if p, ok := t.lastMetric(); ok {
-			ci.CPU, ci.Mem, ci.MemLimit, ci.SampleTS = p.CPU, p.Mem, p.MemLimit, p.TS
-		}
-		out = append(out, ci)
+		out = append(out, t.info())
 	}
 	return out
 }
+
+// HostID is this instance's host identity: empty in serve mode unless
+// AGENT_HOST_ID is set. /api/overview uses it to decide whether a ?host=
+// filter names the local daemon (fill the host block) or a remote host
+// (report only the id/name and hide the rest).
+func (m *Manager) HostID() string { return m.hostID }
 
 // Run blocks until ctx is cancelled.
 func (m *Manager) Run(ctx context.Context) {
@@ -263,6 +267,49 @@ func (m *Manager) reconcile(ctx context.Context) {
 		}
 		m.log.Info("tracker dropped (no die event seen)", "container", t.name)
 	}
+	m.maybeSweepGone(ctx)
+}
+
+// lastTSSweepThreshold bounds m.lastTS + m.pending before we pay for a full
+// (all=1) container listing to discover which ids Docker has forgotten.
+// Entries are ~100 B each and are normally removed by the "destroy" event,
+// but that event is missed whenever CapScope is down or the event stream
+// reconnects — so without a bound the maps hold one entry per container id
+// ever seen, forever. Sweeping only above the threshold keeps the common
+// path free of the extra listing.
+const lastTSSweepThreshold = 512
+
+// maybeSweepGone drops per-container bookkeeping for containers Docker no
+// longer knows about at all (removed, not merely stopped). Stopped
+// containers must keep their entry: it is the log follower's resume cursor,
+// and losing it would replay the initial tail as duplicate rows on restart.
+func (m *Manager) maybeSweepGone(ctx context.Context) {
+	m.mu.Lock()
+	n := len(m.lastTS) + len(m.pending)
+	m.mu.Unlock()
+	if n < lastTSSweepThreshold {
+		return
+	}
+	cs, err := m.dk.ListContainers(ctx, true)
+	if err != nil {
+		return
+	}
+	alive := make(map[string]struct{}, len(cs))
+	for _, c := range cs {
+		alive[c.ID] = struct{}{}
+	}
+	m.mu.Lock()
+	for id := range m.lastTS {
+		if _, ok := alive[id]; !ok {
+			delete(m.lastTS, id)
+		}
+	}
+	for id := range m.pending {
+		if _, ok := alive[id]; !ok {
+			delete(m.pending, id)
+		}
+	}
+	m.mu.Unlock()
 }
 
 func (m *Manager) excluded(name, app string) bool {
@@ -296,6 +343,7 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 		accessOnly: m.excluded(name, app),
 		acc:        m.accDet.Stream(app),
 		maxLogs:    m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
+		sizeRW: -1, // not measured yet; sizeLoop fills it in
 	}, true, nil
 }
 
@@ -340,6 +388,7 @@ func (m *Manager) ensure(ctx context.Context, id string) {
 	if !t.accessOnly {
 		go m.statsLoop(tctx, t)
 	}
+	go m.sizeLoop(tctx, t) // writable-layer size for /api/overview and /api/containers
 }
 
 func (m *Manager) stillRunning(ctx context.Context, id string) bool {
@@ -576,6 +625,46 @@ func (m *Manager) statsLoop(ctx context.Context, t *tracker) {
 		if !m.stillRunning(ctx, t.id) {
 			return
 		}
+	}
+}
+
+// sizeLoop measures the container's writable-layer size (inspect?size=true)
+// shortly after tracking starts, then at most every 5 minutes. The daemon
+// walks the layer on every call, so it runs in its own goroutine with a
+// bounded context: a slow measure can never stall the stats loop. Failures
+// (daemon busy, container mid-restart) retry sooner than the normal cadence
+// so the value is not stuck at -1 for a full period.
+func (m *Manager) sizeLoop(ctx context.Context, t *tracker) {
+	const (
+		settle = 3 * time.Second // let a just-started container finish writing
+		retry  = 20 * time.Second
+		period = 5 * time.Minute
+	)
+	delay := settle
+	for ctx.Err() == nil {
+		sleepCtx(ctx, delay)
+		if ctx.Err() != nil {
+			return
+		}
+		sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		sz, err := m.dk.InspectSize(sctx, t.id)
+		cancel()
+		// Checked on the success path too: a container that exited but whose
+		// die event was missed stays tracked, and without this the loop would
+		// keep walking its layers every period for the life of the process.
+		if t.isExited() {
+			return
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			m.log.Debug("size measure failed", "container", t.name, "err", err)
+			delay = retry
+			continue
+		}
+		t.setSizeRW(sz)
+		delay = period
 	}
 }
 
@@ -850,6 +939,7 @@ func (m *Manager) rebuildTracker(ctx context.Context, id string) *tracker {
 		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone: make(chan struct{}), cancel: func() {},
 		maxLogs: m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
+		sizeRW: -1, // historical rebuild: never measured, and never shown live
 	}
 	var rows []store.LogRow
 	if m.st != nil {
@@ -863,6 +953,10 @@ func (m *Manager) rebuildTracker(ctx context.Context, id string) *tracker {
 		rows = m.fetchFinalLogs(ctx, t)
 	}
 	t.logs = rows
+	t.logBytes = 0
+	for _, r := range rows {
+		t.logBytes += logRowBytes(r)
+	}
 	return t
 }
 

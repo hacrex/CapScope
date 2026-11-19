@@ -102,7 +102,8 @@ func serve(log *slog.Logger) error {
 	}
 
 	// Local password auth needs a session store; proxy header auth is sessionless.
-	opts := []func(*api.Server){api.WithAlerts(eng), api.WithUserStore(st)}
+	// WithDocker gives /api/overview its host block (name/ncpu/disk/reclaimable).
+	opts := []func(*api.Server){api.WithAlerts(eng), api.WithUserStore(st), api.WithDocker(dk)}
 	if cfg.AuthProvider != "proxy" {
 		// Sessions persist HMAC-signed next to the DB, so a restart does not
 		// log the browser out (Phase 3.1). The file never receives raw tokens.

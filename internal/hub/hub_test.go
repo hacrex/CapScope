@@ -15,12 +15,18 @@ func TestConcurrentPublishFanoutDoesNotBlock(t *testing.T) {
 	const rowsPerPublisher = 4000
 	done := make(chan struct{})
 	subs := make([]*Sub, 0, subscribers)
-	slow := h.Subscribe(store.LogQuery{App: "web"})
+	slow, ok := h.Subscribe(store.LogQuery{App: "web"})
+	if !ok {
+		t.Fatal("first subscriber rejected")
+	}
 	subs = append(subs, slow)
 
 	var readers sync.WaitGroup
 	for i := 0; i < subscribers; i++ {
-		s := h.Subscribe(store.LogQuery{App: "web"})
+		s, ok := h.Subscribe(store.LogQuery{App: "web"})
+		if !ok {
+			t.Fatalf("subscriber %d rejected under maxSubs", i)
+		}
 		subs = append(subs, s)
 		readers.Add(1)
 		go func() {
