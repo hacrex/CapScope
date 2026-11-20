@@ -30,6 +30,7 @@ import (
 	"capscope/internal/config"
 	"capscope/internal/docker"
 	"capscope/internal/hub"
+	"capscope/internal/logproc"
 	"capscope/internal/store"
 	"capscope/internal/web"
 )
@@ -139,6 +140,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/access", s.access)
 	mux.HandleFunc("GET /api/access/export", s.accessExport)
 	mux.HandleFunc("GET /api/sql", s.sql)
+	mux.Handle("POST /api/admin/redact-test", s.requireAdmin(http.HandlerFunc(s.redactTest)))
 	mux.HandleFunc("GET /api/metrics", s.metrics)
 	mux.HandleFunc("GET /api/snapshots", s.snapshots)
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
@@ -1439,7 +1441,48 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, res)
 }
 
-// accessExport downloads the raw parsed access rows as CSV.
+// redactTest is an admin-only redaction audit endpoint. It feeds sample
+// lines through logproc.Redact and reports which secret shapes (if any)
+// still appear in the output. POST body: {"lines": ["..."]}. When no lines
+// are given, built-in test cases covering every secret shape are used.
+func (s *Server) redactTest(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Lines []string `json:"lines"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	lines := body.Lines
+	if len(lines) == 0 {
+		lines = defaultRedactTestLines()
+	}
+	results := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		redacted := logproc.Redact(line)
+		leaked := logproc.LeakedShapes(line)
+		results = append(results, map[string]any{
+			"line":      line,
+			"redacted":  redacted,
+			"leaked":    leaked,
+			"safe":      len(leaked) == 0,
+		})
+	}
+	writeJSON(w, map[string]any{"results": results})
+}
+
+// defaultRedactTestLines returns one line per secret shape the redactor is
+// designed to mask, so the audit endpoint can verify each shape even when
+// the caller supplies no custom lines.
+func defaultRedactTestLines() []string {
+	return []string{
+		`login ok token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk123`,
+		`connecting {"password":"s3cr3tPassw0rd","user":"bob"}`,
+		`aws key AKIAABCDEFGHIJKLMNOP in use`,
+		`Authorization: Bearer sup3rtokenvalue123`,
+		`dial postgres://app:hunter2hunter2@db:5432/app`,
+		`-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----`,
+		`GET /health 200 12ms`,
+		`user=bob action=login`,
+	}
+}
 func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
 	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {

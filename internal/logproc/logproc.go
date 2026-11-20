@@ -8,17 +8,18 @@ import (
 )
 
 type redactor struct {
+	name string // human-readable shape name, used by the redaction audit endpoint
 	re   *regexp.Regexp
 	repl string
 }
 
 var redactors = []redactor{
-	{regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)`), "[REDACTED_PRIVATE_KEY]"},
-	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "[REDACTED_JWT]"},
-	{regexp.MustCompile(`(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}`), "${1} [REDACTED]"},
-	{regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`), "[REDACTED_AWS_KEY]"},
-	{regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)[^@\s/]+@`), "${1}[REDACTED]@"},
-	{regexp.MustCompile(`(?i)((?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|authorization|private[_-]?key)["']?\s*[:=]\s*["']?)([^\s"',;&}\]]+)`), "${1}[REDACTED]"},
+	{"private_key", regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)`), "[REDACTED_PRIVATE_KEY]"},
+	{"jwt", regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "[REDACTED_JWT]"},
+	{"bearer_token", regexp.MustCompile(`(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}`), "${1} [REDACTED]"},
+	{"aws_key", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`), "[REDACTED_AWS_KEY]"},
+	{"url_credential", regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)[^@\s/]+@`), "${1}[REDACTED]@"},
+	{"kv_secret", regexp.MustCompile(`(?i)((?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|authorization|private[_-]?key)["']?\s*[:=]\s*["']?)([^\s"',;&}\]]+)`), "${1}[REDACTED]"},
 }
 
 // Redact masks common secret shapes (JWTs, bearer tokens, key=value secrets,
@@ -28,6 +29,21 @@ func Redact(line string) string {
 		line = r.re.ReplaceAllString(line, r.repl)
 	}
 	return line
+}
+
+// LeakedShapes reports which secret shapes still appear in the redacted
+// output — used by the /admin/redact-test audit endpoint. Returns shape
+// names whose regex matches the redacted line (i.e. redaction failed for
+// that shape).
+func LeakedShapes(line string) []string {
+	redacted := Redact(line)
+	var leaked []string
+	for _, r := range redactors {
+		if r.re.MatchString(redacted) {
+			leaked = append(leaked, r.name)
+		}
+	}
+	return leaked
 }
 
 var (
