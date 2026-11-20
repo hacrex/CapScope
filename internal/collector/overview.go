@@ -64,6 +64,20 @@ type Overview struct {
 	HostMem    Series  // summed container bytes per bucket
 	CPUValue   float64 // sum of each container's newest sample, core-percent
 	MemValue   int64   // sum of each container's newest sample, bytes
+	Hosts      []HostOverview
+}
+
+// HostOverview is one host's slice of the same aggregation: enough for the
+// dashboard's host grid (per-host CPU/mem panels) without a second pass over
+// the trackers or one request per host. CPU/Mem are raw sums of container
+// core-percent and bytes — the API scales CPU by that host's core count.
+type HostOverview struct {
+	HostID     string  `json:"host_id"`
+	Containers int     `json:"containers"`
+	CPU        Series  `json:"-"`
+	Mem        Series  `json:"-"`
+	CPUValue   float64 `json:"-"`
+	MemValue   int64   `json:"-"`
 }
 
 // Overview aggregates the tracked containers for /api/overview. hostID
@@ -94,6 +108,10 @@ func (m *Manager) Overview(now time.Time, hostID string, keep func(app string) b
 	// would average across containers instead of adding them.
 	var hostCPU, hostMem []float64
 	hostFirst := -1 // leading buckets before any container reported
+	// Per-host grids for the dashboard's host card grid: same folding as the
+	// totals above, keyed by host. Only allocated when a second host appears,
+	// so the single-host case (the common one) costs nothing extra.
+	var perHost map[string]*hostGrid
 	// Reused across iterations: both accumulators are the same fixed size
 	// for every container, so allocating a pair per row was ~2 KB of garbage
 	// per container per poll.
@@ -126,10 +144,23 @@ func (m *Manager) Overview(now time.Time, hostID string, keep func(app string) b
 		row.CPUHist = cpuAcc.series(cm)
 		out.Containers = append(out.Containers, row)
 
-		// Fold this container's bucket means into the host charts. Sums of
-		// per-container means (not one shared accumulator: that would average
-		// the containers together instead of adding them). A container with
-		// no samples yet contributes nothing and does not move hostFirst.
+		// Fold this container's bucket means into the host charts: sums of
+		// per-container means (not one shared accumulator — that would average
+		// the containers together instead of adding them). A container with no
+		// samples yet contributes nothing and does not move hostFirst.
+		//
+		// The same fold runs per host for the dashboard's host grid. Every
+		// container creates its host's entry, even one with no samples in the
+		// window, so an idle host still shows up.
+		if perHost == nil {
+			perHost = map[string]*hostGrid{}
+		}
+		g := perHost[t.hostID]
+		if g == nil {
+			g = &hostGrid{cpu: make([]float64, overviewHistBuckets), mem: make([]float64, overviewHistBuckets), first: -1}
+			perHost[t.hostID] = g
+		}
+		g.n++
 		if first := cpuAcc.firstNonEmpty(); first >= 0 {
 			if hostCPU == nil {
 				hostCPU, hostMem = make([]float64, overviewHistBuckets), make([]float64, overviewHistBuckets)
@@ -142,15 +173,33 @@ func (m *Manager) Overview(now time.Time, hostID string, keep func(app string) b
 				hostCPU[i] += cm[i]
 				hostMem[i] += mm[i]
 			}
+			if g.first < 0 || first < g.first {
+				g.first = first
+			}
+			for i := range cm {
+				g.cpu[i] += cm[i]
+				g.mem[i] += mm[i]
+			}
 		}
 
 		if wa.hasNewest {
 			out.CPUValue += wa.newest.CPU
 			out.MemValue += wa.newest.Mem
+			g.cpuValue += wa.newest.CPU
+			g.memValue += wa.newest.Mem
 		}
 	}
 	out.HostCPU = hostSeries(hostCPU, hostFirst, nowMs)
 	out.HostMem = hostSeries(hostMem, hostFirst, nowMs)
+	out.Hosts = make([]HostOverview, 0, len(perHost))
+	for id, g := range perHost {
+		out.Hosts = append(out.Hosts, HostOverview{
+			HostID: id, Containers: g.n,
+			CPU: hostSeries(g.cpu, g.first, nowMs), Mem: hostSeries(g.mem, g.first, nowMs),
+			CPUValue: g.cpuValue, MemValue: g.memValue,
+		})
+	}
+	sort.Slice(out.Hosts, func(i, j int) bool { return out.Hosts[i].HostID < out.Hosts[j].HostID })
 	sort.Slice(out.Containers, func(i, j int) bool {
 		a, b := out.Containers[i], out.Containers[j]
 		if a.App != b.App {
@@ -161,11 +210,13 @@ func (m *Manager) Overview(now time.Time, hostID string, keep func(app string) b
 	return out
 }
 
-func lastOf(pts []store.MetricPoint) (store.MetricPoint, bool) {
-	if len(pts) == 0 {
-		return store.MetricPoint{}, false
-	}
-	return pts[len(pts)-1], true
+// hostGrid is one host's running totals inside a single Overview pass.
+type hostGrid struct {
+	cpu, mem []float64 // summed bucket means, sized overviewHistBuckets
+	first    int       // first bucket any container on this host reported, -1 = none
+	n        int       // containers on this host
+	cpuValue float64   // sum of newest samples, core-percent
+	memValue int64     // sum of newest samples, bytes
 }
 
 // winAgg is one tracker's contribution to /api/overview, collected during the

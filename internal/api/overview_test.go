@@ -309,11 +309,30 @@ func TestOverviewEndpoint(t *testing.T) {
 
 	t.Run("contract", func(t *testing.T) {
 		// Exact key sets at every level — no extras, nothing missing.
-		top := wantKeys(t, raw, "containers", "cpu", "host", "mem", "window_ms")
+		top := wantKeys(t, raw, "containers", "cpu", "host", "hosts", "mem", "window_ms")
 		wantKeys(t, top["host"],
 			"disk_free", "disk_total", "docker_version", "id", "mem_total", "name", "ncpu", "reclaimable", "uptime_s")
 		wantKeys(t, top["cpu"], "avg", "hist", "pk", "value")
 		wantKeys(t, top["mem"], "avg", "hist", "pk", "value")
+		// Host grid: one card per host with containers in the window. Both
+		// test containers report the same host, so exactly one entry, shaped
+		// as the host block plus that host's own gauges and container count.
+		var hostRows []json.RawMessage
+		if err := json.Unmarshal(top["hosts"], &hostRows); err != nil {
+			t.Fatalf("hosts: %v (%s)", err, top["hosts"])
+		}
+		if len(hostRows) != 1 {
+			t.Fatalf("hosts = %d, want 1", len(hostRows))
+		}
+		wantKeys(t, hostRows[0],
+			"containers", "cpu", "mem",
+			"disk_free", "disk_total", "docker_version", "id", "mem_total", "name", "ncpu", "reclaimable", "uptime_s")
+		var hostObj map[string]json.RawMessage
+		if err := json.Unmarshal(hostRows[0], &hostObj); err != nil {
+			t.Fatal(err)
+		}
+		wantKeys(t, hostObj["cpu"], "avg", "hist", "pk", "value")
+		wantKeys(t, hostObj["mem"], "avg", "hist", "pk", "value")
 		var cpuObj map[string]json.RawMessage
 		if err := json.Unmarshal(top["cpu"], &cpuObj); err != nil {
 			t.Fatal(err)
@@ -492,7 +511,7 @@ func TestOverviewEmpty(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	raw, ov := fetchOverview(t, srv.URL, "", "")
-	top := wantKeys(t, raw, "containers", "cpu", "host", "mem", "window_ms")
+	top := wantKeys(t, raw, "containers", "cpu", "host", "hosts", "mem", "window_ms")
 	wantKeys(t, top["host"],
 		"disk_free", "disk_total", "docker_version", "id", "mem_total", "name", "ncpu", "reclaimable", "uptime_s")
 	if ov.WindowMS != 300000 {
@@ -503,6 +522,10 @@ func TestOverviewEmpty(t *testing.T) {
 	}
 	if ov.Containers == nil || len(ov.Containers) != 0 {
 		t.Fatalf("containers = %#v, want empty (non-null) slice", ov.Containers)
+	}
+	// No trackers means no hosts either — still [] rather than null.
+	if ov.Hosts == nil || len(ov.Hosts) != 0 {
+		t.Fatalf("hosts = %#v, want empty (non-null) slice", ov.Hosts)
 	}
 	// Charts must be present but empty — [] rather than null.
 	for name, g := range map[string]overviewGauge{"cpu": ov.CPU, "mem": ov.Mem} {

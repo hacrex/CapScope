@@ -40,6 +40,16 @@ type overviewHost struct {
 	UptimeS       int64  `json:"uptime_s"`
 }
 
+// overviewHostEntry is one card of the dashboard's host grid: the host block
+// plus that host's own gauges and container count. Identity fields stay zero
+// for remote hosts this process cannot probe — the UI falls back to the id.
+type overviewHostEntry struct {
+	overviewHost
+	Containers int            `json:"containers"`
+	CPU        overviewGauge  `json:"cpu"`
+	Mem        overviewGauge  `json:"mem"`
+}
+
 // overviewGauge is one host metric: the current reading plus its 10-minute
 // chart and the average/peak over the chart's buckets.
 type overviewGauge struct {
@@ -52,6 +62,7 @@ type overviewGauge struct {
 // overviewResponse is the body of GET /api/overview.
 type overviewResponse struct {
 	Host       overviewHost                  `json:"host"`
+	Hosts      []overviewHostEntry           `json:"hosts"`
 	WindowMS   int64                         `json:"window_ms"`
 	CPU        overviewGauge                 `json:"cpu"`
 	Mem        overviewGauge                 `json:"mem"`
@@ -119,6 +130,29 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		resp.CPU = gauge(scale(ov.HostCPU, f), ov.CPUValue*f)
 	} else {
 		resp.CPU = gauge(collector.Series{V: []float64{}}, 0)
+	}
+	// Host grid: one card per host with containers in the window. Only
+	// rendered when the UI has more than one host to show; the assembly is
+	// cheap (identity comes from the same cache as resp.Host, and remote ids
+	// short-circuit before any Docker call).
+	resp.Hosts = make([]overviewHostEntry, 0, len(ov.Hosts))
+	for _, h := range ov.Hosts {
+		id := h.HostID
+		if id == "" {
+			id = s.mgr.HostID()
+		}
+		e := overviewHostEntry{
+			overviewHost: s.overviewHost(r.Context(), id),
+			Containers:   h.Containers,
+			Mem:          gauge(h.Mem, float64(h.MemValue)),
+		}
+		if e.NCPU > 0 {
+			f := 1 / float64(e.NCPU)
+			e.CPU = gauge(scale(h.CPU, f), h.CPUValue*f)
+		} else {
+			e.CPU = gauge(collector.Series{V: []float64{}}, 0)
+		}
+		resp.Hosts = append(resp.Hosts, e)
 	}
 	writeJSON(w, resp)
 }

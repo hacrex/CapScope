@@ -228,9 +228,6 @@ body.sql .hide-sql{display:none}
 .ln.json-pretty pre{margin:4px 0 0;font-size:11px;line-height:1.4;color:var(--text-2);white-space:pre-wrap;word-break:break-word}
 .ln .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums;font-size:11px}
 .ln .c{color:var(--muted);flex:none;min-width:14px;text-align:right;font-size:11px}
-.ln .copyBtn{position:absolute;right:8px;top:0;display:none;opacity:0.6;cursor:pointer;font-size:10px;padding:2px 7px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;line-height:1}
-.ln:hover .copyBtn{display:block}
-.ln .copyBtn:hover{opacity:1;background:var(--line2)}
 .ln.deploy{background:color-mix(in srgb,var(--accent) 8%,transparent);border-left:2px solid var(--accent)}
 .ln.wrap{white-space:pre-wrap;overflow-wrap:break-word}
 html.nowrap .ln{white-space:pre;overflow:hidden}
@@ -375,10 +372,118 @@ h2{font-weight:600;letter-spacing:-.02em}
 .product-footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 16px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
 .product-footer .footer-name{font-weight:600;color:var(--text)}
 .product-footer .footer-tagline{font-size:11px;max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- host grid: one card per host when several are registered ---- */
+.hostsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.hostsgrid .hostcard{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.hostsgrid .hostcard:hover{border-color:var(--line2)}
+.hostsgrid .hostcard.on{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}
+.hostsgrid .hostcard .hcount{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+
+/* ---- row hover actions (containers table + log lines) ---- */
+.rowacts{display:flex;gap:2px;opacity:0;transition:opacity .12s;justify-content:flex-end}
+tr:hover .rowacts,.ln:hover .rowacts,.rowacts:focus-within{opacity:1}
+.act{width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:none;border-radius:6px;color:var(--muted);cursor:pointer;padding:0;font-size:12px;line-height:1}
+.act:hover{background:var(--panel2);border-color:var(--line);color:var(--text)}
+.ctable td.acts{text-align:right;padding-right:8px}
+.ctable td.acts .rowacts{min-width:74px}
+
+/* ---- log line chrome ---- */
+.ln .lacts{display:flex;gap:2px;opacity:0;transition:opacity .12s;margin-left:8px;flex:none}
+.ln:hover .lacts,.ln .lacts:focus-within{opacity:1}
+.ln .lts{cursor:pointer}
+.ln .lts:hover{color:var(--accent)}
+
+/* ---- level legend chips ---- */
+.legend{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.legend .lg{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;font-size:11.5px;font-weight:500;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer;font-variant-numeric:tabular-nums}
+.legend .lg:hover{border-color:var(--line2);color:var(--text)}
+.legend .lg.on{border-color:var(--accent);color:var(--text);background:var(--panel2)}
+.legend .lg .d{width:7px;height:7px;border-radius:50%;flex:none}
+.legend .lg.error .d{background:var(--err)}
+.legend .lg.warn .d{background:var(--warn)}
+.legend .lg.info .d{background:var(--ok)}
+.legend .lg.debug .d{background:var(--dbg)}
+#legend{padding:6px 14px 0}
+
+/* ---- unread / jump pill ---- */
+#jumpLive{display:none;align-items:center;gap:2px}
+#jumpLive.show{display:inline-flex}
+#jumpLive .unread{display:none;margin-left:6px;padding:0 6px;min-width:18px;height:16px;line-height:16px;text-align:center;font-size:10.5px;font-weight:600;border-radius:999px;background:#fff;color:var(--err);font-variant-numeric:tabular-nums}
+#jumpLive.has-unread .unread{display:inline-block}
+#jumpLive.at-first{background:var(--panel2);color:var(--accent);box-shadow:var(--shadow),0 0 0 1px var(--accent)}
+
+/* ---- value flash on change ---- */
+@keyframes valFlash{0%{background:color-mix(in srgb,var(--accent) 34%,transparent)}100%{background:transparent}}
+.flash{animation:valFlash .55s ease-out;border-radius:4px}
+
+/* ---- toasts: top-right, Dozzle style ---- */
+#toasts{position:fixed;top:56px;right:16px;bottom:auto;z-index:70;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{background:var(--panel);color:var(--text);border:1px solid var(--line2);border-left:3px solid var(--accent);border-radius:8px;box-shadow:var(--shadow);padding:9px 12px;font-size:13px;max-width:400px;display:flex;align-items:center;gap:12px;animation:toastIn .18s ease-out;pointer-events:auto}
+.toast .undo{flex:none;border:1px solid var(--line);background:var(--panel2);color:var(--accent);border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer}
+.toast .undo:hover{border-color:var(--accent)}
+@keyframes toastIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+
+/* ---- incidents timeline strip (crashes) ---- */
+.tl{position:relative;height:46px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:crosshair}
+.tl .tick{position:absolute;top:6px;bottom:6px;width:3px;border-radius:2px;transform:translateX(-1.5px);cursor:pointer}
+.tl .tick:hover,.tl .tick:focus-visible{width:5px;transform:translateX(-2.5px);z-index:2}
+.tl .tick.oom{background:var(--err)}
+.tl .tick.crash{background:var(--warn)}
+.tl .tick.killed{background:var(--muted)}
+.tl .tick.clean_exit{background:var(--ok)}
+.tl .axis{position:absolute;left:0;right:0;bottom:0;height:14px;font-size:9.5px;color:var(--muted);pointer-events:none}
+.tl .axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.tl .sel{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);pointer-events:none}
+
+/* ---- alerts: rule cards, firing pinned ---- */
+.rulecards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.rulecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:relative}
+.rulecard.firing{border-color:color-mix(in srgb,var(--err) 55%,var(--line))}
+.rulecard .rc-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.rulecard .rc-n{font-weight:600;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rulecard .rc-k{font-size:10.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 7px;flex:none}
+.rulecard .rc-m{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:10px;flex-wrap:wrap}
+@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--err);flex:none;animation:pulseDot 1.4s infinite ease-in-out}
+
+/* ---- sidebar drawer below 900px ---- */
+#sideScrim{display:none;position:fixed;inset:48px 0 0 0;background:rgba(0,0,0,.5);z-index:40}
+body.drawer-open #sideScrim{display:block}
+#sideBtn{display:none}
+
+@media (max-width:900px){
+  #sideBtn{display:inline-flex}
+  aside{position:fixed;top:48px;bottom:0;left:0;width:264px;z-index:41;transform:translateX(-100%);transition:transform .18s ease;background:var(--bg);border-right:1px solid var(--line)}
+  body.drawer-open aside{transform:none}
+  body.side-narrow aside{width:264px}
+}
+/* ---- containers table becomes stacked cards below 720px ---- */
+@media (max-width:720px){
+  .ctable,.ctable tbody,.ctable tr,.ctable td{display:block;width:100%}
+  .ctable thead{display:none}
+  .ctable tbody tr{border-bottom:1px solid var(--line);padding:8px 4px}
+  .ctable tbody td{border-bottom:0;padding:3px 10px;white-space:normal}
+  .ctable tbody td::before{content:attr(data-l);display:block;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:1px}
+  .ctable td.c-name::before,.ctable td.acts::before{display:none}
+  .ctable td.chart{min-width:0;width:auto}
+  .ctable td.acts{text-align:left}
+  .ctable td.acts .rowacts{opacity:1;justify-content:flex-start;min-width:0}
+  .hostsgrid{grid-template-columns:1fr}
+}
+
+/* ---- a11y: respect reduced motion ---- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+  .pdot{animation:none;opacity:1}
+}
 </style>
 </head>
 <body>
 <header>
+  <button class="iconbtn" id="sideBtn" title="Open sidebar" aria-label="Open sidebar" aria-expanded="false" aria-controls="sidePanel">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
   <span class="logo">
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="4" fill="currentColor"/><path d="M4.5 5.5L7 8L4.5 10.5" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M8.5 10.5H11.5" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
     <h1>CapScope</h1>
@@ -405,7 +510,8 @@ h2{font-weight:600;letter-spacing:-.02em}
   <button class="avatar" id="logoutBtn" title="Log out" style="display:none">?</button>
 </header>
 <main id="main">
-  <aside>
+  <div id="sideScrim"></div>
+  <aside id="sidePanel" aria-label="Applications and containers">
     <div class="side-top">
       <button id="sideToggle" title="Collapse sidebar">⟨⟨</button>
       <div class="side-pill" id="sideMode" role="tablist" aria-label="Sidebar mode">
@@ -417,12 +523,12 @@ h2{font-weight:600;letter-spacing:-.02em}
     <div id="apps"></div>
   </aside>
   <section class="content">
-    <nav class="tabs" id="tabs">
-      <button data-t="dashboard" class="sel">Dashboard</button><button data-t="logs">Logs</button><button data-t="metrics">Metrics</button><button data-t="access">Access</button><button data-t="crashes">Crashes</button><button data-t="alerts">Alerts</button><button data-t="admin" id="adminTab" style="display:none">Admin</button>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
+      <button data-t="dashboard" class="sel" role="tab" aria-selected="true" aria-controls="view-dashboard">Dashboard</button><button data-t="logs" role="tab" aria-selected="false" aria-controls="view-logs">Logs</button><button data-t="metrics" role="tab" aria-selected="false" aria-controls="view-metrics">Metrics</button><button data-t="access" role="tab" aria-selected="false" aria-controls="view-access">Access</button><button data-t="crashes" role="tab" aria-selected="false" aria-controls="view-crashes">Crashes</button><button data-t="alerts" role="tab" aria-selected="false" aria-controls="view-alerts">Alerts</button><button data-t="admin" id="adminTab" role="tab" aria-selected="false" aria-controls="view-admin" style="display:none">Admin</button>
     </nav>
     <div id="view-dashboard" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
-      <button class="b" id="jumpLive" title="Jump to live logs">↓ New logs</button>
+      <button class="b" id="jumpLive" title="Jump to live logs"><span class="jt">↓ New logs</span><span class="unread" id="unreadN">0</span></button>
       <div class="bar">
         <input type="search" id="q" placeholder="Search logs">
         <div class="range-wrap" style="display:flex;align-items:center;gap:6px;margin-left:10px;">
@@ -432,7 +538,7 @@ h2{font-weight:600;letter-spacing:-.02em}
           <button class="b range-chip hide-sql" id="r24h" data-range="24h">24h</button>
         </div>
         <select id="smode" title="Search mode"><option value="">text</option><option value="rx">regex</option><option value="sql">SQL</option></select>
-        <select id="lvl" class="hide-sql"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="info">info</option><option value="debug">debug</option></select>
+        <select id="lvl" class="hide-sql"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option></select>
         <select id="strm" class="hide-sql"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
         <button class="b hide-sql" id="replicas" style="display:none">All replicas ▾</button>
         <button class="b on hide-sql" id="follow">Follow</button>
@@ -447,6 +553,7 @@ h2{font-weight:600;letter-spacing:-.02em}
         <button class="b hide-sql" id="exportSel" style="display:none" title="Export selected lines as CSV">Export (0) lines</button>
         <span class="chip" id="cnt"></span>
         <div class="pop" id="repPop" style="display:none"></div>      </div>
+      <div class="legend hide-sql" id="legend" role="group" aria-label="Filter by log level"></div>
       <div id="panes"></div>
       <div id="logs"></div>
     </div>
@@ -671,11 +778,34 @@ function connBad(msg){const c=$('#conn');c.textContent=msg;c.className='chip bad
 function connChip(kind,msg){const c=$('#conn');c.textContent=msg;c.className='chip '+kind;clearTimeout(badT);}
 /* ---------- toasts ---------- */
 /* Non-blocking feedback for saves/records; replaces inline status text on success. */
-function toast(msg,kind){
+function toast(msg,kind,undo){
   const box=$('#toasts');if(!box)return;
-  const t=document.createElement('div');t.className='toast'+(kind?' '+kind:'');t.textContent=msg;
+  const t=document.createElement('div');t.className='toast'+(kind?' '+kind:'');
+  const m=document.createElement('span');m.textContent=msg;t.append(m);
+  let dead=false;
+  const kill=()=>{if(dead)return;dead=true;t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),350);};
+  if(typeof undo==='function'){
+    const u=document.createElement('button');u.className='undo';u.type='button';u.textContent='Undo';
+    u.onclick=()=>{kill();try{undo();}catch(e){console.warn('capscope: undo failed',e);}};
+    t.append(u);
+  }
   box.append(t);
-  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),350);},4000);
+  setTimeout(kill,undo?7000:4000);
+}
+/* Clipboard helper with toast feedback (row + line hover actions). */
+function copyText(s,msg){
+  if(!s)return;
+  navigator.clipboard.writeText(s).then(()=>toast(msg||'Copied')).catch(()=>toast('Copy failed','err'));
+}
+/* Value flash: highlight a number when it changes between dashboard refreshes.
+   First sighting only records the baseline so the initial paint stays quiet. */
+const lastVals={};
+function flashVal(el,key){
+  const v=el.textContent;
+  if(lastVals[key]!==undefined&&lastVals[key]!==v){
+    el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');
+  }
+  lastVals[key]=v;
 }
 
 /* Keep the Logs-tab CSV download in step with the current filters. */
@@ -939,7 +1069,7 @@ const TABS=['dashboard','logs','metrics','access','crashes','alerts','admin'];
 function setTab(t){
   if(!TABS.includes(t)||t==='admin'&&S.role!=='admin')t='logs';
   S.tab=t;
-  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('sel',b.dataset.t===t));
+  document.querySelectorAll('#tabs button').forEach(b=>{const on=b.dataset.t===t;b.classList.toggle('sel',on);b.setAttribute('aria-selected',on?'true':'false');});
   syncURL();
   show();
 }
@@ -955,6 +1085,15 @@ function setSidebar(narrow){
 }
 $('#sideToggle').onclick=()=>setSidebar(!S.sideNarrow);
 setSidebar(localStorage.getItem('sideNarrow')==='1');
+/* v0.7-E: below 900px the sidebar becomes a drawer. #sideBtn opens it, the
+   scrim or Escape closes it; body.drawer-open is inert above the breakpoint. */
+function setDrawer(open){
+  document.body.classList.toggle('drawer-open',open);
+  const b=$('#sideBtn');if(b)b.setAttribute('aria-expanded',open?'true':'false');
+}
+$('#sideBtn').onclick=()=>setDrawer(!document.body.classList.contains('drawer-open'));
+$('#sideScrim').onclick=()=>setDrawer(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')setDrawer(false);});
 /* Sidebar mode pill: "Containers" (Dozzle-style flat list) vs "Apps" (meters). */
 function syncSideMode(){
   document.querySelectorAll('#sideMode button').forEach(b=>{
@@ -1170,6 +1309,23 @@ function makeVList(scroller){
   };
   vl.atBottom=()=>scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<60;
   vl.toBottom=()=>{rebuild();scroller.scrollTop=total();};
+  /* Map a raw rows[] index to its disp[] slot (collapsed runs occupy one
+     slot covering n rows) and scroll there. Used by "jump to first unread",
+     where the target is stored as a rows index but rows are trimmed and
+     folded as new lines arrive. */
+  vl.scrollToRowIndex=i=>{
+    rebuild();
+    let acc=0,slot=-1;
+    for(let d=0;d<vl.disp.length;d++){
+      const e=vl.disp[d];
+      const span=e&&e.c?(e.n||1):1;
+      if(acc+span>i){slot=d;break;}
+      acc+=span;
+    }
+    if(slot<0)slot=Math.max(0,vl.disp.length-1);
+    scroller.scrollTop=Math.max(0,Math.min(total(),slot*ROW_H-Math.max(0,(scroller.clientHeight-ROW_H)/2)));
+    vl.schedule();
+  };
   return vl;
 }
 
@@ -1276,7 +1432,33 @@ function sqlRows(d){
 function jumpLiveWatch(){
   const scrs=[document.querySelector('#logs'),...document.querySelectorAll('.plog')].filter(Boolean);
   const atBottom=scrs.length&&scrs.every(s=>s.scrollHeight-s.scrollTop-s.clientHeight<60);
-  $('#jumpLive').classList.toggle('show',!atBottom);
+  const jl=$('#jumpLive');
+  jl.classList.toggle('show',!atBottom);
+  if(atBottom)resetUnread();
+  jl.classList.toggle('at-first',!!S.unreadRow&&!!S.unread);
+}
+/* Unread bookkeeping: rows that arrive while the view is scrolled away from
+   the bottom. The pill shows the count; the first click scrolls to the oldest
+   unread line, the second (or a click while already there) returns to live. */
+function resetUnread(){
+  S.unread=0;S.unreadRow=null;
+  const jl=$('#jumpLive');
+  jl.classList.remove('has-unread','at-first');
+  $('#unreadN').textContent='0';
+}
+function noteUnread(n,firstRow){
+  if(!n)return;
+  const scrs=[document.querySelector('#logs'),...document.querySelectorAll('.plog')].filter(Boolean);
+  const atBottom=scrs.length&&scrs.every(s=>s.scrollHeight-s.scrollTop-s.clientHeight<60);
+  if(atBottom)return; // following live: nothing is unread
+  // Keep the row itself, not an index: the list trims from the front as new
+  // lines arrive, so a stored index would drift off the line it marked.
+  if(S.unreadRow==null&&firstRow)S.unreadRow=firstRow;
+  S.unread+=n;
+  const jl=$('#jumpLive');
+  jl.classList.add('has-unread');
+  $('#unreadN').textContent=S.unread>999?'999+':String(S.unread);
+  jl.title='Jump to first unread line ('+S.unread+' unread)';
 }
 function createPane(host,container,split){
   const pane={name:container,el:host,host,split,scroller:null,vl:null,es:null,loaded:false,pending:[],maxId:0,follow:true,paused:false};
@@ -1312,8 +1494,25 @@ function createPane(host,container,split){
   pane.scroller.addEventListener('scroll',followOff);
   jumpLiveWatch();
   $('#jumpLive').onclick=()=>{
+    const jl=$('#jumpLive');
+    // First click: jump to the oldest unread line. Second click (or a click
+    // when there is nothing unread): return to live tail.
+    if(S.unread&&S.unreadRow&&!jl.classList.contains('at-first')){
+      // Locate the stored row among current rows; if it was trimmed away,
+      // fall back to the oldest row still present.
+      const p=S.panes.find(p=>p.vl&&p.vl.rows.length);
+      if(p){
+        let idx=p.vl.rows.indexOf(S.unreadRow);
+        if(idx<0)idx=0;
+        p.vl.scrollToRowIndex(idx);
+        jl.classList.add('at-first');
+        jl.title='Back to live logs';
+        return;
+      }
+    }
     document.querySelectorAll('#logs,.plog').forEach(s=>{s.scrollTop=s.scrollHeight;});
-    $('#jumpLive').classList.remove('show');
+    resetUnread();
+    jl.classList.remove('show','at-first');
   };
   pane.destroy=()=>{pane.scroller.removeEventListener('scroll',followOff);vl.destroy();};
   return pane;
@@ -1406,7 +1605,11 @@ async function startPane(pane){
 function paneAppend(pane,rs,pin){
   const fresh=[];
   for(const r of rs){if(r.d||r.id>pane.maxId){if(!r.d)pane.maxId=r.id;fresh.push(r);}}
-  if(fresh.length)pane.vl.append(fresh,pin&&pane.follow&&pane.vl.atBottom());
+  if(fresh.length){
+    const wasBottom=pane.vl.atBottom();
+    pane.vl.append(fresh,pin&&pane.follow&&wasBottom);
+    if(!wasBottom)noteUnread(fresh.length,fresh[0]);
+  }
   updateCnt();
 }
 function flushPending(pane){
@@ -1417,6 +1620,38 @@ function flushPending(pane){
 function updateCnt(){
   let n=0;for(const p of S.panes)n+=p.vl.rows.length;
   $('#cnt').textContent=n+(sqlOn()?' rows':' lines');
+  renderLegend();
+}
+/* Level legend: live per-level counts for the rows currently loaded. A chip
+   filters to that level (click again to clear); the active chip mirrors #lvl.
+   Counts reflect what is loaded, so they shrink while a level filter is on. */
+function renderLegend(){
+  const box=$('#legend');if(!box)return;
+  const cnt={error:0,warn:0,info:0,debug:0};
+  for(const p of S.panes){
+    const rows=p.vl&&p.vl.rows;if(!rows)continue;
+    for(const r of rows){if(!r.d&&cnt[r.level]!=null)cnt[r.level]++;}
+  }
+  const cur=$('#lvl').value;
+  const active=new Set(cur?cur.split(','):[]);
+  box.replaceChildren();
+  for(const lvl of ['error','warn','info','debug']){
+    const b=document.createElement('button');b.type='button';b.className='lg '+lvl;
+    const dot=document.createElement('span');dot.className='d';
+    const lb=document.createElement('span');lb.textContent=lvl;
+    const n=document.createElement('b');n.textContent=cnt[lvl];
+    b.append(dot,lb,n);
+    b.title='Show only '+lvl+' lines ('+cnt[lvl]+' loaded) — click again to clear';
+    b.classList.toggle('on',active.has(lvl));
+    b.setAttribute('aria-pressed',active.has(lvl)?'true':'false');
+    b.onclick=()=>{
+      const sel=$('#lvl');
+      sel.value=sel.value===lvl?'':lvl;
+      renderLegend();
+      redo();
+    };
+    box.append(b);
+  }
 }
 $('#follow').onclick=()=>{const nf=!S.panes.some(p=>p.follow);for(const p of S.panes){p.follow=nf;const fw=p.el.querySelector('.bx:nth-child(2)');if(fw)fw.textContent=nf?'👁':'🙈';if(nf)p.vl.toBottom();}$('#follow').classList.toggle('on',nf);};
 $('#wrap').onclick=()=>{S.wrapLines=!S.wrapLines;$('#wrap').classList.toggle('on',S.wrapLines);document.documentElement.classList.toggle('wrap',S.wrapLines);};
@@ -1473,7 +1708,7 @@ async function loadOlder(pane){
   }catch(e){connBad('load older failed');console.warn('capscope: load older failed',e);}
 }
 let deb;const redo=()=>{clearTimeout(deb);deb=setTimeout(restartLogs,300);};
-['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',redo));
+['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',()=>{redo();if(s==='#lvl')renderLegend();}));
 
 /* ---------- row rendering ---------- */
 function highlight(el,text){
@@ -1523,7 +1758,10 @@ function lineEl(r){
   const d=document.createElement('div');d.className='ln '+(r.level||'')+(r.stream==='e'?' e':'');d.dataset.key=lineKey(r);d.dataset.ts=r.ts||'';d.dataset.container=r.container||'';d.dataset.line=r.line||'';
   if(S.selKeys.has(d.dataset.key))d.classList.add('sel');
   if(S.hl.has(d.dataset.key))d.classList.add('hl');
-  const t=document.createElement('span');t.className='t';t.textContent=r.ts?fmtTime(r.ts):'';
+  const t=document.createElement('span');t.className='t lts';t.textContent=r.ts?fmtTime(r.ts):'';
+  // Click the timestamp to copy the full date+time (the mono column only shows HH:MM:SS).
+  t.title=r.ts?'Click to copy '+fmtDT(r.ts):'';
+  t.onclick=e=>{e.stopPropagation();if(r.ts)copyText(fmtDT(r.ts),'Timestamp copied');};
   const c=document.createElement('span');c.className='c';c.textContent=(S.conts.find(x=>x.name===r.container)||{}).replica||r.container.split('.')[1]||r.container||'';
   const x=document.createElement('span');x.className='x';x.title=r.line;highlight(x,r.line);
   const o=asJSON(r.line);
@@ -1538,11 +1776,31 @@ function lineEl(r){
     }
   }
   d.append(t,c,x);
-  const cb=document.createElement('span');cb.className='copyBtn';cb.textContent='⧉';cb.title='Copy line';
-  cb.onclick=e=>{e.stopPropagation();navigator.clipboard.writeText(r.line).then(()=>{
-    cb.textContent='✓';setTimeout(()=>cb.textContent='⧉',900);
-  });};
-  d.append(cb);
+  // Hover actions: copy, filter to this container, filter to this level.
+  const mkAct=(glyph,title,fn)=>{
+    const b=document.createElement('button');b.type='button';b.className='act';
+    b.textContent=glyph;b.title=title;
+    b.onclick=e=>{e.stopPropagation();fn();};
+    return b;
+  };
+  const lacts=document.createElement('span');lacts.className='lacts';
+  lacts.append(mkAct('⧉','Copy line',()=>copyText(r.line,'Line copied')));
+  lacts.append(mkAct('⌗','Show only this container',()=>{
+    const tc=S.conts.find(z=>z.name===r.container);
+    if(!tc){toast('Container '+r.container+' is not tracked','err');return;}
+    selectContainer(tc.id,tc);
+    if(S.tab!=='logs')setTab('logs');
+    toast('Filtered to '+r.container);
+  }));
+  if(r.level){
+    lacts.append(mkAct('▼','Show only '+r.level+' lines',()=>{
+      const sel=$('#lvl');
+      if(sel.value===r.level){sel.value='';toast('Level filter cleared');}
+      else{sel.value=r.level;toast('Level filter: '+r.level);}
+      renderLegend();redo();
+    }));
+  }
+  d.append(lacts);
   d.onclick=e=>selToggle(r,e);
   d.ondblclick=e=>{e.stopPropagation();const k=d.dataset.key;if(S.hl.has(k))S.hl.delete(k);else{S.hl.add(k);S.selData.set(k,{ts:r.ts,container:r.container,line:r.line});}renderSel();};
   // v0.7-C: context menu — open ±N lines around this row in the context modal.
@@ -1969,7 +2227,8 @@ async function loadAdmin(){
 let dashTimer=0;
 let dashGen=0;
 let ovData=null;              // last payload: header clicks re-sort from it without refetching
-const ovSort={k:'name',d:1};  // table sort: column key + direction (1 = asc, -1 = desc)
+// ovSort (table sort: column key + direction) is defined next to OV_COLS,
+// restored from localStorage so the dashboard keeps the user's sort order.
 function fmtBytes(b,dec){
   if(b==null||!isFinite(b)||b<0)return '—';
   if(b<1024)return Math.round(b)+' Bytes';
@@ -2030,7 +2289,9 @@ function drawBars(cv,vals,o){
     g.beginPath();g.moveTo(x,h-1);g.lineTo(x,Math.max(y,1));g.stroke();
   }
 }
-/* Collapsible ▾ SECTION header (Dozzle): title + count badge, body toggles. */
+/* Collapsible ▾ SECTION header (Dozzle): title + count badge, body toggles.
+   The collapsed state persists per section title so a noisy panel stays out
+   of the way across refreshes and page loads. */
 function secBlock(title,count){
   const wrap=document.createElement('div');
   const head=document.createElement('div');head.className='sec';
@@ -2040,7 +2301,10 @@ function secBlock(title,count){
   if(count!=null){const c=document.createElement('span');c.className='cnt';c.textContent=count;head.append(c);}
   const sp=document.createElement('span');sp.className='sp';head.append(sp);
   const body=document.createElement('div');
-  chev.onclick=()=>{const hid=body.style.display==='none';body.style.display=hid?'':'none';chev.textContent=hid?'▾':'▸';chev.title=hid?'Collapse section':'Expand section';};
+  const key='sec:'+title;
+  const apply=hid=>{body.style.display=hid?'none':'';chev.textContent=hid?'▸':'▾';chev.title=hid?'Expand section':'Collapse section';};
+  apply(localStorage.getItem(key)==='1');
+  chev.onclick=()=>{const hid=body.style.display==='none';apply(!hid);localStorage.setItem(key,hid?'0':'1');};
   wrap.append(head,body);
   return {wrap,body};
 }
@@ -2055,6 +2319,7 @@ function metricPanel(kind,title,m,fmt,scale){
   mh.append(tt,cap);
   const mv=document.createElement('div');mv.className='mv';
   mv.textContent=m&&isFinite(Number(m.value))?fmt(Number(m.value)):'—';
+  flashVal(mv,'mv:'+kind);
   const ms=document.createElement('div');ms.className='ms';
   if(m&&isFinite(Number(m.avg))){
     ms.innerHTML='avg <b></b> · peak <b></b>';
@@ -2081,6 +2346,12 @@ function hostCard(h){
     h.docker_version?'Docker '+h.docker_version:null,h.uptime_s?fmtDur(h.uptime_s)+' up':null].filter(Boolean);
   facts.textContent=f.length?f.join(' · '):'No host metrics for this filter';
   const chips=document.createElement('div');chips.className='hchips';
+  if(h.containers!=null){
+    const hc=document.createElement('span');hc.className='hcount';
+    hc.textContent=h.containers+(h.containers===1?' container':' containers');
+    hc.title='Containers reporting from this host';
+    chips.append(hc);
+  }
   if(Number(h.disk_total)>0){
     const c=document.createElement('span');c.className='hchip';
     const usedPct=Math.max(0,Math.min(100,(1-Number(h.disk_free)/Number(h.disk_total))*100));
@@ -2111,6 +2382,7 @@ function statStrip(st){
   const s=document.createElement('div');s.className='statstrip';
   const chip=(val,label,title)=>{const c=document.createElement('span');c.className='schip';c.title=title||'';
     const b=document.createElement('b');b.textContent=val;
+    flashVal(b,'stat:'+label);
     c.append(b,document.createTextNode(' '+label));return c;};
   s.append(
     chip(String(st.containers??'—'),'running','Live containers reported by Docker'),
@@ -2124,6 +2396,16 @@ const OV_COLS=[
   {k:'name',t:'Name'},{k:'cpu',t:'CPU'},{k:'mem',t:'Memory'},
   {k:'net',t:'Network'},{k:'disk',t:'Disk'},{k:'started',t:'Created'},
 ];
+/* Sort choice survives reloads; unknown keys fall back to the default so a
+   removed column can't strand the table in a broken sort. */
+const ovSort=(()=>{
+  try{
+    const o=JSON.parse(localStorage.getItem('ovSort')||'null');
+    if(o&&typeof o.k==='string'&&typeof o.d==='number'&&(o.d===1||o.d===-1)&&OV_COLS.some(c=>c.k===o.k))return o;
+  }catch(e){}
+  return {k:'name',d:1};
+})();
+const saveOvSort=()=>localStorage.setItem('ovSort',JSON.stringify(ovSort));
 function ovVal(c,k){
   switch(k){
     case 'cpu':return Number(c.avg_cpu||0);
@@ -2193,6 +2475,22 @@ function ovRow(c,multi){
   cr.textContent=c.started?ago(Number(c.started)):'—';
   if(c.started)cr.title=fmtDT(Number(c.started));
   tr.append(cr);
+  // Hover actions: copy identifiers, jump to Metrics / Logs for this container.
+  const mkAct=(glyph,title,fn)=>{
+    const b=document.createElement('button');b.type='button';b.className='act';
+    b.textContent=glyph;b.title=title;
+    b.onclick=e=>{e.stopPropagation();fn();};
+    return b;
+  };
+  const ac=document.createElement('td');ac.className='acts';
+  const rowacts=document.createElement('span');rowacts.className='rowacts';
+  rowacts.append(
+    mkAct('⧉','Copy container name',()=>copyText(c.name||'','Container name copied')),
+    mkAct('#','Copy container ID',()=>copyText(c.id||'','Container ID copied')),
+    mkAct('▤','Open Metrics for '+c.name,()=>{selectContainer(c.id,c);setTab('metrics');}),
+    mkAct('▶','Open Logs for '+c.name,()=>{selectContainer(c.id,c);setTab('logs');}),
+  );
+  ac.append(rowacts);tr.append(ac);
   tr.onclick=()=>{selectContainer(c.id,c);if(S.tab!=='logs')setTab('logs');};
   return tr;
 }
@@ -2206,9 +2504,11 @@ function renderCtable(){
     if(ovSort.k===c.k){th.classList.add('sorted');if(ovSort.d<0)th.classList.add('asc');}
     const arw=document.createElement('span');arw.className='arw';arw.textContent='▲';th.append(arw);
     th.title='Sort by '+c.t;
-    th.onclick=()=>{if(ovSort.k===c.k)ovSort.d=-ovSort.d;else{ovSort.k=c.k;ovSort.d=c.k==='name'?1:-1;}paint();};
+    th.onclick=()=>{if(ovSort.k===c.k)ovSort.d=-ovSort.d;else{ovSort.k=c.k;ovSort.d=c.k==='name'?1:-1;}saveOvSort();paint();};
     hr.append(th);
   });
+  const hact=document.createElement('th');hact.className='acts';
+  hact.setAttribute('aria-label','Row actions');hr.append(hact);
   thead.append(hr);tb.append(thead);
   const body=document.createElement('tbody');tb.append(body);
   wrap.append(tb);
@@ -2261,9 +2561,24 @@ async function loadOverview(){
   if(!d||typeof d!=='object'){box.innerHTML='<div class="callout warn">Overview returned unexpected data.</div>';return;}
   ovData=d;
   box.innerHTML='';
-  // HOSTS — one card for the host this view is scoped to
-  const hs=secBlock('HOSTS',1);
-  hs.body.append(hostCard(d.host||{}));
+  // HOSTS — a clickable card grid when several hosts report into this view,
+  // otherwise the single host card. Clicking a card filters the whole app to
+  // that host (click the active one again to return to "All hosts").
+  const nHosts=(d.hosts&&d.hosts.length)||0;
+  const hs=secBlock('HOSTS',nHosts||1);
+  if(nHosts>1){
+    const hgrid=document.createElement('div');hgrid.className='hostsgrid';
+    for(const e of d.hosts){
+      const card=hostCard(e);
+      if(S.host===e.id)card.classList.add('on');
+      card.title='Show everything on '+(e.name||e.id);
+      card.onclick=ev=>{if(ev.target.closest('.hname'))return;setHost(S.host===e.id?'':e.id);};
+      hgrid.append(card);
+    }
+    hs.body.append(hgrid);
+  }else{
+    hs.body.append(hostCard(d.host||{}));
+  }
   if(st)hs.body.append(statStrip(st));
   box.append(hs.wrap);
   // CONTAINERS — sortable Dozzle-style table
