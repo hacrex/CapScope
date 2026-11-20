@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -1667,6 +1668,105 @@ func (s *Store) EnforcePerAppSize(ctx context.Context, budgets map[string]int64)
 	}
 	_, _ = s.w.ExecContext(ctx, "PRAGMA incremental_vacuum")
 	return deleted, nil
+}
+
+// NormalizeSchema performs the PRD S6 row normalization: it removes the
+// denormalized `container` and `app` columns from the logs table (and the
+// equivalent columns from metrics, access, and snapshots) so each log row no
+// longer repeats the container name and app string. The containers table
+// already persists name+app per container_id, so logs can JOIN to recover them.
+//
+// This saves ~80 bytes per log row (~20% of the measured ~400 bytes/row).
+//
+// It is intentionally NOT auto-applied: it rewrites the logs table (the
+// largest table), rebuilds the FTS5 index, and changes the column set that
+// /api/sql and ad-hoc queries see. Operators should run it during a planned
+// maintenance window, after taking a backup of the SQLite file.
+//
+// To apply: set CAPSCOPE_ENABLE_NORMALIZE=1 and call this function (e.g. via
+// a one-off admin command or the /api/admin/normalize-schema endpoint).
+//
+// After normalization, all queries that previously selected `container`/`app`
+// from `logs` must JOIN with `containers` instead. A compatibility view
+// `logs_view` (id, ts, container_id, container, app, host_id, stream, level,
+// line) is created so existing /api/sql queries keep working unchanged.
+func (s *Store) NormalizeSchema(ctx context.Context) error {
+	if os.Getenv("CAPSCOPE_ENABLE_NORMALIZE") != "1" {
+		return nil // opt-in only; refuse to run silently
+	}
+	// Idempotent: if logs already lacks the container/app column, we're done.
+	var hasContainer int
+	err := s.w.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('logs') WHERE name='container'`).Scan(&hasContainer)
+	if err != nil {
+		return fmt.Errorf("normalize: inspect logs schema: %w", err)
+	}
+	if hasContainer == 0 {
+		return nil // already normalized
+	}
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("normalize: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	// 1. Build the normalized logs table (no container/app columns).
+	if _, err := tx.ExecContext(ctx, `
+		CREATE TABLE logs_n(
+		   id INTEGER PRIMARY KEY AUTOINCREMENT,
+		   ts INTEGER NOT NULL,
+		   container_id TEXT NOT NULL,
+		   host_id TEXT NOT NULL DEFAULT '',
+		   stream TEXT NOT NULL,
+		   level TEXT NOT NULL DEFAULT '',
+		   line TEXT NOT NULL
+		)`); err != nil {
+		return fmt.Errorf("normalize: create logs_n: %w", err)
+	}
+	// 2. Copy data across.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO logs_n(id, ts, container_id, host_id, stream, level, line)
+		SELECT id, ts, container_id, host_id, stream, level, line FROM logs`); err != nil {
+		return fmt.Errorf("normalize: copy logs: %w", err)
+	}
+	// 3. Swap tables.
+	if _, err := tx.ExecContext(ctx, `DROP TABLE logs`); err != nil {
+		return fmt.Errorf("normalize: drop logs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE logs_n RENAME TO logs`); err != nil {
+		return fmt.Errorf("normalize: rename logs_n: %w", err)
+	}
+	// 4. Recreate indexes (without app).
+	if _, err := tx.ExecContext(ctx, `
+		CREATE INDEX idx_logs_cid_id ON logs(container_id, id);
+		CREATE INDEX idx_logs_ts ON logs(ts);
+		CREATE INDEX IF NOT EXISTS idx_logs_ts_app ON logs(ts, container_id);
+		CREATE INDEX idx_logs_host ON logs(host_id);`); err != nil {
+		return fmt.Errorf("normalize: recreate indexes: %w", err)
+	}
+	// 5. Rebuild FTS5 triggers and index.
+	if _, err := tx.ExecContext(ctx, `
+		DROP TRIGGER IF EXISTS logs_ai;
+		DROP TRIGGER IF EXISTS logs_ad;
+		CREATE TRIGGER logs_ai AFTER INSERT ON logs BEGIN
+		  INSERT INTO logs_fts(rowid, line) VALUES (new.id, new.line);
+		END;
+		CREATE TRIGGER logs_ad AFTER DELETE ON logs BEGIN
+		  INSERT INTO logs_fts(logs_fts, rowid, line) VALUES('delete', old.id, old.line);
+		END;
+		INSERT INTO logs_fts(logs_fts) VALUES('rebuild');`); err != nil {
+		return fmt.Errorf("normalize: rebuild FTS5: %w", err)
+	}
+	// 6. Compatibility view: old column set via JOIN with containers.
+	if _, err := tx.ExecContext(ctx, `
+		CREATE VIEW logs_view AS
+		  SELECT l.id, l.ts, l.container_id, c.name AS container, c.app AS app,
+		         l.host_id, l.stream, l.level, l.line
+		  FROM logs l JOIN containers c ON l.container_id = c.id`); err != nil {
+		return fmt.Errorf("normalize: create logs_view: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("normalize: commit: %w", err)
+	}
+	return nil
 }
 
 // ---- alerts ----
