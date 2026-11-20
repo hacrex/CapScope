@@ -170,7 +170,7 @@ func Load() (Config, error) {
 	c.AlertsInterval = dur("ALERTS_INTERVAL", "1m")
 	c.UpdateCheckInterval = dur("UPDATE_CHECK_INTERVAL", "24h")
 
-	for _, k := range strings.Split(env("SNAPSHOT_KINDS", "crash,oom"), ",") {
+	for _, k := range strings.Split(env("SNAPSHOT_KINDS", "crash,oom,unhealthy"), ",") {
 		if k = strings.TrimSpace(k); k != "" {
 			c.SnapshotKinds[k] = true
 		}

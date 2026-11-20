@@ -76,6 +76,12 @@ func summarize(kind string, exit int, peakMem, memLimit int64, errCount int, las
 			s += fmt.Sprintf(" Peak sampled memory was %s of a %s limit.", humanBytes(peakMem), humanBytes(memLimit))
 		}
 		s += " Raise the memory limit or look for a leak."
+	case kind == "unhealthy":
+		s = "Container is failing its Docker health check but is still running."
+		if memLimit > 0 && peakMem > 0 {
+			s += fmt.Sprintf(" Sampled memory is %s of a %s limit.", humanBytes(peakMem), humanBytes(memLimit))
+		}
+		s += " Check the health check command and the last error lines."
 	case kind == "clean_exit":
 		s = "Exited with code 0."
 	case exit == 137:

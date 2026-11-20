@@ -41,6 +41,11 @@ type Manager struct {
 	// death replayed after downtime (C8) is still classified correctly.
 	pending map[string]pendingEv
 
+	// lastUnhealthy is the unix ms of the last unhealthy snapshot per
+	// container, used to deduplicate health_status events that fire on every
+	// health check interval while a container stays unhealthy.
+	lastUnhealthy map[string]int64
+
 	curMu    sync.Mutex
 	curSaved int64 // last Docker event cursor persisted to the store (ns)
 
@@ -88,6 +93,7 @@ func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hu
 		tracked:    map[string]*tracker{},
 		lastTS:     map[string]int64{},
 		pending:    map[string]pendingEv{},
+		lastUnhealthy: map[string]int64{},
 		hostID:     cfg.AgentHostID,
 	}
 	m.sink = storeSink{st: st, h: h}
@@ -803,6 +809,25 @@ func (m *Manager) handleEvent(ctx context.Context, ev docker.Event) {
 				m.rememberFlag(id, ev.TimeNano, pendingEv{ts: ev.TimeNano, sig: sig})
 			}
 		}
+	case "health_status":
+		// X8: health-check-failure snapshot. When a container transitions to
+		// unhealthy, capture its current state (logs, metrics, inspect) as
+		// evidence without disturbing the live tracker — the container is
+		// still running. Deduplicate per container with a 5-minute cooldown
+		// so a container that stays unhealthy doesn't spam snapshots.
+		if ev.Actor.Attributes["status"] != "unhealthy" {
+			break
+		}
+		nowMs := time.Unix(0, ev.TimeNano).UnixMilli()
+		m.mu.Lock()
+		last := m.lastUnhealthy[id]
+		if nowMs-last <= 5*time.Minute.Milliseconds() {
+			m.mu.Unlock()
+			break
+		}
+		m.lastUnhealthy[id] = nowMs
+		m.mu.Unlock()
+		go m.snapshotUnhealthy(ctx, id)
 	case "die":
 		exit, _ := strconv.Atoi(ev.Actor.Attributes["exitCode"])
 		// Compare against the container's real Docker start time (t.started),
@@ -930,6 +955,37 @@ func (m *Manager) finishDie(ctx context.Context, t *tracker, id string, exit int
 	if loop.threshold > 0 && loop.count == loop.threshold {
 		m.log.Warn("possible restart loop", "app", t.app, "container", t.name, "deaths", loop.count, "window", loop.window)
 	}
+}
+
+// snapshotUnhealthy captures the current state of a still-running container
+// that is failing its Docker health check (X8). Unlike finishDie it does not
+// detach the tracker or wait for log drain — the container keeps running.
+// Dedup is handled by the caller (lastUnhealthy map, 5-minute cooldown).
+func (m *Manager) snapshotUnhealthy(ctx context.Context, id string) {
+	t := m.get(id)
+	if t == nil {
+		m.log.Debug("unhealthy snapshot: no tracker", "id", short(id))
+		return
+	}
+	if t.accessOnly {
+		return
+	}
+	if !m.cfg.SnapshotKinds["unhealthy"] {
+		return
+	}
+	insp, ierr := m.dk.Inspect(ctx, id)
+	if ierr != nil {
+		m.log.Error("unhealthy snapshot: inspect failed", "id", short(id), "err", ierr)
+		return
+	}
+	sn := buildSnapshot(t, 0, insp, ierr == nil, "unhealthy", 0, restartLoop{})
+	sn.DieTS = 0 // no death time; container is still running
+	sid, err := m.st.InsertSnapshot(sn)
+	if err != nil {
+		m.log.Error("insert unhealthy snapshot failed", "err", err)
+		return
+	}
+	m.log.Warn("unhealthy snapshot saved", "id", sid, "app", t.app, "container", t.name)
 }
 
 // rebuildTracker builds the tracker of a container that died without a live
