@@ -25,3 +25,7 @@ test_repro.db
 *.log
 out*.txt
 fix_quote.py
+
+# Node.js (UI build tooling)
+node_modules/
+npm-debug.log*
