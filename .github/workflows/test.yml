@@ -20,5 +20,9 @@ jobs:
         run: node scripts/check-ui.js
       - name: go vet
         run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
       - name: go test
         run: go test -race -count=1 -tags "sqlite_omit_load_extension fts5" ./...

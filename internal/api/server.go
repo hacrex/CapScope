@@ -250,7 +250,17 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	if s.cfg.AuthProvider == "oidc" {
 		return s.oidcAuth(next)
 	}
+	// Local password auth: fail closed. If AUTH_PASS is empty (which config
+	// validation should already prevent when ALLOW_NO_AUTH is unset), deny
+	// every request rather than passing through unauthenticated.
+	// ALLOW_NO_AUTH=true is the only supported escape hatch.
 	if s.cfg.AuthPass == "" || s.sessions == nil {
+		if s.cfg.AuthProvider == "local" && !s.cfg.AllowNoAuth {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="capscope"`)
+				http.Error(w, "authentication not configured: set AUTH_PASS (or ALLOW_NO_AUTH=true for local testing)", http.StatusUnauthorized)
+			})
+		}
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

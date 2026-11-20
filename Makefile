@@ -1,9 +1,12 @@
 export GOFLAGS ?= -mod=mod
 TAGS := sqlite_omit_load_extension fts5
 
-.PHONY: build test run demo docker
+.PHONY: build test run demo docker lint
 build:
 	CGO_ENABLED=1 go build -trimpath -tags "$(TAGS)" -o bin/capscope ./cmd/capscope
+
+lint:
+	golangci-lint run
 
 test:
 	node scripts/check-ui.js
