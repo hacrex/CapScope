@@ -67,6 +67,18 @@ func (h *Hub) Count() int {
 	return len(h.subs)
 }
 
+// DroppedTotal returns the total number of rows dropped across all
+// subscribers (prometheus: capscope_sse_dropped_rows_total).
+func (h *Hub) DroppedTotal() int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var total int64
+	for s := range h.subs {
+		total += s.Dropped.Load()
+	}
+	return total
+}
+
 // Publish never blocks: a slow subscriber loses rows and its Dropped counter grows.
 func (h *Hub) Publish(rows []store.LogRow) {
 	h.mu.RLock()

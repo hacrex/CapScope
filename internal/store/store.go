@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -17,6 +18,8 @@ import (
 type Store struct {
 	w *sql.DB // single writer connection
 	r *sql.DB // read-only pool
+
+	prunesTotal atomic.Int64 // rows pruned by retention / size enforcement (prometheus: capscope_retention_prunes_total)
 }
 
 var migrations = []string{
@@ -1505,6 +1508,7 @@ func (s *Store) Prune(ctx context.Context, logs, metrics, snaps time.Duration) (
 		}
 		n, err := s.deleteBatched(ctx, j.table, j.col, j.cutoff)
 		total += n
+		s.prunesTotal.Add(n)
 		if err != nil {
 			return total, err
 		}
@@ -1526,6 +1530,10 @@ func (s *Store) UsedBytes(ctx context.Context) (int64, error) {
 	}
 	return (pages - free) * size, nil
 }
+
+// PrunesTotal returns the total number of rows pruned by retention / size
+// enforcement (prometheus: capscope_retention_prunes_total).
+func (s *Store) PrunesTotal() int64 { return s.prunesTotal.Load() }
 
 // EnforceSize drops the oldest rows — logs first, then metrics, access,
 // snapshots, alerts and deploys — until live data fits under maxBytes. The
@@ -1558,6 +1566,7 @@ func (s *Store) EnforceSize(ctx context.Context, maxBytes int64) (int64, error) 
 			}
 			c, _ := res.RowsAffected()
 			deleted += c
+			s.prunesTotal.Add(c)
 			trimmed = true
 			break
 		}

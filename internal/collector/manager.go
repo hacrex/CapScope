@@ -27,11 +27,12 @@ type Manager struct {
 	hub *hub.Hub
 	log *slog.Logger
 
-	lines       chan store.LogRow
-	accessRows  chan store.AccessRow
-	accDet      access.Detector
-	accDropped  atomic.Int64
-	lineDropped atomic.Int64 // log rows dropped when the writer channel is full
+	lines           chan store.LogRow
+	accessRows      chan store.AccessRow
+	accDet          access.Detector
+	accDropped      atomic.Int64
+	lineDropped     atomic.Int64 // log rows dropped when the writer channel is full
+	linesIngested   atomic.Int64 // log rows accepted into the ingestion pipeline
 
 	mu      sync.Mutex
 	tracked map[string]*tracker
@@ -201,6 +202,18 @@ func (m *Manager) Containers(hostID string) []ContainerInfo {
 // filter names the local daemon (fill the host block) or a remote host
 // (report only the id/name and hide the rest).
 func (m *Manager) HostID() string { return m.hostID }
+
+// Ingested returns the total number of log rows accepted into the ingestion
+// pipeline (prometheus: capscope_ingest_lines_total).
+func (m *Manager) Ingested() int64 { return m.linesIngested.Load() }
+
+// DroppedLines returns the total number of log rows dropped by write pressure
+// (prometheus: capscope_dropped_lines_total).
+func (m *Manager) DroppedLines() int64 { return m.lineDropped.Load() }
+
+// DroppedAccess returns the total number of access rows dropped by write
+// pressure (prometheus: capscope_dropped_access_rows_total).
+func (m *Manager) DroppedAccess() int64 { return m.accDropped.Load() }
 
 // Run blocks until ctx is cancelled.
 func (m *Manager) Run(ctx context.Context) {
@@ -476,6 +489,7 @@ func (m *Manager) handleLine(ctx context.Context, t *tracker, l docker.LogLine) 
 	// handleLine would freeze every stream until ctx cancellation. The
 	// in-memory snapshot ring buffer above still keeps the line for crash
 	// evidence, and drops are reported by the writer ("log lines dropped").
+	m.linesIngested.Add(1)
 	select {
 	case m.lines <- row:
 	default:

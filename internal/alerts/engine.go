@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"capscope/internal/store"
@@ -28,6 +29,8 @@ type Engine struct {
 	mu    sync.Mutex // guards rules (reloaded on disk change, read by the API)
 	rules []Rule
 	rmt   time.Time // mtime of the rules file when last loaded
+
+	firingTotal atomic.Int64 // total alert firings (prometheus: capscope_alerts_firing_total)
 }
 
 // Option tweaks the engine (tests use WithClock).
@@ -91,6 +94,10 @@ func (e *Engine) Channels() []string {
 	}
 	return out
 }
+
+// FiringTotal returns the total number of alert firings recorded since start
+// (prometheus: capscope_alerts_firing_total).
+func (e *Engine) FiringTotal() int64 { return e.firingTotal.Load() }
 
 // TestChannels exposes the channels for the /api/alerts/test endpoint.
 func (e *Engine) TestChannels() []Channel { return e.chans }
@@ -189,6 +196,7 @@ func (e *Engine) record(ctx context.Context, r Rule, app string, a store.Alert) 
 		e.log.Error("alerts: cannot record alert", "rule", r.Name, "app", app, "err", err)
 		return store.Alert{}
 	}
+	e.firingTotal.Add(1)
 	a.ID = id
 	status := e.notify(ctx, a)
 	a.Delivery = status
