@@ -477,6 +477,29 @@ body.drawer-open #sideScrim{display:block}
   *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
   .pdot{animation:none;opacity:1}
 }
+
+/* ---- crashes: timeline ticks are real buttons (keyboard reachable) ---- */
+.tl .tick{border:0;padding:0;background:var(--muted)}
+.tl .axis span:first-child{transform:none}
+.tl .axis span:last-child{transform:translateX(-100%)}
+.tl-cap{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+
+/* ---- alerts: rule cards replace the wide table on narrow screens ---- */
+@media (max-width:720px){.rules-wide{display:none}}
+@media (min-width:721px){.rulecards{display:none}}
+.rulecard .rc-s{display:flex;align-items:center;gap:6px;flex:none;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.rulecard .rc-b{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
+
+/* ---- metrics: shared crosshair tooltip + drag-to-zoom ---- */
+#chartTip{position:fixed;z-index:60;pointer-events:none;background:var(--panel);border:1px solid var(--line2);border-radius:8px;box-shadow:var(--shadow);padding:7px 10px;font-size:11.5px;line-height:1.5;display:none;min-width:140px}
+#chartTip .tt{color:var(--muted);font-variant-numeric:tabular-nums;margin-bottom:3px}
+#chartTip .tr{display:flex;justify-content:space-between;gap:14px}
+#chartTip .tr b{font-weight:600;font-variant-numeric:tabular-nums}
+#chartTip .sw{width:7px;height:7px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+.card.chartcard{position:relative;cursor:crosshair;user-select:none;touch-action:pan-y}
+.dragbox{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 16%,transparent);border-left:1px solid var(--accent);border-right:1px solid var(--accent);pointer-events:none;display:none}
+#zoomChip{display:none;align-items:center;gap:6px}
+#zoomChip.on{display:inline-flex}
 </style>
 </head>
 <body>
@@ -562,11 +585,12 @@ body.drawer-open #sideScrim{display:block}
         <select id="range"><option value="15m">15 minutes</option><option value="1h" selected>1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select>
         <select id="mcont"><option value="">whole app</option></select>
         <button class="b" id="mdeploy" title="Record a deploy marker so it shows on the charts and log timeline">Record deploy</button>
+        <button class="b" id="zoomChip" title="Clear the drag-zoom and show the whole range again">⤢ reset zoom</button>
         <span id="deploys" style="display:none"></span>
       </div>
       <div class="grid">
-        <div class="card"><h3>CPU % (sum of cores used)</h3><canvas id="ccpu"></canvas></div>
-        <div class="card"><h3>Memory</h3><canvas id="cmem"></canvas></div>
+        <div class="card chartcard"><h3>CPU % (sum of cores used)</h3><canvas id="ccpu"></canvas></div>
+        <div class="card chartcard"><h3>Memory</h3><canvas id="cmem"></canvas></div>
       </div>
     </div>
     <div id="view-access" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:auto;padding:16px">
@@ -608,6 +632,7 @@ body.drawer-open #sideScrim{display:block}
 
 <!-- Toast notifications -->
 <div id="toasts" aria-live="polite"></div>
+<div id="chartTip" role="status" aria-hidden="true"></div>
 <script>
 "use strict";
 const $=s=>document.querySelector(s);
@@ -770,6 +795,13 @@ const appIcon=image=>{
   return'📦';
 };
 function ago(ms){const s=(Date.now()-ms)/1000;if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';}
+/* Live-ticking ages: rewrite only the text of [data-ago] / [data-ago-ts]
+   elements instead of re-rendering the view, so relative times ("3m ago")
+   stay honest between polls without touching the DOM structure. */
+setInterval(()=>{
+  document.querySelectorAll('[data-ago]').forEach(el=>{el.textContent=ago(+el.dataset.ago);});
+  document.querySelectorAll('[data-ago-ts]').forEach(el=>{const ts=+el.dataset.agoTs;if(isFinite(ts))el.textContent=fmtDT(ts)+' ('+ago(ts)+')';});
+},15000);
 /* Surface a transient failure on the connection chip; refreshApps restores the real state. */
 let badT;
 function connBad(msg){const c=$('#conn');c.textContent=msg;c.className='chip bad';clearTimeout(badT);badT=setTimeout(refreshApps,4000);}
@@ -1349,6 +1381,10 @@ function params(extra,container){
   if($('#lvl').value)p.set('level',$('#lvl').value);
   if($('#strm').value)p.set('stream',$('#strm').value);
   if(S.range)p.set('range',S.range);
+  // "Logs from container start": a per-container time floor set by the row's
+  // ⏱ action. Honoured only while that container is still the selection, and
+  // cleared by any filter change, so it can never leak into another view.
+  if(S.logSince&&S.logSince.ts>0&&(!S.selCont||S.selCont.name===S.logSince.name))p.set('since',S.logSince.ts);
   for(const k in extra)p.set(k,extra[k]);
   return p.toString();
 }
@@ -1588,8 +1624,12 @@ async function catchUp(pane){
 async function startPane(pane){
   pane.loaded=false;pane.pending=[];pane.maxId=0;pane.retries=0;pane.gone=false;
   openStream(pane,true);
+  // "From start" opens the container's oldest retained lines and streams the
+  // history forward, so the view anchors on boot instead of the tail.
+  const fromStart=!!(S.logSince&&S.logSince.fromStart&&S.logSince.name===pane.name);
+  if(fromStart)S.logSince.fromStart=false; // one-shot: a reload must not redo it
   try{
-    const d=await api('/api/logs?'+params({limit:500},pane.name));
+    const d=await api('/api/logs?'+params(fromStart?{limit:500,asc:'1'}:{limit:500},pane.name));
     if(pane.gone)return;
     let maxId=0;for(const r of d.logs)if(r.id>maxId)maxId=r.id;
     pane.maxId=Math.max(pane.maxId,maxId); // live rows may have arrived during load
@@ -1597,10 +1637,31 @@ async function startPane(pane){
     const oldest=d.logs.length?d.logs[0].ts:Date.now()-3600e3;
     const deploys=await loadDeploys(null,oldest);
     pane.vl.reset(mergeDeploys(d.logs,deploys));
+    if(fromStart&&d.logs.length>=500)await backfillHistory(pane);
     pane.loaded=true;
     flushPending(pane);
-    pane.vl.toBottom();
+    // Anchor on the first line when opened from the start; otherwise follow live.
+    if(fromStart)pane.vl.scrollToRowIndex(0);else pane.vl.toBottom();
   }catch(e){connBad('load failed');}
+}
+/* Walk the retained history forward from pane.maxId in bounded chunks.
+   pane.loaded stays false while this runs, so live rows queue in pane.pending
+   and are flushed afterwards in order — no interleaving, and the unread pill
+   is not spammed by our own backfill. */
+const BACKFILL_CHUNKS=20; // ×2000 rows: bounds the work on a very chatty container
+async function backfillHistory(pane){
+  for(let i=0;i<BACKFILL_CHUNKS;i++){
+    if(pane.gone)return;
+    let d;
+    try{d=await api('/api/logs?'+params({since_id:pane.maxId,asc:'1',limit:2000},pane.name));}
+    catch(e){toast('History load interrupted — the rest is still there','err');return;}
+    if(!d.logs||!d.logs.length)break;
+    for(const r of d.logs)if(r.id>pane.maxId)pane.maxId=r.id;
+    pane.vl.append(d.logs,false); // pin=false: keep the view anchored at the top
+    if(d.logs.length<2000){updateCnt();return;} // caught up
+  }
+  updateCnt();
+  toast('Loaded the first '+(BACKFILL_CHUNKS*2000)+' lines from the start — newer ones keep streaming in','ok');
 }
 function paneAppend(pane,rs,pin){
   const fresh=[];
@@ -1684,7 +1745,7 @@ $('#pause').onclick=()=>{const np=!S.panes.some(p=>p.paused);for(const p of S.pa
 function setRangeChip(){document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.classList.toggle('on',b.dataset.range===S.range));}
 function setStatusChip(){document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.classList.toggle('on',b.dataset.status===S.accStatus));}
 setRangeChip();setStatusChip();
-document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.onclick=()=>{S.range=b.dataset.range;setRangeChip();syncLogCSV();syncURL();restartLogs();});
+document.querySelectorAll('#r5m,#r15m,#r1h,#r24h').forEach(b=>b.onclick=()=>{S.logSince=null;S.range=b.dataset.range;setRangeChip();syncLogCSV();syncURL();restartLogs();});
 document.querySelectorAll('#aall,#a2xx,#a4xx,#a5xx').forEach(b=>b.onclick=()=>{S.accStatus=b.dataset.status;setStatusChip();loadAccess();});
 $('#jsonBtn').onclick=()=>{S.jsonPretty=!S.jsonPretty;$('#jsonBtn').classList.toggle('on',S.jsonPretty);restartLogs();};
 $('#older').onclick=()=>{for(const p of S.panes)loadOlder(p);};
@@ -1708,7 +1769,7 @@ async function loadOlder(pane){
   }catch(e){connBad('load older failed');console.warn('capscope: load older failed',e);}
 }
 let deb;const redo=()=>{clearTimeout(deb);deb=setTimeout(restartLogs,300);};
-['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',()=>{redo();if(s==='#lvl')renderLegend();}));
+['#q','#smode','#lvl','#strm'].forEach(s=>$(s).addEventListener(s==='#q'?'input':'change',()=>{S.logSince=null;redo();if(s==='#lvl')renderLegend();}));
 
 /* ---------- row rendering ---------- */
 function highlight(el,text){
@@ -1944,17 +2005,43 @@ $('#arange').onchange=()=>{syncAccCSV();loadAccess();};
 syncAccCSV();
 
 /* ---------- metrics ---------- */
-function draw(canvas,pts,key,fmt,limitKey,deploys,crashes,lineColor){
+function draw(canvas,pts,key,fmt,limitKey,deploys,crashes,lineColor,label){
   if(!lineColor)lineColor='--accent';
+  // Remember how this chart was drawn so the shared crosshair, the tooltip
+  // and a refresh can redraw it without re-plumbing the arguments.
+  canvas._cfg={pts,key,fmt,limitKey,deploys,crashes,lineColor,label};
   const dpr=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
   canvas.width=w*dpr;canvas.height=h*dpr;const g=canvas.getContext('2d');g.scale(dpr,dpr);
   const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
   g.clearRect(0,0,w,h);
   if(!pts.length){g.fillStyle=col('--muted');g.font='13px system-ui';g.fillText('No samples in this range yet',12,24);return;}
-  const L=52,R=8,T=8,B=20,x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1;
-  let max=Math.max(...pts.map(p=>p[key]));const lim=limitKey?pts[pts.length-1][limitKey]:0;
+  const L=52,R=8,T=8,B=20;
+  let x0=pts[0].ts,x1=pts[pts.length-1].ts||x0+1,series=pts;
+  // Drag-zoom: clip to the selected window. Snap-back (dblclick / the reset
+  // chip) clears S.metricZoom and the whole range comes back.
+  if(S.metricZoom){
+    const z=S.metricZoom;
+    if(z.t0>x0)x0=z.t0;
+    if(z.t1<x1)x1=z.t1;
+    if(x1<=x0){x0=pts[0].ts;x1=pts[pts.length-1].ts||x0+1;series=pts;}
+    else series=pts.filter(p=>p.ts>=x0&&p.ts<=x1);
+  }
+  // px↔time mapping for the pointer handlers (offsets let the drag box live
+  // in card coordinates while the maths stays in canvas coordinates).
+  canvas._dom={x0,x1,L,R,w,ox:canvas.offsetLeft,oy:canvas.offsetTop,h};
+  if(!series.length){g.fillStyle=col('--muted');g.font='13px system-ui';g.fillText('No samples in this window',12,24);return;}
+  let max=Math.max(...series.map(p=>p[key]));const lim=limitKey?pts[pts.length-1][limitKey]:0;
   if(lim>0&&lim<max*4)max=Math.max(max,lim);max=max*1.1||1;
   const X=t=>L+(t-x0)/(x1-x0||1)*(w-L-R),Y=v=>T+(1-v/max)*(h-T-B);
+  // Live drag selection (only on the chart being dragged).
+  if(S.dragSel&&S.dragSel.cv===canvas.id){
+    const a=Math.min(S.dragSel.a,S.dragSel.b),b=Math.max(S.dragSel.a,S.dragSel.b);
+    if(b-a>2){
+      g.save();g.globalAlpha=.16;g.fillStyle=col('--accent');g.fillRect(a,T,b-a,h-T-B);g.restore();
+      g.strokeStyle=col('--accent');g.lineWidth=1;
+      g.beginPath();g.moveTo(a,T);g.lineTo(a,h-B);g.moveTo(b,T);g.lineTo(b,h-B);g.stroke();
+    }
+  }
   g.strokeStyle=col('--line');g.fillStyle=col('--muted');g.font='11px system-ui';g.lineWidth=1;
   for(let i=0;i<=4;i++){const v=max*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(fmt(v),4,y+4);}
   g.fillText(fmtTime(x0).slice(0,5),L,h-4);const e=fmtTime(x1).slice(0,5);g.fillText(e,w-R-g.measureText(e).width,h-4);
@@ -1990,7 +2077,102 @@ function draw(canvas,pts,key,fmt,limitKey,deploys,crashes,lineColor){
     g.restore();
   }
   g.strokeStyle=col(lineColor);g.lineWidth=1.6;g.beginPath();
-  pts.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  series.forEach((p,i)=>{const x=X(p.ts),y=Y(p[key]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  // Shared crosshair: the hovered index is drawn on BOTH charts so they stay
+  // in step, with the dot marking the value behind the tooltip.
+  if(S.crossIdx!=null&&pts.length){
+    const i=Math.max(0,Math.min(pts.length-1,S.crossIdx));
+    const p=pts[i];
+    if(p.ts>=x0&&p.ts<=x1&&isFinite(Number(p[key]))){
+      const cx=X(p.ts);
+      g.save();
+      g.strokeStyle=col('--accent');g.setLineDash([3,3]);g.lineWidth=1;
+      g.beginPath();g.moveTo(cx,T);g.lineTo(cx,h-B);g.stroke();
+      g.setLineDash([]);
+      g.fillStyle=col('--accent');g.beginPath();g.arc(cx,Y(p[key]),3,2,Math.PI*2);g.fill();
+      g.restore();
+    }
+  }
+}
+/* ---------- metrics: shared crosshair tooltip + drag-to-zoom ---------- */
+S.metricZoom=null;S.crossIdx=null;S.dragSel=null;
+function redrawCharts(){
+  for(const id of ['#ccpu','#cmem']){
+    const cv=$(id);if(!cv||!cv._cfg)continue;
+    const c=cv._cfg;
+    draw(cv,c.pts,c.key,c.fmt,c.limitKey,c.deploys,c.crashes,c.lineColor,c.label);
+  }
+}
+const nearestIdx=(pts,t)=>{
+  let best=0,bd=Infinity;
+  for(let i=0;i<pts.length;i++){const d=Math.abs(pts[i].ts-t);if(d<bd){bd=d;best=i;}}
+  return best;
+};
+function updateZoomChip(){
+  const b=$('#zoomChip');if(!b)return;
+  b.classList.toggle('on',!!S.metricZoom);
+  if(S.metricZoom)b.textContent='⤢ '+fmtTime(S.metricZoom.t0).slice(0,5)+'–'+fmtTime(S.metricZoom.t1).slice(0,5)+' · reset';
+}
+function showChartTip(cv,clientX,clientY){
+  const tip=$('#chartTip'),c=cv._cfg;
+  if(!c||!c.pts.length||S.crossIdx==null)return;
+  const rows=['#ccpu','#cmem'].map(id=>{
+    const o=$(id);if(!o||!o._cfg||!o._cfg.pts.length)return null;
+    const q=o._cfg.pts[Math.min(S.crossIdx,o._cfg.pts.length-1)];
+    const val=o._cfg.fmt(Number(q[o._cfg.key]));
+    return '<div class="tr"><span><span class="sw" style="background:var('+(o._cfg.lineColor||'--accent')+')"></span>'+
+      (o._cfg.label||o.id)+'</span><b>'+val+'</b></div>';
+  }).filter(Boolean).join('');
+  tip.innerHTML='<div class="tt">'+fmtTime(c.pts[Math.min(S.crossIdx,c.pts.length-1)].ts)+'</div>'+rows;
+  tip.style.display='block';
+  const pad=14,tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=clientX+pad,y=clientY+pad;
+  if(x+tw>innerWidth-8)x=clientX-tw-pad;
+  if(y+th>innerHeight-8)y=clientY-th-pad;
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function hideChartTip(){const t=$('#chartTip');if(t)t.style.display='none';}
+function wireChart(cv){
+  if(!cv||cv._wired)return;cv._wired=true;
+  let down=null;
+  const pos=e=>{const r=cv.getBoundingClientRect();return e.clientX-r.left;};
+  cv.addEventListener('pointermove',e=>{
+    const c=cv._cfg,dom=cv._dom;
+    if(!c||!dom||!c.pts.length)return;
+    const px=pos(e);
+    if(down){
+      S.dragSel={cv:cv.id,a:down,b:px};
+      redrawCharts();
+      return;
+    }
+    if(px<dom.L||px>dom.w-dom.R){S.crossIdx=null;hideChartTip();redrawCharts();return;}
+    const t=dom.x0+(px-dom.L)/Math.max(1,dom.w-dom.L-dom.R)*(dom.x1-dom.x0);
+    S.crossIdx=nearestIdx(c.pts,t);
+    redrawCharts();
+    showChartTip(cv,e.clientX,e.clientY);
+  });
+  cv.addEventListener('pointerleave',()=>{
+    if(down)return;
+    S.crossIdx=null;hideChartTip();redrawCharts();
+  });
+  cv.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    down=pos(e);
+    try{cv.setPointerCapture(e.pointerId);}catch(err){/* capture is best-effort */}
+  });
+  cv.addEventListener('pointerup',e=>{
+    if(down==null)return;
+    const up=pos(e),from=down;
+    down=null;S.dragSel=null;
+    const dom=cv._dom;
+    redrawCharts();
+    if(!dom||Math.abs(up-from)<6)return; // a click, not a drag: keep the zoom
+    const toT=px=>dom.x0+(px-dom.L)/Math.max(1,dom.w-dom.L-dom.R)*(dom.x1-dom.x0);
+    S.metricZoom={t0:toT(Math.min(from,up)),t1:toT(Math.max(from,up))};
+    S.crossIdx=null;hideChartTip();
+    redrawCharts();updateZoomChip();
+  });
+  cv.addEventListener('dblclick',()=>{S.metricZoom=null;S.crossIdx=null;hideChartTip();redrawCharts();updateZoomChip();});
 }
 async function loadMetrics(){
   if(S.app===null)return;
@@ -1999,14 +2181,20 @@ async function loadMetrics(){
   try{d=await api('/api/metrics?'+p);}catch(e){const box=$('#ccpu');box.innerHTML='';const err=document.createElement('div');err.className='callout warn';err.textContent='Metrics failed to load: '+(e.message||e);box.append(err);return;}
   const deploys=await loadDeploys($('#range').value);
   const crashes=await loadCrashMarkers($('#range').value);
-  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys,crashes,'--ok');
+  draw($('#ccpu'),d.points,'cpu',v=>v.toFixed(0)+'%',null,deploys,crashes,'--ok','CPU %');
   // Memory as % of limit (like Dozzle)
   const memPts=d.points.map(p=>({...p,mem_pct:p.mem_limit>0?p.mem/p.mem_limit*100:0}));
-  draw($('#cmem'),memPts,'mem_pct',v=>v.toFixed(1)+'%',null,deploys,crashes,'--accent');
+  draw($('#cmem'),memPts,'mem_pct',v=>v.toFixed(1)+'%',null,deploys,crashes,'--accent','Memory');
+  // Pointer handlers (crosshair + drag-zoom) are wired once per chart.
+  wireChart($('#ccpu'));wireChart($('#cmem'));
   renderDeployList(deploys);
 }
-$('#range').onchange=loadMetrics;$('#mcont').onchange=loadMetrics;
+/* A new range/container means new samples: the old zoom window and crosshair
+   no longer map onto them, so clear both before reloading. */
+const reloadMetrics=()=>{S.metricZoom=null;S.crossIdx=null;updateZoomChip();loadMetrics();};
+$('#range').onchange=reloadMetrics;$('#mcont').onchange=reloadMetrics;
 $('#mdeploy').onclick=recordDeploy;
+$('#zoomChip').onclick=()=>{S.metricZoom=null;S.crossIdx=null;hideChartTip();redrawCharts();updateZoomChip();};
 
 /* ---------- deploy markers (V9) ---------- */
 const RANGE_MS={'15m':15*60e3,'1h':3600e3,'6h':6*3600e3,'24h':24*3600e3,'7d':7*24*3600e3};
@@ -2091,12 +2279,45 @@ async function loadCrashes(){
     const cells=[fmtDT(s.ts)+' ('+ago(s.ts)+')',s.app,null,String(s.exit_code),s.summary];
     cells.forEach((c,i)=>{const td=document.createElement('td');if(i===2){const k=document.createElement('span');k.className='k '+s.kind;k.textContent=s.kind.replace('_',' ');td.append(k);
       if(s.restarts_window>=2){const rp=document.createElement('span');rp.className='k loop';rp.textContent='↻ '+s.restarts_window;rp.title=s.restarts_window+' deaths of this container inside the restart-loop window';rp.style.marginLeft='6px';td.append(rp);}
-    }else td.textContent=c;tr.append(td);});
+    }else{td.textContent=c;if(i===0)td.dataset.agoTs=s.ts;}tr.append(td);});
     tr.onclick=()=>openCrash(s.id);tb.append(tr);
   });
+  box.append(crashTimeline(d.snapshots));
   const sec=secBlock('CRASH SNAPSHOTS',d.snapshots.length);
   sec.body.append(tb);
   box.append(sec.wrap);
+}
+/* 24h incident strip: one tick per crash, colored by kind, above the table.
+   Clicking a tick opens that incident; ticks are buttons so they are also
+   reachable from the keyboard. */
+function crashTimeline(snaps){
+  const now=Date.now(),lo=now-86400e3;
+  const win=snaps.filter(s=>s.ts>=lo);
+  const wrap=document.createElement('div');
+  const cap=document.createElement('div');cap.className='tl-cap';
+  const chip=document.createElement('span');chip.className='chip';
+  chip.textContent=win.length+(win.length===1?' incident':' incidents')+' · last 24h';
+  chip.title='Incidents in the last 24 hours ('+snaps.length+' total in this list)';
+  cap.append(chip);wrap.append(cap);
+  const tl=document.createElement('div');tl.className='tl';
+  tl.setAttribute('role','list');
+  tl.setAttribute('aria-label','Crash incidents in the last 24 hours');
+  for(const s of win){
+    const b=document.createElement('button');b.type='button';
+    b.className='tick '+(s.kind||'crash');
+    b.style.left=((s.ts-lo)/(now-lo)*100).toFixed(3)+'%';
+    b.title=fmtDT(s.ts)+' — '+s.app+' · '+(s.kind||'').replace('_',' ')+' (exit '+s.exit_code+')'+(s.summary?'\n'+s.summary:'');
+    b.setAttribute('aria-label','Open incident: '+b.title.replace(/\n/g,' '));
+    b.onclick=()=>openCrash(s.id);
+    tl.append(b);
+  }
+  const ax=document.createElement('div');ax.className='axis';
+  [[0,'-24h'],[6,'-18h'],[12,'-12h'],[18,'-6h'],[24,'now']].forEach(([h,lab])=>{
+    const sp=document.createElement('span');sp.textContent=lab;sp.style.left=(h/24*100)+'%';ax.append(sp);
+  });
+  tl.append(ax);
+  wrap.append(tl);
+  return wrap;
 }
 async function openCrash(id){
   let s;
@@ -2416,6 +2637,67 @@ function ovVal(c,k){
     default:return String(c.name||'').toLowerCase();
   }
 }
+/* Metric cell fillers. Called once when a row is built and again on every
+   overview poll, so a refresh can patch values in place (patchRow) instead
+   of rebuilding the row: canvases keep their state, and flashVal highlights
+   exactly the numbers that changed. */
+function fillCpu(td,c){
+  const ncpu=Number(c.ncpu)||Number(ovData&&ovData.host&&ovData.host.ncpu)||1;
+  let inner=td.querySelector('.inner'),cv,v;
+  if(!inner){
+    inner=document.createElement('div');inner.className='inner';
+    cv=document.createElement('canvas');v=document.createElement('span');v.className='v';
+    inner.append(cv,v);td.append(inner);
+  }else{cv=inner.querySelector('canvas');v=inner.querySelector('.v');}
+  cv._hist=(c.cpu_hist&&c.cpu_hist.v)||[];
+  cv._scale=ncpu*100;
+  const share=Number(c.avg_cpu||0)/ncpu;
+  v.textContent=isFinite(share)?share.toFixed(share>=10?1:2)+'%':'—';
+  flashVal(v,'cpu:'+(c.id||c.name));
+  const hv=cv._hist,pk=hv.length?Math.max.apply(null,hv)/ncpu:Number(c.cpu||0)/ncpu;
+  td.title='avg '+share.toFixed(2)+'% of host · now '+(Number(c.cpu||0)/ncpu).toFixed(2)+'% · peak '+pk.toFixed(2)+'% (10 min)';
+  requestAnimationFrame(()=>{if(td.isConnected)drawBars(cv,cv._hist,{scale:cv._scale});});
+}
+function fillMem(td,c){
+  td.textContent=fmtBytes(Number(c.mem||0),1);
+  if(Number(c.mem_limit)>0){
+    const pc=Number(c.mem||0)/Number(c.mem_limit)*100;
+    const sp=document.createElement('span');sp.style.color='var(--muted)';sp.style.fontSize='11px';
+    sp.textContent=' ('+pc.toFixed(0)+'%)';td.append(sp);
+  }
+  td.title='now '+fmtBytes(Number(c.mem||0),1)+' · avg '+fmtBytes(Number(c.avg_mem||0),1)+' · limit '+(Number(c.mem_limit)>0?fmtBytes(Number(c.mem_limit),1):'unlimited');
+  flashVal(td,'mem:'+(c.id||c.name));
+}
+function fillNet(td,c){
+  let ri=td.querySelector('.in'),to=td.querySelector('.out');
+  if(!ri){ri=document.createElement('div');ri.className='in';to=document.createElement('div');to.className='out';td.append(ri,to);}
+  ri.title='receive rate (5 min)';ri.textContent='↓ '+fmtRate(Number(c.net_rx_rate));
+  to.title='transmit rate (5 min)';to.textContent='↑ '+fmtRate(Number(c.net_tx_rate));
+  flashVal(ri,'netrx:'+(c.id||c.name));flashVal(to,'nettx:'+(c.id||c.name));
+}
+function fillDisk(td,c){
+  let dm=td.querySelector('.d1'),ds=td.querySelector('.d2');
+  if(!dm){
+    dm=document.createElement('div');dm.className='d1';
+    ds=document.createElement('div');ds.className='d2';ds.style.fontSize='10.5px';ds.style.opacity='.75';
+    td.append(dm,ds);
+  }
+  if(c.size_rw==null||Number(c.size_rw)<0){dm.textContent='—';dm.style.opacity='.55';}
+  else{dm.textContent=fmtBytes(Number(c.size_rw),1);dm.style.opacity='';}
+  ds.textContent='R '+fmtRate(Number(c.blk_r_rate))+' · W '+fmtRate(Number(c.blk_w_rate));
+  td.title=(c.size_rw==null||Number(c.size_rw)<0)?'Read/write total not measured yet':'total read+write since start';
+}
+function fillCreated(td,c){
+  td.textContent=c.started?ago(Number(c.started)):'—';
+  if(c.started){td.title=fmtDT(Number(c.started));td.dataset.ago=Number(c.started);}
+  else delete td.dataset.ago;
+}
+function patchRow(tr,c){
+  const cs=tr._cells;
+  if(!cs)return false;
+  fillCpu(cs.cpu,c);fillMem(cs.mem,c);fillNet(cs.net,c);fillDisk(cs.disk,c);fillCreated(cs.cr,c);
+  return true;
+}
 function ovRow(c,multi){
   const tr=document.createElement('tr');
   tr.title='Open logs for '+c.name;
@@ -2430,51 +2712,15 @@ function ovRow(c,multi){
   sub.textContent=(c.app||'')+(multi&&c.host_id?' · '+c.host_id:'');
   if(c.image){const im=document.createElement('span');im.className='mono';im.textContent=' · '+c.image;sub.append(im);}
   txt.append(nm,sub);cw.append(dot,ico,txt);name.append(cw);tr.append(name);
-  // CPU: host-share % +10-minute bar chart (ncpu comes from the host block —
-  // container rows don't carry it)
-  const ncpu=Number(c.ncpu)||Number(ovData&&ovData.host&&ovData.host.ncpu)||1;
-  const cpu=document.createElement('td');cpu.className='chart';
-  const inner=document.createElement('div');inner.className='inner';
-  const cv=document.createElement('canvas');
-  cv._hist=(c.cpu_hist&&c.cpu_hist.v)||[];
-  cv._scale=ncpu*100;
-  const v=document.createElement('span');v.className='v';
-  const share=Number(c.avg_cpu||0)/ncpu;
-  v.textContent=isFinite(share)?share.toFixed(share>=10?1:2)+'%':'—';
-  inner.append(cv,v);cpu.append(inner);
-  const hv=cv._hist,pk=hv.length?Math.max.apply(null,hv)/ncpu:Number(c.cpu||0)/ncpu;
-  cpu.title='avg '+share.toFixed(2)+'% of host · now '+(Number(c.cpu||0)/ncpu).toFixed(2)+'% · peak '+pk.toFixed(2)+'% (10 min)';
-  tr.append(cpu);
-  // Memory: current usage (+ % of limit), avg/limit in the tooltip
-  const mem=document.createElement('td');mem.className='num';
-  mem.textContent=fmtBytes(Number(c.mem||0),1);
-  if(Number(c.mem_limit)>0){
-    const pc=Number(c.mem||0)/Number(c.mem_limit)*100;
-    const sp=document.createElement('span');sp.style.color='var(--muted)';sp.style.fontSize='11px';
-    sp.textContent=' ('+pc.toFixed(0)+'%)';mem.append(sp);
-  }
-  mem.title='now '+fmtBytes(Number(c.mem||0),1)+' · avg '+fmtBytes(Number(c.avg_mem||0),1)+' · limit '+(Number(c.mem_limit)>0?fmtBytes(Number(c.mem_limit),1):'unlimited');
-  tr.append(mem);
-  // Network: receive / transmit rates over the last 5 minutes
-  const net=document.createElement('td');net.className='net';
-  const ri=document.createElement('div');ri.className='in';ri.title='receive rate (5 min)';ri.textContent='↓ '+fmtRate(Number(c.net_rx_rate));
-  const to=document.createElement('div');to.className='out';to.title='transmit rate (5 min)';to.textContent='↑ '+fmtRate(Number(c.net_tx_rate));
-  net.append(ri,to);tr.append(net);
-  // Disk: total read+write since start, with block rates underneath
-  const disk=document.createElement('td');disk.className='disk';
-  const dm=document.createElement('div');
-  if(c.size_rw==null||Number(c.size_rw)<0){dm.textContent='—';dm.style.opacity='.55';}
-  else dm.textContent=fmtBytes(Number(c.size_rw),1);
-  const ds=document.createElement('div');ds.style.fontSize='10.5px';ds.style.opacity='.75';
-  ds.textContent='R '+fmtRate(Number(c.blk_r_rate))+' · W '+fmtRate(Number(c.blk_w_rate));
-  disk.append(dm,ds);
-  disk.title=(c.size_rw==null||Number(c.size_rw)<0)?'Read/write total not measured yet':'total read+write since start';
-  tr.append(disk);
-  // Created
-  const cr=document.createElement('td');cr.className='created';
-  cr.textContent=c.started?ago(Number(c.started)):'—';
-  if(c.started)cr.title=fmtDT(Number(c.started));
-  tr.append(cr);
+  // Metric cells: filled by the helpers above so later polls can patch them.
+  const cpu=document.createElement('td');cpu.className='chart';fillCpu(cpu,c);
+  const mem=document.createElement('td');mem.className='num';fillMem(mem,c);
+  const net=document.createElement('td');net.className='net';fillNet(net,c);
+  const disk=document.createElement('td');disk.className='disk';fillDisk(disk,c);
+  const cr=document.createElement('td');cr.className='created';fillCreated(cr,c);
+  tr.append(cpu,mem,net,disk,cr);
+  tr._cells={cpu,mem,net,disk,cr};
+  tr.dataset.id=c.id;
   // Hover actions: copy identifiers, jump to Metrics / Logs for this container.
   const mkAct=(glyph,title,fn)=>{
     const b=document.createElement('button');b.type='button';b.className='act';
@@ -2488,12 +2734,27 @@ function ovRow(c,multi){
     mkAct('⧉','Copy container name',()=>copyText(c.name||'','Container name copied')),
     mkAct('#','Copy container ID',()=>copyText(c.id||'','Container ID copied')),
     mkAct('▤','Open Metrics for '+c.name,()=>{selectContainer(c.id,c);setTab('metrics');}),
-    mkAct('▶','Open Logs for '+c.name,()=>{selectContainer(c.id,c);setTab('logs');}),
+    mkAct('⏱','Open logs from '+c.name+'’s start',()=>{
+      // selectContainer restarts the logs (a plain tail load); set the flag
+      // after it and before setTab, because show() restarts again when the
+      // logs tab is (re)entered — that second restart must be the one that
+      // consumes the one-shot "from start" load, or it would clobber it.
+      selectContainer(c.id,c);
+      S.logSince={name:c.name,ts:Number(c.started)||0,fromStart:true};
+      setTab('logs');
+      toast('Loading logs from the start of '+c.name);
+    }),
   );
   ac.append(rowacts);tr.append(ac);
   tr.onclick=()=>{selectContainer(c.id,c);if(S.tab!=='logs')setTab('logs');};
   return tr;
 }
+/* The containers table is windowed once it grows past VIRT_ROWS: only the
+   rows visible in #view-dashboard sit in the DOM, between two spacer rows
+   sized from a measured row height. Below the threshold every row is in the
+   DOM and a refresh patches cells in place (patchRow) rather than rebuilding. */
+const VIRT_ROWS=150;
+let ctScroll=null; // exactly one active scroll listener: the view replaces itself
 function renderCtable(){
   const wrap=document.createElement('div');wrap.className='tablewrap';
   const tb=document.createElement('table');tb.className='ctable';
@@ -2512,8 +2773,61 @@ function renderCtable(){
   thead.append(hr);tb.append(thead);
   const body=document.createElement('tbody');tb.append(body);
   wrap.append(tb);
-  function paint(){
+  // Virtualization state: one scroll listener for the whole view, a measured
+  // row height, and the rows/multi currently on screen.
+  let rowH=0,curRows=[],curMulti=false;
+  const spacer=n=>{
+    const tr=document.createElement('tr');tr.className='vsp';tr.setAttribute('aria-hidden','true');
+    const td=document.createElement('td');td.colSpan=OV_COLS.length+1;
+    td.style.cssText='height:'+(n*rowH)+'px;padding:0;border:0';
+    tr.append(td);return tr;
+  };
+  const drawWindow=()=>{
+    const sc=$('#view-dashboard');
+    const wr=wrap.getBoundingClientRect(),sr=sc.getBoundingClientRect();
+    // Rows already scrolled past = how far the wrap top sits ABOVE the
+    // viewport; the -4 fudge keeps the first partial row (and the header
+    // row) rendered so nothing pops in late.
+    const first=Math.max(0,Math.floor((sr.top-wr.top)/rowH)-4);
+    const last=Math.min(curRows.length,first+Math.ceil(sr.height/rowH)+8);
     body.replaceChildren();
+    if(first>0)body.append(spacer(first));
+    const frag=document.createDocumentFragment();
+    for(let i=first;i<last;i++)frag.append(ovRow(curRows[i],curMulti));
+    body.append(frag);
+    if(last<curRows.length)body.append(spacer(curRows.length-last));
+  };
+  const attachScroll=()=>{
+    if(ctScroll)$('#view-dashboard').removeEventListener('scroll',ctScroll);
+    const sc=$('#view-dashboard');
+    let raf=0;
+    ctScroll=()=>{
+      if(!wrap.isConnected){if(ctScroll)$('#view-dashboard').removeEventListener('scroll',ctScroll);ctScroll=null;return;}
+      if(raf)return;
+      raf=requestAnimationFrame(()=>{raf=0;if(wrap.isConnected)drawWindow();});
+    };
+    sc.addEventListener('scroll',ctScroll,{passive:true});
+  };
+  // Two sample rows give the row height. A wide spread means rows are not
+  // uniform — spacer math would drift, so return 0 and render everything.
+  const measureRow=()=>{
+    const idx=[0,Math.min(9,curRows.length-1)];
+    body.replaceChildren(...idx.map(i=>ovRow(curRows[i],curMulti)));
+    const hs=[...body.children].map(tr=>tr.offsetHeight);
+    body.replaceChildren();
+    if(hs.some(h=>!h))return 0;
+    const avg=hs.reduce((a,b)=>a+b,0)/hs.length;
+    return (Math.max(...hs)-Math.min(...hs))>avg*0.25?0:avg;
+  };
+  const renderAll=()=>{
+    body.replaceChildren();
+    const frag=document.createDocumentFragment();
+    curRows.forEach(c=>frag.append(ovRow(c,curMulti)));
+    body.append(frag);
+    if(ctScroll)$('#view-dashboard').removeEventListener('scroll',ctScroll);
+    ctScroll=null;
+  };
+  function paint(){
     const old=wrap.querySelector('.empty');if(old)old.remove();
     const rows=((ovData&&ovData.containers)||[]).slice();
     rows.sort((a,b)=>{
@@ -2521,16 +2835,33 @@ function renderCtable(){
       const r=typeof x==='string'?x.localeCompare(y):x-y;
       return (r||String(a.name||'').localeCompare(String(b.name||'')))*ovSort.d;
     });
+    curRows=rows;curMulti=S.hosts.length>1;
     if(!rows.length){
+      body.replaceChildren();
+      if(ctScroll)$('#view-dashboard').removeEventListener('scroll',ctScroll);
+      ctScroll=null;
       const e=document.createElement('div');e.className='empty';
       e.textContent='No containers are running'+(S.host?' on '+S.host:'')+'.';
       wrap.append(e);return;
     }
-    const multi=S.hosts.length>1;
-    rows.forEach(c=>body.append(ovRow(c,multi)));
-    // sparklines need layout (clientWidth) — draw once the rows are in the DOM
-    requestAnimationFrame(()=>{body.querySelectorAll('canvas').forEach(cv=>drawBars(cv,cv._hist||[],{scale:cv._scale||100}));});
+    // Same rows in the same order → patch the numbers where they stand: no
+    // DOM churn, canvases keep their state, flashVal highlights what moved.
+    if(rows.length<=VIRT_ROWS&&body.children.length===rows.length&&!body.querySelector('.vsp')
+        &&rows.every((c,i)=>body.children[i].dataset.id===String(c.id))){
+      rows.forEach((c,i)=>patchRow(body.children[i],c));
+      return;
+    }
+    if(rows.length<=VIRT_ROWS){renderAll();return;}
+    // Long list: window it. Measuring needs layout, so wait until attached.
+    const start=()=>{
+      if(!wrap.isConnected)return;
+      if(!rowH)rowH=measureRow();
+      if(!rowH){renderAll();return;}
+      drawWindow();attachScroll();
+    };
+    if(wrap.isConnected)start();else requestAnimationFrame(start);
   }
+  wrap.paint=paint;
   paint();
   return wrap;
 }
@@ -2581,10 +2912,14 @@ async function loadOverview(){
   }
   if(st)hs.body.append(statStrip(st));
   box.append(hs.wrap);
-  // CONTAINERS — sortable Dozzle-style table
+  // CONTAINERS — sortable Dozzle-style table. The table itself outlives the
+  // section: re-parenting the same element means a poll patches the rows in
+  // place (canvases, sort, window and measured row height all survive).
   const list=d.containers||[];
   const cs=secBlock('CONTAINERS',list.length);
-  cs.body.append(renderCtable());
+  if(!box._ct)box._ct=renderCtable();
+  cs.body.append(box._ct);
+  box._ct.paint();
   box.append(cs.wrap);
   // Recent crashes (24h) — fetch snapshots directly: loadCrashes() renders the
   // crashes view and returns undefined, so it can't supply data here
@@ -2661,36 +2996,71 @@ async function loadAlerts(){
     p.textContent=meta.enabled?'No rules loaded. Click "+ New rule" to create one, or edit the JSON rules file (ALERTS_FILE) directly.':'Alerting is off: no rules file found. Click "+ New rule" to create the first one.';
     rc.append(p);
   }else{
-    const tb=document.createElement('table');tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th><th>Status</th><th>Mute</th></tr>';
-    meta.rules.forEach(r=>{
-      const tr=document.createElement('tr');
-      const cond=r.kind==='deadman'?`no logs for ${r.for}`
-        :r.kind==='restart_loop'?`> ${r.count} deaths in ${r.window}`
-        :r.kind==='metric'?`${r.metric} ${r.op} ${r.value}${r.window?' avg of '+r.window:' for '+r.for}`
-        :r.kind==='event'?`Docker event ${r.event}${r.status&&r.status!=='unhealthy'?' where status='+r.status:''}${r.exclude&&r.event==='die'?' except exit '+r.exclude.join('/'):''}`
-        :`"${r.pattern}" ≥ ${r.hits} hits in ${r.window}`;
-      const st=S.alertStatus.get(r.name)||'resolved';
-      const muted=S.alertMuted.get(r.name,0)>now;
-      const dots={firing:'firing',resolved:'resolved',silenced:'silenced'};
-      const nameTd=document.createElement('td');nameTd.textContent=r.name;if(muted)nameTd.classList.add('muted');tr.append(nameTd);
-      [[ALERT_KIND[r.kind]||r.kind],[(r.apps||[]).join(', ')||'all'],[cond],[r.repeat||'']].flat().forEach(v=>{const td=document.createElement('td');td.textContent=v;if(muted)td.classList.add('muted');tr.append(td);});
-      const stTd=document.createElement('td');const dot=document.createElement('span');dot.className='status-dot '+st;dot.title=st;stTd.append(dot,document.createTextNode(' '+st));tr.append(stTd);
-      const muTd=document.createElement('td');
+    // One condition string for both the wide table (desktop) and the card
+    // grid (narrow screens), so the two can never drift apart.
+    const condOf=r=>r.kind==='deadman'?`no logs for ${r.for}`
+      :r.kind==='restart_loop'?`> ${r.count} deaths in ${r.window}`
+      :r.kind==='metric'?`${r.metric} ${r.op} ${r.value}${r.window?' avg of '+r.window:' for '+r.for}`
+      :r.kind==='event'?`Docker event ${r.event}${r.status&&r.status!=='unhealthy'?' where status='+r.status:''}${r.exclude&&r.event==='die'?' except exit '+r.exclude.join('/'):''}`
+      :`"${r.pattern}" ≥ ${r.hits} hits in ${r.window}`;
+    const muteBtns=(r,muted)=>{
+      const box=document.createElement('span');box.style.cssText='display:inline-flex;gap:6px';
       const m1=document.createElement('button');m1.className='b';m1.style.fontSize='10px';m1.style.padding='2px 6px';m1.textContent='1h';m1.title='Mute '+r.name+' for 1 hour';
       m1.onclick=()=>muteRule(r.name,3600e3);
       const m24=document.createElement('button');m24.className='b';m24.style.fontSize='10px';m24.style.padding='2px 6px';m24.textContent='24h';m24.title='Mute '+r.name+' for 24 hours';
       m24.onclick=()=>muteRule(r.name,86400e3);
       const un=document.createElement('button');un.className='b';un.style.fontSize='10px';un.style.padding='2px 6px';un.textContent='unmute';un.style.display=muted?'':'none';un.title='Unmute '+r.name;
       un.onclick=()=>{S.alertMuted.delete(r.name);loadAlerts();};
-      muTd.append(m1,m24,un);if(muted){m1.style.display='none';m24.style.display='none';}
-      tr.append(muTd);
-      const edTd=document.createElement('td');
+      box.append(m1,m24,un);if(muted){m1.style.display='none';m24.style.display='none';}
+      return box;
+    };
+    const editBtn=r=>{
       const ed=document.createElement('button');ed.className='b';ed.style.cssText='font-size:10px;padding:2px 6px';ed.textContent='edit';ed.title='Edit '+r.name+' in the rule builder';
       ed.onclick=()=>openRuleBuilder(meta,hist,loadAlerts,meta.rules.indexOf(r));
-      edTd.append(ed);tr.append(edTd);
+      return ed;
+    };
+    const tb=document.createElement('table');tb.className='rules-wide';tb.innerHTML='<tr><th>Name</th><th>Kind</th><th>Apps</th><th>Condition</th><th>Repeat</th><th>Status</th><th>Mute</th></tr>';
+    meta.rules.forEach(r=>{
+      const tr=document.createElement('tr');
+      const cond=condOf(r);
+      const st=S.alertStatus.get(r.name)||'resolved';
+      const muted=S.alertMuted.get(r.name,0)>now;
+      const nameTd=document.createElement('td');nameTd.textContent=r.name;if(muted)nameTd.classList.add('muted');tr.append(nameTd);
+      [[ALERT_KIND[r.kind]||r.kind],[(r.apps||[]).join(', ')||'all'],[cond],[r.repeat||'']].flat().forEach(v=>{const td=document.createElement('td');td.textContent=v;if(muted)td.classList.add('muted');tr.append(td);});
+      const stTd=document.createElement('td');const dot=document.createElement('span');dot.className='status-dot '+st;dot.title=st;stTd.append(dot,document.createTextNode(' '+st));tr.append(stTd);
+      const muTd=document.createElement('td');muTd.append(muteBtns(r,muted));tr.append(muTd);
+      const edTd=document.createElement('td');edTd.append(editBtn(r));tr.append(edTd);
       tb.append(tr);
     });
     rc.append(tb);
+    // Narrow screens: a card grid instead of the 7-column table, with firing
+    // rules pinned to the top and a pulsing dot so they can't be missed.
+    const cards=document.createElement('div');cards.className='rulecards';
+    const rank=r=>(S.alertStatus.get(r.name)==='firing'?0:1);
+    meta.rules.slice().sort((a,b)=>rank(a)-rank(b)).forEach(r=>{
+      const st=S.alertStatus.get(r.name)||'resolved';
+      const muted=S.alertMuted.get(r.name,0)>now;
+      const card=document.createElement('div');
+      card.className='rulecard'+(st==='firing'?' firing':'');
+      const h=document.createElement('div');h.className='rc-h';
+      if(st==='firing'){const pd=document.createElement('span');pd.className='pdot';pd.title='Firing now';h.append(pd);}
+      const nm=document.createElement('span');nm.className='rc-n';nm.textContent=r.name;nm.title=r.name;
+      const kd=document.createElement('span');kd.className='rc-k';kd.textContent=ALERT_KIND[r.kind]||r.kind;
+      const sy=document.createElement('span');sy.className='rc-s';
+      const dot=document.createElement('span');dot.className='status-dot '+st;dot.title=st;
+      sy.append(dot,document.createTextNode(st+(muted?' · muted':'')));
+      h.append(nm,kd,sy);
+      const m=document.createElement('div');m.className='rc-m';
+      const ap=document.createElement('span');ap.className='rc-k';ap.textContent=(r.apps||[]).join(', ')||'all apps';
+      const cd=document.createElement('span');cd.textContent=condOf(r);
+      const rp=document.createElement('span');rp.className='rc-k';rp.textContent=r.repeat||'no repeat';rp.title='Repeat interval';
+      m.append(ap,cd,rp);
+      const b=document.createElement('div');b.className='rc-b';
+      b.append(muteBtns(r,muted),editBtn(r));
+      card.append(h,m,b);
+      cards.append(card);
+    });
+    rc.append(cards);
   }
   rsec.body.append(rc);
   box.append(rsec.wrap);
@@ -2706,7 +3076,7 @@ async function loadAlerts(){
     hist.alerts.forEach(a=>{
       const tr=document.createElement('tr');
       const cells=[fmtDT(a.ts)+' ('+ago(a.ts)+')',a.rule,a.app,ALERT_KIND[a.kind]||a.kind,a.message];
-      cells.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      cells.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===0)td.dataset.agoTs=a.ts;tr.append(td);});
       // v0.7: delivery status recorded by the alert engine after notify().
       const dTd=document.createElement('td');
       const dmap={sent:['✓ sent','var(--ok)'],failed:['✗ failed','var(--err)']};
