@@ -23,6 +23,7 @@ type SQLResult struct {
 	Rows      [][]any  `json:"rows"`
 	Truncated bool     `json:"truncated"`
 	MS        int64    `json:"ms"`
+	Warning   string   `json:"warning,omitempty"` // e.g. full-table scan on a large table
 }
 
 var (
@@ -90,6 +91,25 @@ func (s *Store) QuerySQL(ctx context.Context, query string, limit int) (SQLResul
 		limit = sqlMaxLimit
 	}
 	start := time.Now()
+	res := SQLResult{Rows: make([][]any, 0, 16)}
+	// Query-cost estimate: EXPLAIN QUERY PLAN reveals whether SQLite will do
+	// a full table scan (SCAN TABLE without USING INDEX) on logs/metrics,
+	// which can be slow on a large database. Warn rather than reject — the
+	// admin may intentionally want a full scan, but they should know it is
+	// not indexed.
+	if plan, err := s.r.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q); err == nil {
+		var scan string
+		for plan.Next() {
+			var id, parent, notused, detail any
+			if err := plan.Scan(&id, &parent, &notused, &detail); err == nil {
+				scan += fmt.Sprintf("%v ", detail)
+			}
+		}
+		plan.Close()
+		if strings.Contains(scan, "SCAN TABLE") && !strings.Contains(scan, "USING INDEX") {
+			res.Warning = "query plan does a full table scan (no index); consider adding WHERE on ts/app/container"
+		}
+	}
 	rs, err := s.r.QueryContext(ctx, q)
 	if err != nil {
 		return SQLResult{}, fmt.Errorf("%w: sql: %v", ErrInvalidQuery, err)
@@ -99,7 +119,7 @@ func (s *Store) QuerySQL(ctx context.Context, query string, limit int) (SQLResul
 	if err != nil {
 		return SQLResult{}, fmt.Errorf("sql: %w", err)
 	}
-	res := SQLResult{Columns: cols, Rows: make([][]any, 0, 16)}
+	res.Columns = cols
 	vals := make([]any, len(cols))
 	ptrs := make([]any, len(cols))
 	for i := range vals {
