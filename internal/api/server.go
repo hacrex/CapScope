@@ -141,6 +141,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/access/export", s.accessExport)
 	mux.HandleFunc("GET /api/sql", s.sql)
 	mux.Handle("POST /api/admin/redact-test", s.requireAdmin(http.HandlerFunc(s.redactTest)))
+	mux.Handle("POST /api/admin/normalize-schema", s.requireAdmin(http.HandlerFunc(s.normalizeSchema)))
 	mux.HandleFunc("GET /api/metrics", s.metrics)
 	mux.HandleFunc("GET /api/snapshots", s.snapshots)
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
@@ -1492,6 +1493,25 @@ func defaultRedactTestLines() []string {
 		`GET /health 200 12ms`,
 		`user=bob action=login`,
 	}
+}
+
+// normalizeSchema runs the PRD S6 row normalization: it removes the
+// denormalized `container`/`app` columns from the logs table (and equivalent
+// columns from metrics, access, and snapshots) so each log row no longer
+// repeats the container name and app string. It is opt-in: it refuses to run
+// unless CAPSCOPE_ENABLE_NORMALIZE=1 is set. Admin-only.
+//
+// POST /api/admin/normalize-schema
+func (s *Server) normalizeSchema(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.NormalizeSchema(r.Context()); err != nil {
+		if errors.Is(err, store.ErrInvalidQuery) {
+			fail(w, 400, err)
+		} else {
+			fail(w, 500, err)
+		}
+		return
+	}
+	writeJSON(w, map[string]any{"normalized": true})
 }
 func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
