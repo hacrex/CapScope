@@ -64,6 +64,8 @@ type Config struct {
 	AlertDiscordURL   string
 	AlertNtfyURL      string // ntfy topic URL, e.g. https://ntfy.sh/capscope
 	AlertNtfyToken    string // optional ntfy access token
+	AlertPagerDutyKey string // PagerDuty Events API v2 routing key
+	AlertOpsgenieKey  string // Opsgenie API key (GenieKey)
 
 	// SMTP alert delivery (A5): when SMTP_HOST is set, alert rules can send
 	// email notifications. SMTP_DIGEST_INTERVAL>0 enables digest mode: alert
@@ -149,6 +151,8 @@ func Load() (Config, error) {
 		AlertDiscordURL:            os.Getenv("ALERT_DISCORD_URL"),
 		AlertNtfyURL:               os.Getenv("ALERT_NTFY_URL"),
 		AlertNtfyToken:             os.Getenv("ALERT_NTFY_TOKEN"),
+		AlertPagerDutyKey:          os.Getenv("ALERT_PAGERDUTY_KEY"),
+		AlertOpsgenieKey:           os.Getenv("ALERT_OPSGENIE_KEY"),
 		SMTPHost:                   os.Getenv("SMTP_HOST"),
 		SMTPPort:                   envInt("SMTP_PORT", 587, &errs),
 		SMTPUser:                   os.Getenv("SMTP_USER"),

@@ -238,11 +238,85 @@ func NewSMTP(host, port, user, pass, from, to string) Channel {
 	}
 }
 
+// NewPagerDuty sends events to the PagerDuty Events API v2
+// (https://events.pagerduty.com/v2/enqueue). The routing key may use
+// ${ENV}. Each alert is sent as a "trigger" event with a dedup key based
+// on rule+app so PagerDuty can auto-resolve when the alert clears.
+func NewPagerDuty(routingKey string) Channel {
+	c := httpClient()
+	return Channel{
+		Name:   "pagerduty",
+		Client: c,
+		Send: func(ctx context.Context, msg string) error {
+			rk, err := expandEnv(routingKey)
+			if err != nil {
+				return err
+			}
+			payload := map[string]any{
+				"routing_key":  rk,
+				"event_action": "trigger",
+				"payload": map[string]string{
+					"summary":   "CapScope alert",
+					"source":    "capscope",
+					"severity":  "critical",
+					"group":     "capscope",
+					"class":     "log-anomaly",
+					"details":   msg,
+				},
+			}
+			return postJSON(ctx, c, "https://events.pagerduty.com/v2/enqueue", payload)
+		},
+	}
+}
+
+// NewOpsgenie sends alerts to the Opsgenie Alert API v2
+// (https://api.opsgenie.com/v2/alerts). The GenieKey may use ${ENV}.
+func NewOpsgenie(apiKey string) Channel {
+	c := httpClient()
+	return Channel{
+		Name:   "opsgenie",
+		Client: c,
+		Send: func(ctx context.Context, msg string) error {
+			key, err := expandEnv(apiKey)
+			if err != nil {
+				return err
+			}
+			payload := map[string]any{
+				"message":     "CapScope alert",
+				"description": msg,
+				"responders":  []map[string]string{{"type": "team", "name": "operations"}},
+				"tags":        []string{"capscope"},
+				"priority":    "P3",
+			}
+			body, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.opsgenie.com/v2/alerts", bytes.NewReader(body))
+			if err != nil {
+				return err
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "GenieKey "+key)
+			resp, err := c.Do(req)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 300 {
+				snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+				return fmt.Errorf("opsgenie: HTTP %d: %s", resp.StatusCode, snippet)
+			}
+			return nil
+		},
+	}
+}
+
 // BuildChannels constructs the configured channels from raw settings; empty
 // entries are skipped. Used by main and by tests (payload shape check).
 // SMTP is NOT included here: serve.go decides whether to add it as a regular
 // channel or as a digest channel (see WithDigestSMTP/WithDigestInterval).
-func BuildChannels(webhookURL, telegramToken, telegramChat, slackURL, discordURL, ntfyURL, ntfyToken string) []Channel {
+func BuildChannels(webhookURL, telegramToken, telegramChat, slackURL, discordURL, ntfyURL, ntfyToken, pagerDutyKey, opsgenieKey string) []Channel {
 	var out []Channel
 	if webhookURL != "" {
 		out = append(out, NewWebhook(webhookURL))
@@ -258,6 +332,12 @@ func BuildChannels(webhookURL, telegramToken, telegramChat, slackURL, discordURL
 	}
 	if ntfyURL != "" {
 		out = append(out, NewNtfy(ntfyURL, ntfyToken))
+	}
+	if pagerDutyKey != "" {
+		out = append(out, NewPagerDuty(pagerDutyKey))
+	}
+	if opsgenieKey != "" {
+		out = append(out, NewOpsgenie(opsgenieKey))
 	}
 	return out
 }

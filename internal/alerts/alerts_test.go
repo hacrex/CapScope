@@ -476,11 +476,11 @@ func TestNotifierHTTPErrorSurfaces(t *testing.T) {
 }
 
 func TestBuildChannelsSkipsEmpty(t *testing.T) {
-	chans := BuildChannels("", "", "", "", "", "", "")
+	chans := BuildChannels("", "", "", "", "", "", "", "", "")
 	if len(chans) != 0 {
 		t.Fatalf("want 0 channels, got %d", len(chans))
 	}
-	chans = BuildChannels("http://x", "tok", "chat", "http://s", "http://d", "http://n", "")
+	chans = BuildChannels("http://x", "tok", "chat", "http://s", "http://d", "http://n", "", "", "")
 	if len(chans) != 5 {
 		t.Fatalf("want 5 channels, got %d", len(chans))
 	}

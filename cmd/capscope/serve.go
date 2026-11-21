@@ -80,7 +80,7 @@ func serve(log *slog.Logger) error {
 
 	// Alerts (A1 to A7): an engine over the store, fed by hot-reloaded rules
 	// and notification channels. Runs independently of Docker connectivity.
-	chans := alerts.BuildChannels(cfg.AlertWebhookURL, cfg.AlertTelegramTok, cfg.AlertTelegramChat, cfg.AlertSlackURL, cfg.AlertDiscordURL, cfg.AlertNtfyURL, cfg.AlertNtfyToken)
+	chans := alerts.BuildChannels(cfg.AlertWebhookURL, cfg.AlertTelegramTok, cfg.AlertTelegramChat, cfg.AlertSlackURL, cfg.AlertDiscordURL, cfg.AlertNtfyURL, cfg.AlertNtfyToken, cfg.AlertPagerDutyKey, cfg.AlertOpsgenieKey)
 	var engOpts []alerts.Option
 	smtpPort := strconv.Itoa(cfg.SMTPPort)
 	if cfg.SMTPDigestInterval > 0 && cfg.SMTPHost != "" && cfg.SMTPFrom != "" && cfg.SMTPTo != "" {

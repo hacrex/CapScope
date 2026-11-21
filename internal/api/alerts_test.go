@@ -117,7 +117,7 @@ func TestAlertsTestEndpointSendsAndReports(t *testing.T) {
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr := collector.NewManager(cfg, dk, st, h, log)
-	eng := alerts.New(st, rulesPath, time.Minute, alerts.BuildChannels(capture.URL, "", "", "", "", "", ""), log)
+	eng := alerts.New(st, rulesPath, time.Minute, alerts.BuildChannels(capture.URL, "", "", "", "", "", "", "", ""), log)
 	as := auth.NewSessionManager(log)
 	hash, _ := bcrypt.GenerateFromPassword([]byte("p"), bcrypt.DefaultCost)
 	_, _ = st.SeedFirstUser("u", string(hash))
