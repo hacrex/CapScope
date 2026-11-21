@@ -1833,7 +1833,25 @@ async function openCrash(id){
   const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
   const pre=document.createElement('pre');pre.className='logbox';
   pre.textContent=s.logs.map(l=>`${fmtTime(l.ts)} ${l.stream==='e'?'err':'out'} ${l.line}`).join('\n');
-  card.append(ibar,h,sum,kv,chart,lh,pre);
+  // Self-healing advice
+  let advDiv;
+  try{
+    const adv=await api('/api/advice/'+id);
+    if(adv&&adv.advice&&adv.advice.length){
+      const ah=document.createElement('h3');ah.textContent='Suggested remediation';ah.style.color='var(--muted)';
+      advDiv=document.createElement('div');advDiv.className='card';advDiv.style.marginTop='16px';
+      adv.advice.forEach(a=>{
+        const sevClass=a.severity==='high'?'bad':(a.severity==='medium'?'warn':'ok');
+        const item=document.createElement('div');item.className='card';item.style.padding='12px';item.style.marginBottom='8px';
+        item.innerHTML=`<div style=\"display:flex;justify-content:space-between;align-items:flex-start\"><span style=\"font-weight:600\">${a.action}</span><span class=\"badge ${sevClass}\">${a.severity}</span></div><div style=\"font-size:12px;color:var(--muted);margin-top:4px\">${a.detail}</div>${a.command?'<div style=\"font-family:monospace;font-size:11px;margin-top:4px;background:#f6f8fa;padding:6px;border-radius:4px\">$ '+a.command+'</div>':''}`;
+        advDiv.append(item);
+      });
+      advDiv.prepend(ah);
+    }
+  }catch(e){/* advice is best-effort */ }
+  card.append(ibar,h,sum,kv);
+  if(advDiv)card.append(advDiv);
+  card.append(chart,lh,pre);
   box.append(card);pre.scrollTop=pre.scrollHeight;
   draw($('#cs'),s.metrics,'mem',v=>mib(v),'mem_limit');
 }

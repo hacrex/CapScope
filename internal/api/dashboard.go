@@ -490,3 +490,147 @@ func (s *Server) onCall(w http.ResponseWriter, r *http.Request) {
 		"generated": time.Now().UnixMilli(),
 	})
 }
+
+// advice returns self-healing remediation suggestions for a crash snapshot.
+// GET /api/advice/{id}
+func (s *Server) advice(w http.ResponseWriter, r *http.Request) {
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/advice/")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	sn, err := s.st.GetSnapshot(ctx, id)
+	if err != nil {
+		fail(w, 404, err)
+		return
+	}
+	if !s.requireScopedApp(w, r, sn.App) {
+		return
+	}
+
+	advice := generateAdvice(sn)
+	writeJSON(w, map[string]any{
+		"snapshot_id": sn.ID,
+		"app":         sn.App,
+		"container":   sn.Container,
+		"kind":        sn.Kind,
+		"exit_code":   sn.ExitCode,
+		"advice":      advice,
+	})
+}
+
+// generateAdvice produces actionable remediation suggestions based on crash data.
+func generateAdvice(sn store.Snapshot) []adviceItem {
+	var items []adviceItem
+
+	switch {
+	case sn.OOMKilled || sn.ExitCode == 137:
+		items = append(items, adviceItem{
+			Category:  "memory",
+			Severity:  "high",
+			Action:    "Increase memory limit",
+			Detail:    fmt.Sprintf("Container was OOM-killed (exit %d). Consider raising the memory limit from %d bytes to at least %d bytes.", sn.ExitCode, sn.MemLimit, sn.MemLimit*2),
+			Command:   fmt.Sprintf("docker update --memory=%d %s", sn.MemLimit*2, sn.Container),
+		})
+	case sn.ExitCode == 139:
+		items = append(items, adviceItem{
+			Category:  "code",
+			Severity:  "high",
+			Action:    "Check for segmentation fault",
+			Detail:    "Exit 139 indicates SIGSEGV. This is typically a null pointer dereference or memory corruption. Check recent code changes and run with debug symbols.",
+			Command:   "docker logs <container> --since=1h | grep -i 'panic\\|segfault\\|fatal'",
+		})
+	case sn.ExitCode == 143:
+		items = append(items, adviceItem{
+			Category:  "ops",
+			Severity:  "low",
+			Action:    "Review stop signal handling",
+			Detail:    "Exit 143 indicates SIGTERM. Ensure the application handles SIGTERM gracefully and shuts down within the stop timeout.",
+			Command:   "docker inspect --format='{{.HostConfig.StopTimeout}}' <container>",
+		})
+	case sn.ExitCode == 127:
+		items = append(items, adviceItem{
+			Category:  "config",
+			Severity:  "high",
+			Action:    "Check entrypoint/command",
+			Detail:    "Exit 127 means the entrypoint or command was not found. Check the image's ENTRYPOINT and CMD for typos or missing files.",
+			Command:   "docker inspect --format='{{.Config.Entrypoint}} {{.Config.Cmd}}' <container>",
+		})
+	case sn.ExitCode == 126:
+		items = append(items, adviceItem{
+			Category:  "config",
+			Severity:  "high",
+			Action:    "Check executable permissions",
+			Detail:    "Exit 126 means the entrypoint/command was found but is not executable. Check file permissions on the entrypoint script.",
+			Command:   "docker inspect --format='{{.Config.Entrypoint}}' <container>",
+		})
+	case sn.ExitCode == 1:
+		items = append(items, adviceItem{
+			Category:  "code",
+			Severity:  "medium",
+			Action:    "Check application logs",
+			Detail:    "Exit 1 is a generic application error. Review the last error lines in the container logs for the root cause.",
+			Command:   "docker logs <container> --tail=50",
+		})
+	default:
+		if sn.ExitCode != 0 {
+			items = append(items, adviceItem{
+				Category:  "unknown",
+				Severity:  "medium",
+				Action:    "Investigate exit code",
+				Detail:    fmt.Sprintf("Exit code %d is not a standard Docker exit code. Review container logs for application-specific errors.", sn.ExitCode),
+				Command:   "docker logs <container> --tail=100",
+			})
+		}
+	}
+
+	if sn.RestartsWindow >= 2 {
+		items = append(items, adviceItem{
+			Category:  "restart",
+			Severity:  "high",
+			Action:    "Investigate restart loop",
+			Detail:    fmt.Sprintf("Container has died %d times in the restart window. This indicates a crash loop. Fix the underlying crash before increasing restart attempts.", sn.RestartsWindow),
+			Command:   "docker events --filter container=<container> --filter event=die",
+		})
+	}
+
+	if sn.GitCommit != "" && sn.GitCommit != "" {
+		items = append(items, adviceItem{
+			Category:  "deploy",
+			Severity:  "medium",
+			Action:    "Check recent changes",
+			Detail:    fmt.Sprintf("Container was running image with git commit %s. Check if a recent deploy introduced the issue.", sn.GitCommit[:min(12, len(sn.GitCommit))]),
+			Command:   fmt.Sprintf("git show --stat %s", sn.GitCommit[:min(12, len(sn.GitCommit))]),
+		})
+	}
+
+	if len(items) == 0 {
+		items = append(items, adviceItem{
+			Category:  "info",
+			Severity:  "low",
+			Action:    "No specific remediation",
+			Detail:    "No automatic remediation suggestions available for this crash type. Review the crash snapshot and logs manually.",
+			Command:   "",
+		})
+	}
+
+	return items
+}
+
+type adviceItem struct {
+	Category  string `json:"category"`
+	Severity  string `json:"severity"`
+	Action    string `json:"action"`
+	Detail    string `json:"detail"`
+	Command   string `json:"command,omitempty"`
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
