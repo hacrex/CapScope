@@ -747,8 +747,98 @@ function params(extra,container){
   // ⏱ action. Honoured only while that container is still the selection, and
   // cleared by any filter change, so it can never leak into another view.
   if(S.logSince&&S.logSince.ts>0&&(!S.selCont||S.selCont.name===S.logSince.name))p.set('since',S.logSince.ts);
+  // Query builder: app + container overrides
+  if($('#qbApp').value)p.set('app',$('#qbApp').value);
+  if($('#qbCont').value)p.set('container',$('#qbCont').value);
   for(const k in extra)p.set(k,extra[k]);
   return p.toString();
+}
+
+/* ---------- query builder ---------- */
+// Populate the app selector from /api/apps. Called once at startup and
+// whenever the app list may have changed (new containers discovered).
+async function loadQBApps(){
+  try{
+    const d=await api('/api/apps');
+    const sel=$('#qbApp');
+    const cur=sel.value;
+    sel.innerHTML='<option value="">All apps</option>';
+    (d.apps||[]).forEach(a=>{
+      const o=document.createElement('option');o.value=a.app;o.textContent=a.app;sel.append(o);
+    });
+    // Restore previous selection if it still exists.
+    if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+    // Container selector depends on the chosen app.
+    await loadQBContainers(sel.value);
+  }catch(e){/* apps endpoint may not be ready yet; retry on next poll */}
+}
+
+// Populate the container selector for the given app.
+async function loadQBContainers(app){
+  const sel=$('#qbCont');const cur=sel.value;
+  sel.innerHTML='<option value="">All containers</option>';
+  if(!app){sel.disabled=true;return;}
+  try{
+    const d=await api('/api/containers?host='+(S.host||''));
+    const conts=(d.containers||[]).filter(c=>c.app===app);
+    conts.forEach(c=>{
+      const o=document.createElement('option');o.value=c.id;o.textContent=c.name+(c.replica?' ('+c.replica+')':'');sel.append(o);
+    });
+    sel.disabled=conts.length===0;
+    if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+  }catch(e){sel.disabled=true;}
+}
+
+// Apply a quick-filter preset to the query builder controls, then reload logs.
+function applyQBPreset(value){
+  const lvl=$('#lvl');const q=$('#q');const strm=$('#strm');
+  lvl.value='';q.value='';strm.value='';
+  switch(value){
+    case 'err':lvl.value='error';break;
+    case 'warn_err':lvl.value='warn,error';break;
+    case 'oom':q.value='OOM';lvl.value='error';break;
+    case 'crash':q.value='crash';lvl.value='error';break;
+    case 'restart':q.value='restart';break;
+    case 'deploy':q.value='deploy';break;
+  }
+  applyQueryBuilder();
+}
+
+// Read the query builder controls into the shared filter state, then reload logs.
+function applyQueryBuilder(){
+  // App/container are read directly by params() from #qbApp/#qbCont.
+  // Other controls (#q, #lvl, #strm, range) are already wired to restartLogs.
+  restartLogs();
+}
+
+function clearQB(){
+  $('#qbApp').value='';$('#qbCont').value='';$('#qbPreset').value='';
+  $('#qbApp').classList.remove('qb-has');$('#qbCont').classList.remove('qb-has');
+  $('#qbCont').disabled=false;
+  applyQueryBuilder();
+}
+
+function updateQBChip(app,cont){
+  const wrap=document.getElementById('qbChipWrap')||document.createElement('div');
+  wrap.id='qbChipWrap';wrap.className='qb-wrap';
+  let html='';
+  if(app){html+=`<span class="qb-chip qb-chip-active">${app}<span class="qb-x" onclick="clearQBApp()">✕</span></span>`;}
+  if(cont){html+=`<span class="qb-chip qb-chip-active">${cont}<span class="qb-x" onclick="clearQBCont()">✕</span></span>`;}
+  wrap.innerHTML=html;
+  const bar=$('.bar');
+  // Insert after the range-wrap if not already present.
+  if(!document.getElementById('qbChipWrap')){const rw=document.querySelector('.range-wrap');if(rw)rw.after(wrap);}
+  else{const existing=document.getElementById('qbChipWrap');existing.parentNode.replaceChild(wrap,existing);}
+}
+function clearQBApp(){$('#qbApp').value='';$('#qbApp').classList.remove('qb-has');$('#qbCont').value='';$('#qbCont').classList.remove('qb-has');applyQueryBuilder();}
+function clearQBCont(){$('#qbCont').value='';$('#qbCont').classList.remove('qb-has');applyQueryBuilder();}
+
+// Highlight the app/container chips when a selection is active.
+function syncQBChips(){
+  const a=$('#qbApp').value;const c=$('#qbCont').value;
+  $('#qbApp').classList.toggle('qb-has',!!a);
+  $('#qbCont').classList.toggle('qb-has',!!c);
+  updateQBChip(a,c);
 }
 function stopStreams(){
   for(const p of S.panes){
@@ -2616,6 +2706,13 @@ addEventListener('DOMContentLoaded',()=>{
       await loadHosts();
       refreshApps().then(()=>crashChip());
       setInterval(refreshApps,10000);setInterval(crashChip,60000);
+      // Query builder initialization: load apps + wire preset/app/container controls.
+      loadQBApps();setInterval(loadQBApps,30000); // refresh app list periodically
+      $('#qbApp').onchange=async()=>{await loadQBContainers($('#qbApp').value);syncQBChips();};
+      $('#qbCont').onchange=syncQBChips;
+      $('#qbPreset').onchange=()=>{const v=$('#qbPreset').value;if(v)applyQBPreset(v);$('#qbPreset').value='';};
+      $('#qbApply').onclick=applyQueryBuilder;
+      $('#qbClear').onclick=clearQB;
       if(s.authEnabled)setInterval(sessionWarning,60000);
       if(s.authEnabled)sessionWarning();
       show(); // dashboard is the default landing view; logs tab needs no restore

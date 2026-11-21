@@ -493,3 +493,15 @@ body.drawer-open #sideScrim{display:block}
 .dragbox{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 16%,transparent);border-left:1px solid var(--accent);border-right:1px solid var(--accent);pointer-events:none;display:none}
 #zoomChip{display:none;align-items:center;gap:6px}
 #zoomChip.on{display:inline-flex}
+
+/* ---- query builder: app/container/preset filter controls ---- */
+.qb-wrap{display:inline-flex;align-items:center;gap:6px;margin-left:10px;flex-wrap:wrap}
+.qb-wrap select{font-size:11.5px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+.qb-wrap select:focus{border-color:var(--accent);outline:none}
+.qb-wrap select.qb-has{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));border-color:var(--accent)}
+.qb-wrap .b{font-size:11px;padding:4px 10px}
+.qb-wrap .b.qb-active{background:var(--accent);color:#000;border-color:var(--accent)}
+.qb-wrap .qb-chip{font-size:11px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:3px 8px;border-radius:6px;margin-left:4px}
+.qb-wrap .qb-chip.qb-chip-active{background:color-mix(in srgb,var(--accent) 15%,var(--panel2));border-color:var(--accent)}
+.qb-wrap .qb-chip .qb-x{cursor:pointer;margin-left:6px;font-weight:bold;color:var(--muted)}
+.qb-wrap .qb-chip .qb-x:hover{color:var(--err)}

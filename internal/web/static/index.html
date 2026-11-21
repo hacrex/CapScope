@@ -67,6 +67,12 @@
         <select id="smode" title="Search mode"><option value="">text</option><option value="rx">regex</option><option value="sql">SQL</option></select>
         <select id="lvl" class="hide-sql"><option value="">all levels</option><option value="error">errors</option><option value="warn,error">warn + error</option><option value="warn">warn</option><option value="info">info</option><option value="debug">debug</option></select>
         <select id="strm" class="hide-sql"><option value="">stdout + stderr</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
+        <!-- Query builder: app/container selector + preset quick filters -->
+        <select id="qbApp" class="hide-sql" title="Filter logs by application"><option value="">All apps</option></select>
+        <select id="qbCont" class="hide-sql" title="Filter logs by container"><option value="">All containers</option></select>
+        <select id="qbPreset" class="hide-sql" title="Quick filter presets"><option value="">Quick filter…</option><option value="err">Errors only</option><option value="warn_err">Warnings &amp; errors</option><option value="oom">OOM kills</option><option value="crash">Crashes</option><option value="restart">Container restarts</option><option value="deploy">Deploys</option></select>
+        <button class="b hide-sql" id="qbApply" title="Apply the selected filters and reload logs">Apply</button>
+        <button class="b hide-sql" id="qbClear" title="Clear all query builder filters">Clear</button>
         <button class="b hide-sql" id="replicas" style="display:none">All replicas ▾</button>
         <button class="b on hide-sql" id="follow">Follow</button>
         <button class="b hide-sql" id="pause">Pause</button>
