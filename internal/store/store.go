@@ -241,6 +241,10 @@ var migrations = []string{
 	 );
 	 CREATE INDEX IF NOT EXISTS idx_chain_seq ON chain(seq);
 	 CREATE INDEX IF NOT EXISTS idx_chain_entry_hash ON chain(entry_hash);`,
+	// Code-to-log correlation: add git_commit column to containers table.
+	// Populated from Docker image labels (org.opencontainers.image.revision).
+	`ALTER TABLE containers ADD COLUMN git_commit TEXT NOT NULL DEFAULT '';`,
+	`CREATE INDEX IF NOT EXISTS idx_containers_git_commit ON containers(git_commit);`,
 }
 
 // Open creates or migrates the database at path.
@@ -351,6 +355,7 @@ type ContainerRow struct {
 	ID, Name, App, Image, Replica, State string
 	HostID                               string // agent host that runs the container (Phase 4.4)
 	FirstSeen, LastSeen                  int64
+	GitCommit                            string // git commit SHA from Docker labels (org.opencontainers.image.revision)
 }
 
 type Snapshot struct {
@@ -375,6 +380,7 @@ type Snapshot struct {
 	Metrics        []MetricPoint   `json:"metrics,omitempty"`
 	Inspect        json.RawMessage `json:"inspect,omitempty"`
 	Deploy         *Deploy         `json:"deploy,omitempty"` // newest deploy before the crash (V9, API only, never stored)
+	GitCommit      string          `json:"git_commit,omitempty"` // git commit SHA from Docker image labels
 }
 
 type AppSummary struct {
@@ -1428,9 +1434,9 @@ func (s *Store) QueryMetrics(ctx context.Context, app, containerID, hostID strin
 // ---- containers and apps ----
 
 func (s *Store) UpsertContainer(c ContainerRow) error {
-	_, err := s.w.Exec(`INSERT INTO containers(id,name,app,image,replica,host_id,state,first_seen,last_seen) VALUES(?,?,?,?,?,?,?,?,?)
-	  ON CONFLICT(id) DO UPDATE SET state=excluded.state, last_seen=excluded.last_seen, name=excluded.name, app=excluded.app, image=excluded.image, host_id=excluded.host_id`,
-		c.ID, c.Name, c.App, c.Image, c.Replica, c.HostID, c.State, c.FirstSeen, c.LastSeen)
+	_, err := s.w.Exec(`INSERT INTO containers(id,name,app,image,replica,host_id,state,first_seen,last_seen,git_commit) VALUES(?,?,?,?,?,?,?,?,?,?)
+	  ON CONFLICT(id) DO UPDATE SET state=excluded.state, last_seen=excluded.last_seen, name=excluded.name, app=excluded.app, image=excluded.image, host_id=excluded.host_id, git_commit=excluded.git_commit`,
+		c.ID, c.Name, c.App, c.Image, c.Replica, c.HostID, c.State, c.FirstSeen, c.LastSeen, c.GitCommit)
 	return err
 }
 

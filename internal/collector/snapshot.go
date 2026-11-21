@@ -181,6 +181,7 @@ func buildSnapshot(t *tracker, exit int, insp docker.Inspect, haveInspect bool, 
 		RestartsWindow: loop.count,
 		Logs:           logs,
 		Metrics:        mets,
+		GitCommit:      t.gitCommit,
 	}
 	if dieMs > 0 {
 		sn.TS = dieMs // caught-up deaths keep their real time

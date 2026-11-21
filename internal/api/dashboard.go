@@ -6,8 +6,12 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -366,4 +370,52 @@ func (s *Server) evidenceChain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"chain": out})
+}
+
+// commitInfo returns git commit metadata for a given SHA from a local git repo.
+// GET /api/commit/<sha>
+func (s *Server) commitInfo(w http.ResponseWriter, r *http.Request) {
+	sha := strings.TrimPrefix(r.URL.Path, "/api/commit/")
+	if sha == "" {
+		fail(w, 400, errors.New("commit sha is required"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Run git show to get commit info
+	showCmd := exec.CommandContext(ctx, "git", "show", "--no-patch", "--format=%H%n%s%n%an%n%ae%n%ad", sha)
+	out, err := showCmd.Output()
+	if err != nil {
+		// Try short sha
+		showCmd = exec.CommandContext(ctx, "git", "rev-parse", "--verify", sha)
+		revOut, revErr := showCmd.Output()
+		if revErr != nil {
+			fail(w, 404, fmt.Errorf("commit %s not found in local git repo", sha))
+			return
+		}
+		resolved := strings.TrimSpace(string(revOut))
+		showCmd = exec.CommandContext(ctx, "git", "show", "--no-patch", "--format=%H%n%s%n%an%n%ae%n%ad", resolved)
+		out, err = showCmd.Output()
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		sha = resolved
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "\n", 5)
+	if len(parts) < 5 {
+		fail(w, 500, fmt.Errorf("unexpected git show output"))
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"sha":       parts[0],
+		"subject":   parts[1],
+		"author":    parts[2],
+		"email":     parts[3],
+		"date":      parts[4],
+	})
 }

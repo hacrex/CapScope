@@ -13,7 +13,7 @@ import (
 // ring buffers of recent log lines and metric samples (used for crash
 // snapshots), and flags learned from Docker events.
 type tracker struct {
-	id, name, app, image, replica, hostID string
+	id, name, app, image, replica, hostID, gitCommit string
 	tty                                   bool
 	created                               time.Time // when CapScope started tracking this incarnation
 	started                               time.Time // the container's real start time per Docker (falls back to created)
@@ -170,6 +170,7 @@ func (t *tracker) info() ContainerInfo {
 	ci := ContainerInfo{
 		ID: t.id, Name: t.name, App: t.app, Replica: t.replica, Image: t.image,
 		HostID: t.hostID, Started: startedMS, SizeRW: t.sizeRW,
+		GitCommit: t.gitCommit,
 	}
 	if n := len(t.metrics); n > 0 {
 		p := t.metrics[n-1]

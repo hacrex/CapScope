@@ -174,20 +174,23 @@ func (m *Manager) CurrentImages(ctx context.Context) []alerts.ImageRef {
 
 // ContainerInfo is the live view returned by the API.
 type ContainerInfo struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	App      string  `json:"app"`
-	Replica  string  `json:"replica"`
-	Image    string  `json:"image"`
-	HostID   string  `json:"host_id"`
-	Started  int64   `json:"started"`
-	CPU      float64 `json:"cpu"`
-	Mem      int64   `json:"mem"`
-	MemLimit int64   `json:"mem_limit"`
-	SampleTS int64   `json:"sample_ts"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	App       string  `json:"app"`
+	Replica   string  `json:"replica"`
+	Image     string  `json:"image"`
+	HostID    string  `json:"host_id"`
+	Started   int64   `json:"started"`
+	CPU       float64 `json:"cpu"`
+	Mem       int64   `json:"mem"`
+	MemLimit  int64   `json:"mem_limit"`
+	SampleTS  int64   `json:"sample_ts"`
 	// SizeRW is the writable-layer size in bytes from inspect?size=true:
 	// -1 until the first measurement (see sizeLoop).
 	SizeRW int64 `json:"size_rw"`
+	// GitCommit is the git commit SHA from Docker image labels
+	// (org.opencontainers.image.revision).
+	GitCommit string `json:"git_commit,omitempty"`
 }
 
 func (m *Manager) Containers(hostID string) []ContainerInfo {
@@ -356,7 +359,9 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 	}
 	now := time.Now()
 	return &tracker{
-		id: id, name: name, app: app, replica: replica, image: insp.Config.Image, hostID: m.hostID,
+		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
+		hostID: m.hostID,
+		gitCommit: insp.Config.Labels["org.opencontainers.image.revision"],
 		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone:    make(chan struct{}),
 		accessOnly: m.excluded(name, app),
@@ -398,7 +403,7 @@ func (m *Manager) ensure(ctx context.Context, id string) {
 	if t.accessOnly {
 		m.log.Info("tracking container (access logs only)", "container", t.name)
 	} else {
-		if err := m.sink.UpsertContainer(store.ContainerRow{ID: id, Name: t.name, App: t.app, Image: t.image, Replica: t.replica, HostID: t.hostID, State: "running", FirstSeen: now, LastSeen: now}); err != nil {
+		if err := m.sink.UpsertContainer(store.ContainerRow{ID: id, Name: t.name, App: t.app, Image: t.image, Replica: t.replica, HostID: t.hostID, State: "running", FirstSeen: now, LastSeen: now, GitCommit: t.gitCommit}); err != nil {
 			m.log.Error("upsert container failed", "container", t.name, "err", err)
 		}
 		m.log.Info("tracking container", "app", t.app, "container", t.name)

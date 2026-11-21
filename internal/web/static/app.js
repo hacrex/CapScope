@@ -1825,6 +1825,9 @@ async function openCrash(id){
     const near=gapMs<15*60000; // deploy within 15 min before the crash
     cells.push(['Last deploy',(s.deploy.version||'')+' · '+fmtDT(s.deploy.ts)+(gap>=0?' ('+gap+'m before crash)':'')+(near?' — ⚠ recent deploy':'')]);
   }
+  if(s.git_commit){
+    cells.push(['Git commit',s.git_commit.slice(0,12)]);
+  }
   cells.forEach(([k,v])=>{const a=document.createElement('b'),b=document.createElement('span');a.textContent=k;b.textContent=v;kv.append(a,b);});
   const chart=document.createElement('div');chart.className='card';chart.innerHTML='<h3>Memory before death</h3><canvas id="cs"></canvas>';
   const lh=document.createElement('h3');lh.textContent=`Last ${s.logs.length} log lines`;lh.style.color='var(--muted)';
