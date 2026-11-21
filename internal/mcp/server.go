@@ -12,11 +12,14 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -265,6 +268,17 @@ func (s *Server) handleToolsList(msg Message) Message {
 				"required": []string{"sql"},
 			},
 		},
+		{
+			"name":        "explain_crash",
+			"description": "Explain a crash snapshot using local LLM (Ollama) or rule-based fallback. Returns a human-readable root-cause analysis and suggested remediation.",
+			"inputSchema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id": map[string]string{"type": "integer", "description": "Snapshot ID"},
+				},
+				"required": []string{"id"},
+			},
+		},
 	}
 	return resultResponse(msg.ID, map[string]interface{}{"tools": tools})
 }
@@ -288,6 +302,8 @@ func (s *Server) handleToolsCall(ctx context.Context, msg Message) Message {
 		return s.handleGetSnapshot(ctx, msg.ID, params.Arguments)
 	case "run_sql":
 		return s.handleRunSQL(ctx, msg.ID, params.Arguments)
+	case "explain_crash":
+		return s.handleExplainCrash(ctx, msg.ID, params.Arguments)
 	default:
 		return errorResponse(msg.ID, ErrMethod, "unknown tool: "+params.Name, nil)
 	}
@@ -572,4 +588,173 @@ func parseTime(s string) (int64, error) {
 		}
 	}
 	return t.UnixMilli(), nil
+}
+
+// handleExplainCrash explains a crash snapshot using local LLM (Ollama)
+// with rule-based fallback.
+func (s *Server) handleExplainCrash(ctx context.Context, id *json.RawMessage, args json.RawMessage) Message {
+	var params struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return errorResponse(id, ErrParams, "invalid arguments", nil)
+	}
+
+	sn, err := s.st.GetSnapshot(ctx, params.ID)
+	if err != nil {
+		return errorResponse(id, ErrInternal, "snapshot not found: "+err.Error(), nil)
+	}
+
+	// Build a prompt from the snapshot data
+	prompt := buildCrashPrompt(sn)
+
+	// Try Ollama first, fall back to rule-based explanation
+	explanation, source := ollamaExplain(ctx, prompt)
+	if explanation == "" {
+		explanation = summarizeCrash(sn)
+		source = "rules"
+	}
+
+	return resultResponse(id, map[string]interface{}{
+		"snapshot_id": sn.ID,
+		"app":         sn.App,
+		"container":   sn.Container,
+		"kind":        sn.Kind,
+		"exit_code":   sn.ExitCode,
+		"summary":     sn.Summary,
+		"explanation": explanation,
+		"source":      source,
+	})
+}
+
+// buildCrashPrompt constructs a natural-language prompt from a snapshot.
+func buildCrashPrompt(sn store.Snapshot) string {
+	var b bytes.Buffer
+	b.WriteString("You are a Site Reliability Engineer analyzing a container crash.\n")
+	b.WriteString("Here is the crash evidence:\n\n")
+	b.WriteString(fmt.Sprintf("Container: %s (%s)\n", sn.Container, sn.ContainerID))
+	b.WriteString(fmt.Sprintf("App: %s\n", sn.App))
+	b.WriteString(fmt.Sprintf("Image: %s\n", sn.Image))
+	b.WriteString(fmt.Sprintf("Exit code: %d\n", sn.ExitCode))
+	b.WriteString(fmt.Sprintf("OOM killed: %v\n", sn.OOMKilled))
+	b.WriteString(fmt.Sprintf("Restart count: %d\n", sn.RestartCount))
+	b.WriteString(fmt.Sprintf("Restarts in window: %d\n", sn.RestartsWindow))
+	b.WriteString(fmt.Sprintf("Uptime: %d seconds\n", sn.UptimeSec))
+	b.WriteString(fmt.Sprintf("Memory limit: %d bytes\n", sn.MemLimit))
+	if sn.Error != "" {
+		b.WriteString(fmt.Sprintf("Docker error: %s\n", sn.Error))
+	}
+	b.WriteString(fmt.Sprintf("Summary: %s\n", sn.Summary))
+	if len(sn.Logs) > 0 {
+		b.WriteString("\nLast log lines:\n")
+		start := len(sn.Logs)
+		if start > 10 {
+			start = len(sn.Logs) - 10
+		}
+		for _, r := range sn.Logs[start:] {
+			b.WriteString(fmt.Sprintf("  [%s] %s: %s\n", r.Level, r.Container, r.Line))
+		}
+	}
+	b.WriteString("\nBased on this evidence, explain the likely root cause in 2-3 sentences, then suggest concrete remediation steps. Be concise and actionable.")
+	return b.String()
+}
+
+// ollamaExplain sends a prompt to a local Ollama instance and returns the
+// generated explanation. Returns empty string if Ollama is unavailable.
+func ollamaExplain(ctx context.Context, prompt string) (string, string) {
+	ollamaURL := os.Getenv("OLLAMA_URL")
+	if ollamaURL == "" {
+		ollamaURL = "http://localhost:11434"
+	}
+	model := os.Getenv("OLLAMA_MODEL")
+	if model == "" {
+		model = "llama3.2:3b"
+	}
+
+	payload := map[string]interface{}{
+		"model":  model,
+		"prompt": prompt,
+		"stream": false,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", "rules"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ollamaURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return "", "rules"
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "rules"
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", "rules"
+	}
+
+	var result struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", "rules"
+	}
+	return result.Response, "ollama"
+}
+
+// summarizeCrash produces a rule-based explanation from a snapshot.
+func summarizeCrash(sn store.Snapshot) string {
+	var b strings.Builder
+
+	switch {
+	case sn.OOMKilled:
+		b.WriteString("The container was killed by the kernel OOM killer. ")
+		if sn.MemLimit > 0 {
+			b.WriteString(fmt.Sprintf("Memory limit was %d bytes. ", sn.MemLimit))
+		}
+		b.WriteString("Raise the memory limit or investigate for a memory leak.")
+	case sn.ExitCode == 137:
+		b.WriteString("The container was killed with SIGKILL (exit 137) without an OOM flag. ")
+		b.WriteString("This is typically caused by docker kill, a Swarm stop timeout, or host memory pressure.")
+	case sn.ExitCode == 139:
+		b.WriteString("The container crashed with SIGSEGV (exit 139). ")
+		b.WriteString("This indicates a segmentation fault, likely a bug in the application or a bad native library.")
+	case sn.ExitCode == 143:
+		b.WriteString("The container was stopped with SIGTERM (exit 143). ")
+		b.WriteString("This is typically a graceful termination triggered by docker stop or a deployment.")
+	case sn.ExitCode == 126:
+		b.WriteString("The container entrypoint or command is not executable (exit 126). ")
+		b.WriteString("Check the image's ENTRYPOINT and CMD, and ensure the binary has execute permissions.")
+	case sn.ExitCode == 127:
+		b.WriteString("The container entrypoint or command was not found (exit 127). ")
+		b.WriteString("Check the image's ENTRYPOINT and CMD for typos or missing files.")
+	case sn.ExitCode == 1:
+		b.WriteString("The container exited with code 1 (generic error). ")
+		b.WriteString("Check the last log lines for application-specific error messages.")
+	case sn.ExitCode == 0:
+		b.WriteString("The container exited cleanly with code 0.")
+	default:
+		b.WriteString(fmt.Sprintf("The container exited with code %d. ", sn.ExitCode))
+	}
+
+	if sn.RestartsWindow >= 2 {
+		b.WriteString(fmt.Sprintf(" This container has died %d times in the restart window, indicating a restart loop. ", sn.RestartsWindow))
+	}
+
+	if sn.Summary != "" {
+		b.WriteString(" " + sn.Summary)
+	}
+
+	if len(sn.Logs) > 0 {
+		last := sn.Logs[len(sn.Logs)-1]
+		if last.Level == "error" || last.Level == "fatal" || last.Level == "err" {
+			b.WriteString(fmt.Sprintf(" Last error line: %s", last.Line))
+		}
+	}
+
+	return b.String()
 }

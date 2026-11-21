@@ -73,10 +73,10 @@ func TestServerListTools(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
-	if len(result.Tools) != 4 {
-		t.Fatalf("expected 4 tools, got %d: %+v", len(result.Tools), result.Tools)
+	if len(result.Tools) != 5 {
+		t.Fatalf("expected 5 tools, got %d: %+v", len(result.Tools), result.Tools)
 	}
-	toolNames := []string{"query_logs", "list_snapshots", "get_snapshot", "run_sql"}
+	toolNames := []string{"query_logs", "list_snapshots", "get_snapshot", "run_sql", "explain_crash"}
 	found := make(map[string]bool)
 	for _, tool := range result.Tools {
 		found[tool["name"].(string)] = true
