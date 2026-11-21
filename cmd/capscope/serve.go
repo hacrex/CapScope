@@ -21,6 +21,7 @@ import (
 	"capscope/internal/collector"
 	"capscope/internal/config"
 	"capscope/internal/docker"
+	"capscope/internal/forward"
 	"capscope/internal/hub"
 	"capscope/internal/hubagent"
 	"capscope/internal/store"
@@ -101,6 +102,13 @@ func serve(log *slog.Logger) error {
 	mgr.SetEventSink(eng.FeedEvent) // event rules (A6) fire on live Docker events
 	done := make(chan struct{})
 	go func() { mgr.Run(ctx); close(done) }()
+
+	// Log forwarding (P3): forward collected rows to Loki and/or
+	// Elasticsearch for long-term retention beyond SQLite's size cap.
+	if fw := forward.New(h, cfg.ForwardLokiURL, cfg.ForwardESURL, cfg.ForwardESIndex, 100, 5*time.Second, log); fw != nil {
+		go fw.Start(ctx)
+		log.Info("forward: log forwarding enabled", "loki", cfg.ForwardLokiURL, "es", cfg.ForwardESURL)
+	}
 
 	if cfg.UpdateCheck {
 		up := alerts.NewUpdater(mgr, func(ctx context.Context, image string) ([]string, error) {

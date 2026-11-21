@@ -78,6 +78,12 @@ type Config struct {
 	SMTPTo            string
 	SMTPDigestInterval time.Duration
 
+	// Log forwarding (P3): forward collected log rows to external systems
+	// for long-term retention beyond CapScope's SQLite cap.
+	ForwardLokiURL  string // Loki push API URL, e.g. http://loki:3100/loki/api/v1/push
+	ForwardESURL    string // Elasticsearch bulk API URL, e.g. http://elasticsearch:9200/_bulk
+	ForwardESIndex  string // Elasticsearch index name prefix, default "capscope-logs"
+
 	// A7: daily jittered registry check comparing each container's image
 	// manifest digest; fires "update_available" pseudo-alert events. Spin-free
 	// installs can turn it off here.
@@ -159,6 +165,9 @@ func Load() (Config, error) {
 		SMTPPass:                   os.Getenv("SMTP_PASS"),
 		SMTPFrom:                   os.Getenv("SMTP_FROM"),
 		SMTPTo:                     os.Getenv("SMTP_TO"),
+		ForwardLokiURL:             os.Getenv("FORWARD_LOKI_URL"),
+		ForwardESURL:               os.Getenv("FORWARD_ES_URL"),
+		ForwardESIndex:             os.Getenv("FORWARD_ES_INDEX"),
 		UpdateCheck:                envBool("UPDATE_CHECK", true, &errs),
 		AgentHostID:                env("AGENT_HOST_ID", os.Getenv("CAPSCOPE_HOST_ID")),
 		AgentHub:                   env("AGENT_HUB", ""),
