@@ -3,7 +3,10 @@ package store
 
 import (
 	"context"
+	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -223,6 +226,21 @@ var migrations = []string{
 	 CREATE INDEX IF NOT EXISTS idx_log_clusters_hash ON log_clusters(template_hash);
 	 CREATE INDEX IF NOT EXISTS idx_log_clusters_app ON log_clusters(app);
 	 CREATE INDEX IF NOT EXISTS idx_log_clusters_last_seen ON log_clusters(last_seen);`,
+	// Evidence chain (immutable audit): tamper-evident hash chain over log rows.
+	// Each entry chains SHA256(prev_hash + data_hash), so modifying any row
+	// breaks all subsequent chain entries. The head hash can be published
+	// externally (e.g., DNS, tweet, blockchain) as proof of integrity.
+	`CREATE TABLE IF NOT EXISTS chain(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   seq INTEGER NOT NULL UNIQUE,           -- sequence number
+	   prev_hash TEXT NOT NULL,               -- hash of previous entry
+	   entry_hash TEXT NOT NULL UNIQUE,       -- hash of prev_hash + data_hash
+	   data_hash TEXT NOT NULL,               -- hash of batched row data
+	   row_count INTEGER NOT NULL DEFAULT 0,  -- number of rows in this batch
+	   ts_ms INTEGER NOT NULL                 -- unix ms when entry was written
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_chain_seq ON chain(seq);
+	 CREATE INDEX IF NOT EXISTS idx_chain_entry_hash ON chain(entry_hash);`,
 }
 
 // Open creates or migrates the database at path.
@@ -645,6 +663,246 @@ func (s *Store) BuildClusters(ctx context.Context, hostID string, sinceMs, until
 		return count, err
 	}
 	return count, nil
+}
+
+// BuildChain scans recent log rows not yet covered by chain entries and
+// appends chain entries covering them. Called periodically from a background
+// goroutine to extend the tamper-evident hash chain.
+func (s *Store) BuildChain(ctx context.Context, hostID string, sinceMs, untilMs int64, batchSize int) (int64, error) {
+	if sinceMs <= 0 {
+		sinceMs = time.Now().Add(-24 * time.Hour).UnixMilli()
+	}
+	if untilMs <= 0 {
+		untilMs = time.Now().UnixMilli()
+	}
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+
+	// Get the head entry's hash (prev_hash for the next entry)
+	head, err := s.ChainHead(ctx)
+	var prevHash string
+	if err == nil {
+		prevHash = head.EntryHash
+	} else {
+		prevHash = "" // empty string for genesis entry
+	}
+
+	// Find log rows not yet covered by any chain entry.
+	// We use the maximum ts covered by chain entries as a lower bound,
+	// but simpler: just take rows in the window and chain them all.
+	// (Re-chaining is idempotent-ish; duplicate entries would be wrong,
+	// so we track by max ts already covered.)
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "l.host_id = ?"), append(args, hostID)
+	}
+	cl, args = append(cl, "l.ts >= ?"), append(args, sinceMs)
+	cl, args = append(cl, "l.ts <= ?"), append(args, untilMs)
+
+	// Get the max ts already covered by chain entries to avoid re-chaining
+	var maxCoveredTs int64
+	err = s.r.QueryRowContext(ctx, `SELECT COALESCE(MAX(ts_ms), 0) FROM chain`).Scan(&maxCoveredTs)
+	if err != nil {
+		maxCoveredTs = 0
+	}
+	if maxCoveredTs > sinceMs {
+		cl = append(cl, "l.ts > ?")
+		args = append(args, maxCoveredTs)
+	}
+
+	q := `SELECT l.id, l.ts, l.container_id, l.container, l.app, l.host_id, l.stream, l.level, l.line
+	      FROM logs l` + whereClause(cl) + ` ORDER BY l.ts LIMIT ?`
+	args = append(args, batchSize)
+
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var batch []LogRow
+	for rows.Next() {
+		var r LogRow
+		if err := rows.Scan(&r.ID, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.HostID, &r.Stream, &r.Level, &r.Line); err != nil {
+			return 0, err
+		}
+		batch = append(batch, r)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(batch) == 0 {
+		return 0, nil
+	}
+
+	// Compute data_hash = SHA256 of concatenated row data
+	var buf bytes.Buffer
+	for _, r := range batch {
+		fmt.Fprintf(&buf, "%d:%d:%s:%s:%s:%s:%s:%s:%s\n",
+			r.ID, r.TS, r.ContainerID, r.Container, r.App, r.HostID, r.Stream, r.Level, r.Line)
+	}
+	dataHash := sha256Sum(buf.Bytes())
+	lastTs := batch[len(batch)-1].TS / 1_000_000
+
+	entryHash, err := s.AppendChain(ctx, prevHash, dataHash, int64(len(batch)), lastTs)
+	if err != nil {
+		return 0, err
+	}
+	_ = entryHash
+	return int64(len(batch)), nil
+}
+
+// ChainEntry is one link in the tamper-evident hash chain over log rows.
+type ChainEntry struct {
+	ID        int64  `json:"id"`
+	Seq       int64  `json:"seq"`
+	PrevHash  string `json:"prev_hash"`
+	EntryHash string `json:"entry_hash"`
+	DataHash  string `json:"data_hash"`
+	RowCount  int64  `json:"row_count"`
+	TsMs      int64  `json:"ts_ms"`
+}
+
+// ListChainEntries returns the most recent chain entries, ordered by seq DESC.
+func (s *Store) ListChainEntries(ctx context.Context, limit int) ([]ChainEntry, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 50
+	}
+	rows, err := s.r.QueryContext(ctx, `
+		SELECT id, seq, prev_hash, entry_hash, data_hash, row_count, ts_ms
+		FROM chain ORDER BY seq DESC LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ChainEntry
+	for rows.Next() {
+		var ce ChainEntry
+		if err := rows.Scan(&ce.ID, &ce.Seq, &ce.PrevHash, &ce.EntryHash, &ce.DataHash, &ce.RowCount, &ce.TsMs); err != nil {
+			return nil, err
+		}
+		out = append(out, ce)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ChainVerifyResult is the result of verifying the entire evidence chain.
+type ChainVerifyResult struct {
+	Valid    bool   `json:"valid"`
+	Entries  int64  `json:"entries"`
+	HeadHash string `json:"head_hash"`
+	Error    string `json:"error,omitempty"` // first error encountered, if any
+}
+
+// AppendChain appends a new chain entry covering a batch of log rows.
+// dataHash is SHA256 of the concatenated row data for this batch.
+// Returns the new entry hash.
+func (s *Store) AppendChain(ctx context.Context, prevHash, dataHash string, rowCount int64, tsMs int64) (string, error) {
+	entryHash := sha256Sum([]byte(prevHash + dataHash))
+
+	res, err := s.w.ExecContext(ctx, `
+		INSERT INTO chain(seq, prev_hash, entry_hash, data_hash, row_count, ts_ms)
+		VALUES(
+			COALESCE((SELECT MAX(seq) FROM chain) + 1, 1),
+			?, ?, ?, ?, ?
+		)`,
+		prevHash, entryHash, dataHash, rowCount, tsMs,
+	)
+	if err != nil {
+		return "", err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return "", err
+	}
+	_ = id
+	return entryHash, nil
+}
+
+// ChainHead returns the head (latest) chain entry, or zero values if empty.
+func (s *Store) ChainHead(ctx context.Context) (ChainEntry, error) {
+	var ce ChainEntry
+	err := s.r.QueryRowContext(ctx, `
+		SELECT id, seq, prev_hash, entry_hash, data_hash, row_count, ts_ms
+		FROM chain ORDER BY seq DESC LIMIT 1
+	`).Scan(&ce.ID, &ce.Seq, &ce.PrevHash, &ce.EntryHash, &ce.DataHash, &ce.RowCount, &ce.TsMs)
+	if err != nil {
+		return ce, err
+	}
+	return ce, nil
+}
+
+// VerifyChain walks the entire chain and verifies that each entry's hash
+// matches SHA256(prev_hash + data_hash) and that the chain is contiguous
+// (each entry's prev_hash matches the previous entry's entry_hash).
+func (s *Store) VerifyChain(ctx context.Context) (ChainVerifyResult, error) {
+	result := ChainVerifyResult{Valid: true}
+
+	rows, err := s.r.QueryContext(ctx, `
+		SELECT id, seq, prev_hash, entry_hash, data_hash, row_count, ts_ms
+		FROM chain ORDER BY seq ASC
+	`)
+	if err != nil {
+		result.Valid = false
+		result.Error = err.Error()
+		return result, err
+	}
+	defer rows.Close()
+
+	var prevEntryHash string
+	var count int64
+	for rows.Next() {
+		var ce ChainEntry
+		if err := rows.Scan(&ce.ID, &ce.Seq, &ce.PrevHash, &ce.EntryHash, &ce.DataHash, &ce.RowCount, &ce.TsMs); err != nil {
+			result.Valid = false
+			result.Error = err.Error()
+			return result, err
+		}
+
+		// Verify chain continuity
+		if count > 0 && ce.PrevHash != prevEntryHash {
+			result.Valid = false
+			result.Error = fmt.Sprintf("chain break at seq %d: prev_hash %s != previous entry_hash %s", ce.Seq, ce.PrevHash, prevEntryHash)
+			return result, nil
+		}
+
+		// Verify entry hash: SHA256(prev_hash + data_hash)
+		expectedHash := sha256Sum([]byte(ce.PrevHash + ce.DataHash))
+		if ce.EntryHash != expectedHash {
+			result.Valid = false
+			result.Error = fmt.Sprintf("hash mismatch at seq %d: entry_hash %s != expected %s", ce.Seq, ce.EntryHash, expectedHash)
+			return result, nil
+		}
+
+		prevEntryHash = ce.EntryHash
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		result.Valid = false
+		result.Error = err.Error()
+		return result, err
+	}
+
+	result.Entries = count
+	if count > 0 {
+		// Head hash is the last entry's entry_hash
+		result.HeadHash = prevEntryHash
+	}
+	return result, nil
+}
+
+// sha256Sum returns the hex SHA256 of the input.
+func sha256Sum(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }
 
 // AppAnomalies detects apps whose log volume or error rate deviates

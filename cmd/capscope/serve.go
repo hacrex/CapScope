@@ -130,6 +130,26 @@ func serve(log *slog.Logger) error {
 		}
 	}()
 
+	// Evidence chain (P0): periodically append tamper-evident hash chain
+	// entries covering recent log rows for immutable audit.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := st.BuildChain(ctx, cfg.AgentHostID, 0, 0, 1000)
+				if err != nil {
+					log.Warn("chain build failed", "err", err)
+				} else if n > 0 {
+					log.Debug("chain build complete", "rows", n)
+				}
+			}
+		}
+	}()
+
 	if cfg.UpdateCheck {
 		up := alerts.NewUpdater(mgr, func(ctx context.Context, image string) ([]string, error) {
 			ii, err := dk.ImageInspect(ctx, image)

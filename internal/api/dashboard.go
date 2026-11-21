@@ -320,3 +320,50 @@ func (s *Server) logClusters(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"clusters": out})
 }
+
+// evidenceVerify verifies the tamper-evident hash chain integrity.
+// GET /api/evidence/verify
+func (s *Server) evidenceVerify(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	result, err := s.st.VerifyChain(ctx)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, result)
+}
+
+// evidenceHead returns the latest chain entry (head hash).
+// GET /api/evidence/head
+func (s *Server) evidenceHead(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	ce, err := s.st.ChainHead(ctx)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, ce)
+}
+
+// evidenceChain lists chain entries with pagination.
+// GET /api/evidence/chain?limit=50
+func (s *Server) evidenceChain(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+
+	out, err := s.st.ListChainEntries(ctx, limit)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"chain": out})
+}

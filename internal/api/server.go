@@ -160,6 +160,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/anomalies", s.anomalies)
 	mux.HandleFunc("GET /api/costs", s.costs)
 	mux.HandleFunc("GET /api/log-clusters", s.logClusters)
+	mux.HandleFunc("GET /api/evidence/verify", s.evidenceVerify)
+	mux.HandleFunc("GET /api/evidence/head", s.evidenceHead)
+	mux.HandleFunc("GET /api/evidence/chain", s.evidenceChain)
 	mux.HandleFunc("GET /metrics", s.prometheus)
 	// User management (Phase 3.3): admin only.
 	mux.HandleFunc("GET /api/users", s.usersList)

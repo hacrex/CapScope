@@ -2443,6 +2443,24 @@ async function loadOverview(){
       box.append(rs5.wrap);
     }
   }catch(e){/* log clusters are best-effort */ }
+  // Evidence chain: tamper-evident hash chain over log rows.
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const ev=await api('/api/evidence/verify'+q);
+    if(ev){
+      const rs6=secBlock('EVIDENCE CHAIN',ev.entries);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      const chip=document.createElement('span');chip.className='k';chip.style.fontWeight='600';
+      chip.textContent=ev.valid?'chain valid · '+ev.entries+' entries':'CHAIN BROKEN';
+      chip.className=ev.valid?'k':'k bad';
+      chip.title=`Head hash: ${ev.HeadHash}\nEntries: ${ev.entries}\n${ev.valid?'chain integrity verified':'chain integrity compromised'}`;
+      line.append(chip);
+      const headChip=document.createElement('span');headChip.className='k';headChip.style.fontFamily='var(--font-mono)';headChip.style.fontSize='10px';headChip.textContent=`head: ${ev.HeadHash.slice(0,16)}…`;
+      line.append(headChip);
+      rs6.body.append(line);
+      box.append(rs6.wrap);
+    }
+  }catch(e){/* evidence chain is best-effort */ }
   // auto-refresh while visible
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }
