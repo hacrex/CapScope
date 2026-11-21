@@ -247,3 +247,43 @@ func (s *Server) anomalies(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"anomalies": out})
 }
+
+// costs returns per-app resource cost estimates for a time window.
+// Query params: since_ms, until_ms (unix ms), cpu_rate ($/core-hour),
+// mem_rate ($/GB-hour).
+func (s *Server) costs(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	sinceMs := int64(0)
+	if v := r.URL.Query().Get("since_ms"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			sinceMs = n
+		}
+	}
+	untilMs := int64(0)
+	if v := r.URL.Query().Get("until_ms"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			untilMs = n
+		}
+	}
+	cpuRate := 0.05 // $/core-hour default
+	if v := r.URL.Query().Get("cpu_rate"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			cpuRate = f
+		}
+	}
+	memRate := 0.01 // $/GB-hour default
+	if v := r.URL.Query().Get("mem_rate"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			memRate = f
+		}
+	}
+
+	out, err := s.st.AppCosts(ctx, r.URL.Query().Get("host"), sinceMs, untilMs, cpuRate, memRate)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"costs": out, "cpu_rate": cpuRate, "mem_rate": memRate})
+}

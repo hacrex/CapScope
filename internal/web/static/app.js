@@ -2407,6 +2407,24 @@ async function loadOverview(){
       box.append(rs3.wrap);
     }
   }catch(e){/* anomalies are best-effort; never break the dashboard */ }
+  // Cost attribution: per-app resource cost estimates.
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const c=await api('/api/costs'+q+'&cpu_rate=0.05&mem_rate=0.01');
+    if(c&&c.costs&&c.costs.length){
+      const rs4=secBlock('COST ESTIMATES',c.costs.length);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      c.costs.forEach(a=>{
+        const chip=document.createElement('span');chip.className='k bad';chip.style.cursor='pointer';
+        chip.textContent=`${a.app} · $${a.CostTotal.toFixed(2)}`;
+        chip.title=`CPU ${a.CPUCoreHours.toFixed(2)} core-h · MEM ${a.MemGBHours.toFixed(2)} GB-h · $${a.CostCPU.toFixed(2)}+$${a.CostMem.toFixed(2)}`;
+        chip.onclick=()=>{S.app=a.app;setTab('logs');show();};
+        line.append(chip);
+      });
+      rs4.body.append(line);
+      box.append(rs4.wrap);
+    }
+  }catch(e){/* cost estimates are best-effort */ }
   // auto-refresh while visible
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }

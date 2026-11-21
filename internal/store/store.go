@@ -360,6 +360,87 @@ type AppAnomaly struct {
 	Reason   string `json:"reason"`     // human-readable explanation
 }
 
+// AppCost is one app's resource cost estimate for a time window.
+// Cost is computed from metric samples: CPU core-hours and memory GB-hours,
+// multiplied by configurable rates.
+type AppCost struct {
+	App          string  `json:"app"`
+	CPUCoreHours float64 `json:"cpu_core_hours"` // sum of CPU cores used * hours
+	MemGBHours   float64 `json:"mem_gb_hours"`   // sum of memory GB * hours
+	CostCPU      float64 `json:"cost_cpu"`       // CPUCoreHours * cpuRate
+	CostMem      float64 `json:"cost_mem"`       // MemGBHours * memRate
+	CostTotal    float64 `json:"cost_total"`     // CostCPU + CostMem
+}
+
+// AppCosts computes cost estimates for all apps over a time window.
+// cpuRate is $/core-hour, memRate is $/GB-hour.
+// Uses metric samples from metrics table; averages per container per bucket,
+// then sums across containers per app.
+func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs int64, cpuRate, memRate float64) ([]AppCost, error) {
+	if sinceMs <= 0 {
+		sinceMs = time.Now().Add(-24 * time.Hour).UnixMilli()
+	}
+	if untilMs <= 0 {
+		untilMs = time.Now().UnixMilli()
+	}
+
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, hostID)
+	}
+	cl, args = append(cl, "ts >= ?"), append(args, sinceMs)
+	cl, args = append(cl, "ts <= ?"), append(args, untilMs)
+
+	q := `SELECT app, AVG(cpu), AVG(mem) FROM metrics WHERE ` + whereClause(cl) + ` GROUP BY app`
+
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type appStats struct {
+		app   string
+		avgCPU float64
+		avgMem float64
+	}
+	stats := map[string]appStats{}
+	for rows.Next() {
+		var app string
+		var avgCPU, avgMem float64
+		if err := rows.Scan(&app, &avgCPU, &avgMem); err != nil {
+			return nil, err
+		}
+		stats[app] = appStats{app: app, avgCPU: avgCPU, avgMem: avgMem}
+	}
+	rows.Close()
+
+	durationHours := float64(untilMs-sinceMs) / 3_600_000.0
+
+	var out []AppCost
+	for app, st := range stats {
+		cpuCoreHours := st.avgCPU / 100.0 * durationHours // cpu is percent of one core
+		memGBHours := (st.avgMem / 1_073_741_824.0) * durationHours // mem is bytes
+		costCPU := cpuCoreHours * cpuRate
+		costMem := memGBHours * memRate
+		out = append(out, AppCost{
+			App:          app,
+			CPUCoreHours: cpuCoreHours,
+			MemGBHours:   memGBHours,
+			CostCPU:      costCPU,
+			CostMem:      costMem,
+			CostTotal:    costCPU + costMem,
+		})
+	}
+
+	// Sort by cost descending.
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CostTotal > out[j].CostTotal
+	})
+	return out, nil
+}
+
 // AppAnomalies detects apps whose log volume or error rate deviates
 // significantly from their 24-hour baseline. Returns anomalies sorted by
 // score (highest first). threshold is the multiplier above which a deviation
