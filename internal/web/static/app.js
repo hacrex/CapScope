@@ -127,11 +127,9 @@ addEventListener('keydown',e=>{
 async function api(path,init){
   const opts=Object.assign({cache:'no-store'},init||{});
   const h=new Headers(opts.headers||{});
-  const t=localStorage.getItem('capscope_token');
-  if(t)h.set('Authorization','Bearer '+t);
   opts.headers=h;
   const r=await fetch(path,opts);
-  if(r.status===401){localStorage.removeItem('capscope_token');showLogin();throw new Error('unauthorized');}
+  if(r.status===401){showLogin();throw new Error('unauthorized');}
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
@@ -928,7 +926,7 @@ function openStream(pane,first){
   // Without one, EventSource gets 401 and retries forever silently.
   // (When the server runs with auth disabled there is no token to hold —
   // don't bounce the user to a login form they can never complete.)
-  if(!localStorage.getItem('capscope_token')&&S.authEnabled){
+  if(S.authEnabled && (!S.sessionExpires || S.sessionExpires <= Date.now()/1000)){
     if(!pane.gone)showLogin();
     return;
   }
@@ -953,7 +951,7 @@ function openStream(pane,first){
   my.onerror=()=>{
     if(pane.gone)return;
     // If we lost our session, stop retrying and show the login overlay.
-    if(!localStorage.getItem('capscope_token')&&S.authEnabled){
+    if(S.authEnabled && (!S.sessionExpires || S.sessionExpires <= Date.now()/1000)){
       if(my.readyState!==EventSource.CLOSED)my.close();
       pane.es=null;
       showLogin();
@@ -2583,7 +2581,6 @@ addEventListener('DOMContentLoaded',()=>{
       const d=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         username:$('#loginUser').value,password:$('#loginPass').value
       })});
-      localStorage.setItem('capscope_token',d.token);
       $('#loginUser').value='';$('#loginPass').value='';
       hideLogin();
       refreshApps().then(()=>{crashChip();show();});
@@ -2597,7 +2594,6 @@ addEventListener('DOMContentLoaded',()=>{
   };
   $('#logoutBtn').onclick=async()=>{
     try{await api('/api/logout',{method:'POST'});}catch(e){}
-    localStorage.removeItem('capscope_token');
     location.reload();
   };
   (async()=>{

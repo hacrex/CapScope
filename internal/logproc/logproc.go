@@ -14,12 +14,16 @@ type redactor struct {
 }
 
 var redactors = []redactor{
-	{"private_key", regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)`), "[REDACTED_PRIVATE_KEY]"},
+	{"private_key", regexp.MustCompile(`(?s)-----BEGIN (?:[A-Z ]*PRIVATE KEY|OPENSSH PRIVATE KEY)-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|-----END OPENSSH PRIVATE KEY-----|$)`), "[REDACTED_PRIVATE_KEY]"},
 	{"jwt", regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "[REDACTED_JWT]"},
+	{"github_token", regexp.MustCompile(`(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,})`), "[REDACTED_GITHUB_TOKEN]"},
+	{"stripe_key", regexp.MustCompile(`\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b`), "[REDACTED_STRIPE_KEY]"},
+	{"slack_webhook", regexp.MustCompile(`https://hooks\.slack\.com/services/T[A-Za-z0-9_]{8,}/B[A-Za-z0-9_]{8,}/[A-Za-z0-9]{24,}`), "[REDACTED_SLACK_WEBHOOK]"},
 	{"bearer_token", regexp.MustCompile(`(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}`), "${1} [REDACTED]"},
+	{"api_key_header", regexp.MustCompile(`(?i)(?:X-API-Key|Authorization:\s*(?:Apikey|API-Key|Token))\s*[:]\s*[A-Za-z0-9._~+/=-]{8,}`), "$1 [REDACTED]"},
 	{"aws_key", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`), "[REDACTED_AWS_KEY]"},
 	{"url_credential", regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)[^@\s/]+@`), "${1}[REDACTED]@"},
-	{"kv_secret", regexp.MustCompile(`(?i)((?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|authorization|private[_-]?key)["']?\s*[:=]\s*["']?)([^\s"',;&}\]]+)`), "${1}[REDACTED]"},
+	{"kv_secret", regexp.MustCompile(`(?i)((?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|authorization|private[_-]?key|client[_-]?secret|signing[_-]?key|encryption[_-]?key)["']?\s*[:=]\s*["']?)([^\s"',;&}\]]+)`), "${1}[REDACTED]"},
 }
 
 // Redact masks common secret shapes (JWTs, bearer tokens, key=value secrets,

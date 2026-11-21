@@ -167,7 +167,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.usersDelete)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
-	return s.auth(mux)
+	// Apply security headers and rate limiting to everything.
+	return s.securityHeaders(s.rateLimit(s.auth(mux)))
 }
 
 // sessionCookie carries the bearer token so streaming clients that cannot set
@@ -1426,8 +1427,8 @@ func itoa64(v int64) string { return strconv.FormatInt(v, 10) }
 
 // sql runs one read-only ad-hoc statement over the stored tables. Validation
 // and the row cap live in store.QuerySQL; a 5s deadline keeps a heavy scan
-// from pinning the read pool. Admin-only: raw SQL reaches every table
-// (users table included), which is not something a scoped viewer gets.
+// sql runs a read-only ad-hoc SQL query over the stored tables. The users
+// table (with password hashes) is off-limits even for admins via this endpoint.
 func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 	if s.sessions == nil {
 		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
@@ -1437,10 +1438,16 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden: admin required", http.StatusForbidden)
 		return
 	}
+	query := r.URL.Query().Get("query")
+	// Block any reference to the users table, which contains password hashes.
+	if strings.Contains(strings.ToLower(query), "users") {
+		fail(w, 400, errors.New("the users table is not accessible via /api/sql"))
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	res, err := s.st.QuerySQL(ctx, r.URL.Query().Get("query"), limit)
+	res, err := s.st.QuerySQL(ctx, query, limit)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidQuery) {
 			fail(w, 400, err)
