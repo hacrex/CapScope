@@ -403,18 +403,6 @@ type AppAnomaly struct {
 	Reason   string `json:"reason"`     // human-readable explanation
 }
 
-// AppCost is one app's resource cost estimate for a time window.
-// Cost is computed from metric samples: CPU core-hours and memory GB-hours,
-// multiplied by configurable rates.
-type AppCost struct {
-	App          string  `json:"app"`
-	CPUCoreHours float64 `json:"cpu_core_hours"` // sum of CPU cores used * hours
-	MemGBHours   float64 `json:"mem_gb_hours"`   // sum of memory GB * hours
-	CostCPU      float64 `json:"cost_cpu"`       // CPUCoreHours * cpuRate
-	CostMem      float64 `json:"cost_mem"`       // MemGBHours * memRate
-	CostTotal    float64 `json:"cost_total"`     // CostCPU + CostMem
-}
-
 // LogCluster is one semantic log cluster: a group of log lines that share
 // the same template (variable parts replaced with placeholders).
 type LogCluster struct {
@@ -426,6 +414,26 @@ type LogCluster struct {
 	LastSeen     int64  `json:"last_seen"`     // unix ms
 	App          string `json:"app"`           // app name (from containers table)
 	Level        string `json:"level"`         // log level
+}
+
+// AppCost is one app's resource cost estimate for a time window.
+// Cost is computed from metric samples: CPU core-hours and memory GB-hours,
+// multiplied by configurable rates.
+type AppCost struct {
+	App          string  `json:"app"`
+	CPUCoreHours float64 `json:"cpu_core_hours"` // sum of CPU cores used * hours
+	MemGBHours   float64 `json:"mem_gb_hours"`   // sum of memory GB * hours
+	CostCPU      float64 `json:"cost_cpu"`       // CPUCoreHours * cpuRate
+	CostMem      float64 `json:"cost_mem"`       // MemGBHours * memRate
+	CostTotal    float64 `json:"cost_total"`     // CostCPU + CostMem
+	// Right-sizing recommendations
+	CPUPercent  float64 `json:"cpu_percent"`   // avg CPU usage as % of one core
+	MemPercent  float64 `json:"mem_percent"`   // avg mem as % of mem_limit (0 if unlimited)
+	CPUOverProvisioned bool `json:"cpu_overprovisioned"` // avg CPU < 30%
+	MemOverProvisioned   bool `json:"mem_overprovisioned"` // avg mem < 50% of limit
+	// Carbon footprint estimate (kg CO2)
+	CarbonKg    float64 `json:"carbon_kg"`     // estimated CO2 kg for the window
+	CarbonKgPerHour float64 `json:"carbon_kg_per_hour"`
 }
 
 // AppCosts computes cost estimates for all apps over a time window.
@@ -448,7 +456,7 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 	cl, args = append(cl, "ts >= ?"), append(args, sinceMs)
 	cl, args = append(cl, "ts <= ?"), append(args, untilMs)
 
-	q := `SELECT app, AVG(cpu), AVG(mem) FROM metrics WHERE ` + whereClause(cl) + ` GROUP BY app`
+	q := `SELECT app, AVG(cpu), AVG(mem), AVG(mem_limit) FROM metrics WHERE ` + whereClause(cl) + ` GROUP BY app`
 
 	rows, err := s.r.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -457,18 +465,19 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 	defer rows.Close()
 
 	type appStats struct {
-		app   string
-		avgCPU float64
-		avgMem float64
+		app      string
+		avgCPU   float64
+		avgMem   float64
+		avgMemLimit float64
 	}
 	stats := map[string]appStats{}
 	for rows.Next() {
 		var app string
-		var avgCPU, avgMem float64
-		if err := rows.Scan(&app, &avgCPU, &avgMem); err != nil {
+		var avgCPU, avgMem, avgMemLimit float64
+		if err := rows.Scan(&app, &avgCPU, &avgMem, &avgMemLimit); err != nil {
 			return nil, err
 		}
-		stats[app] = appStats{app: app, avgCPU: avgCPU, avgMem: avgMem}
+		stats[app] = appStats{app: app, avgCPU: avgCPU, avgMem: avgMem, avgMemLimit: avgMemLimit}
 	}
 	rows.Close()
 
@@ -480,13 +489,32 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 		memGBHours := (st.avgMem / 1_073_741_824.0) * durationHours // mem is bytes
 		costCPU := cpuCoreHours * cpuRate
 		costMem := memGBHours * memRate
+
+		cpuPercent := st.avgCPU // already percent of one core
+		memPercent := 0.0
+		if st.avgMemLimit > 0 {
+			memPercent = st.avgMem / st.avgMemLimit * 100.0
+		}
+
+		// Carbon estimate: ~0.5 kg CO2 per kWh, ~0.5 kWh per core-hour, ~0.1 kWh per GB-hour
+		cpuCarbonKg := cpuCoreHours * 0.5 * 0.5
+		memCarbonKg := memGBHours * 0.1 * 0.5
+		carbonKg := cpuCarbonKg + memCarbonKg
+		carbonKgPerHour := carbonKg / durationHours
+
 		out = append(out, AppCost{
-			App:          app,
-			CPUCoreHours: cpuCoreHours,
-			MemGBHours:   memGBHours,
-			CostCPU:      costCPU,
-			CostMem:      costMem,
-			CostTotal:    costCPU + costMem,
+			App:                app,
+			CPUCoreHours:       cpuCoreHours,
+			MemGBHours:         memGBHours,
+			CostCPU:            costCPU,
+			CostMem:            costMem,
+			CostTotal:          costCPU + costMem,
+			CPUPercent:         cpuPercent,
+			MemPercent:         memPercent,
+			CPUOverProvisioned: cpuPercent < 30.0,
+			MemOverProvisioned: memPercent > 0 && memPercent < 50.0,
+			CarbonKg:           carbonKg,
+			CarbonKgPerHour:    carbonKgPerHour,
 		})
 	}
 

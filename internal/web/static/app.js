@@ -2428,6 +2428,27 @@ async function loadOverview(){
       box.append(rs4.wrap);
     }
   }catch(e){/* cost estimates are best-effort */ }
+  // Right-sizing & carbon advisor: per-app overprovisioning and carbon footprint.
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const c=await api('/api/costs'+q+'&cpu_rate=0.05&mem_rate=0.01');
+    if(c&&c.costs&&c.costs.length){
+      const rs7=secBlock('COST & CARBON',c.costs.length);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      c.costs.forEach(a=>{
+        const chip=document.createElement('span');chip.className='k';chip.style.cursor='pointer';
+        const tips=[];
+        if(a.CPUOverProvisioned)tips.push('CPU underused ('+Math.round(a.CPUPercent)+'%)');
+        if(a.MemOverProvisioned)tips.push('MEM overprovisioned ('+Math.round(a.MemPercent)+'%)');
+        chip.textContent=`${a.app} · $${a.CostTotal.toFixed(2)} · ${a.CarbonKg.toFixed(1)}kg CO2`;
+        chip.title=`CPU ${a.CPUCoreHours.toFixed(1)} core-h · MEM ${a.MemGBHours.toFixed(1)} GB-h\nCost: $${a.CostCPU.toFixed(2)} + $${a.CostMem.toFixed(2)} = $${a.CostTotal.toFixed(2)}\nCarbon: ${a.CarbonKg.toFixed(2)} kg CO2 (${a.CarbonKgPerHour.toFixed(3)} kg/h)\n${tips.join('; ')||'right-sized'}`;
+        chip.onclick=()=>{S.app=a.app;setTab('logs');show();};
+        line.append(chip);
+      });
+      rs7.body.append(line);
+      box.append(rs7.wrap);
+    }
+  }catch(e){/* cost/carbon is best-effort */ }
   // Log clusters: semantic grouping of recurring log lines by template.
   try{
     const q=host?'?host='+encodeURIComponent(host):'';
