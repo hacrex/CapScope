@@ -2485,6 +2485,31 @@ async function loadOverview(){
       box.append(rs6.wrap);
     }
   }catch(e){/* evidence chain is best-effort */ }
+  // On-call / war room: anomalies, recent crashes
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const oc=await api('/api/oncall'+q);
+    if(oc){
+      const rs8=secBlock('ON-CALL / WAR ROOM',oc.anomalies.length+oc.crashes.length);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      oc.anomalies.forEach(a=>{
+        const chip=document.createElement('span');chip.className='k bad';chip.style.cursor='pointer';
+        chip.textContent=`⚠ ${a.app} · ${a.kind} (${a.score}/100)`;
+        chip.title=a.reason;
+        chip.onclick=()=>{S.app=a.app;setTab('logs');show();};
+        line.append(chip);
+      });
+      oc.crashes.forEach(c=>{
+        const chip=document.createElement('span');chip.className='k bad';chip.style.cursor='pointer';
+        chip.textContent=`💥 ${c.container} · ${c.kind} (exit ${c.exit_code})`;
+        chip.title=`${c.app} · ${fmtDT(c.ts)}`;
+        chip.onclick=()=>{location.hash='crash='+c.id;setTab('crashes');};
+        line.append(chip);
+      });
+      rs8.body.append(line);
+      box.append(rs8.wrap);
+    }
+  }catch(e){/* war room is best-effort */ }
   // auto-refresh while visible
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }

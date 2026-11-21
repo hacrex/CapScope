@@ -164,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/evidence/head", s.evidenceHead)
 	mux.HandleFunc("GET /api/evidence/chain", s.evidenceChain)
 	mux.HandleFunc("GET /api/commit/", s.commitInfo)
+	mux.HandleFunc("GET /api/oncall", s.onCall)
 	mux.HandleFunc("GET /metrics", s.prometheus)
 	// User management (Phase 3.3): admin only.
 	mux.HandleFunc("GET /api/users", s.usersList)

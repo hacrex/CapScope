@@ -419,3 +419,74 @@ func (s *Server) commitInfo(w http.ResponseWriter, r *http.Request) {
 		"date":      parts[4],
 	})
 }
+
+// onCall returns a consolidated view for on-call/war room use:
+// anomalies, recent crashes, and deployment context.
+// GET /api/oncall
+func (s *Server) onCall(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	hostID := r.URL.Query().Get("host")
+
+	type anomalyEntry struct {
+		App     string `json:"app"`
+		Kind    string `json:"kind"`
+		Score   int    `json:"score"`
+		Reason  string `json:"reason"`
+	}
+	var anomalies []anomalyEntry
+	anoms, err := s.st.AppAnomalies(ctx, hostID, 2.0)
+	if err == nil {
+		for _, a := range anoms {
+			if len(anomalies) >= 10 {
+				break
+			}
+			anomalies = append(anomalies, anomalyEntry{
+				App:   a.App,
+				Kind:  a.Kind,
+				Score: a.Score,
+				Reason: a.Reason,
+			})
+		}
+	}
+
+	type crashEntry struct {
+		ID        int64  `json:"id"`
+		App       string `json:"app"`
+		Container string `json:"container"`
+		Kind      string `json:"kind"`
+		ExitCode  int    `json:"exit_code"`
+		DieTS     int64  `json:"die_ts"`
+		TS        int64  `json:"ts"`
+	}
+	var crashes []crashEntry
+	snaps, err := s.st.ListSnapshots(ctx, "", hostID, 50)
+	if err == nil {
+		now := time.Now().UnixMilli()
+		cutoff := now - 24*3600*1000
+		for _, sn := range snaps {
+			if len(crashes) >= 10 {
+				break
+			}
+			if sn.DieTS < cutoff && sn.TS < cutoff {
+				continue
+			}
+			crashes = append(crashes, crashEntry{
+				ID:        sn.ID,
+				App:       sn.App,
+				Container: sn.Container,
+				Kind:      sn.Kind,
+				ExitCode:  sn.ExitCode,
+				DieTS:     sn.DieTS,
+				TS:        sn.TS,
+			})
+		}
+	}
+
+	writeJSON(w, map[string]any{
+		"anomalies": anomalies,
+		"crashes":   crashes,
+		"generated": time.Now().UnixMilli(),
+	})
+}
