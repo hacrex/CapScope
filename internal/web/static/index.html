@@ -140,6 +140,78 @@
   </div>
 </div>
 
+<!-- Showcase: CapScope capabilities -->
+<section class="showcase">
+  <div class="container">
+    <div class="showcase-header">
+      <h2>Built for container forensics &amp; live observability</h2>
+      <p>One binary, one volume, no external database. Persistent history, crash evidence, and alerting — read-only by design.</p>
+    </div>
+    <div class="showcase-grid">
+      <div class="showcase-card">
+        <div class="showcase-icon">🐛</div>
+        <h3>Crash snapshots</h3>
+        <p>Automatic snapshots on OOM, exit, or health-check failure — with exit code, last log lines, memory trend, and rule-based summary.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">🔍</div>
+        <h3>Semantic log clustering</h3>
+        <p>Recurring log lines are grouped by template fingerprint, so you see patterns instead of noise — dashboards stay clean at scale.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">🔒</div>
+        <h3>Immutable evidence</h3>
+        <p>Tamper-evident hash chain over every log row. Verify integrity with /api/evidence/verify — ideal for regulated environments.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">🤖</div>
+        <h3>Local-first crash explainer</h3>
+        <p>MCP-powered crash analysis via local Ollama LLM with rule-based fallback — AI incident analysis that never leaves your host.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">🔗</div>
+        <h3>Code-to-log correlation</h3>
+        <p>Git commit SHA captured from Docker image labels. Trace a crash back to the exact commit that introduced it.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">📧</div>
+        <h3>SMTP alerts & digest</h3>
+        <p>Email notifications with immediate or digest mode. Combine with webhook, Slack, Discord, Telegram, ntfy, PagerDuty, and Opsgenie channels.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">☸️</div>
+        <h3>Helm chart for Kubernetes</h3>
+        <p>Official Helm chart with RBAC, PVC for SQLite, mTLS agent hub, and multi-host aggregation — deploy CapScope anywhere.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">📊</div>
+        <h3>Log forwarding</h3>
+        <p>Stream logs to Loki or Elasticsearch for long-term retention beyond CapScope's SQLite cap.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">💰</div>
+        <h3>FinOps cost attribution</h3>
+        <p>Per-app CPU/memory cost estimates, right-sizing recommendations, and carbon footprint — know what your containers cost.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">🚨</div>
+        <h3>On-call war room</h3>
+        <p>Unified view of anomalies and recent crashes — page the right person faster with a single operational dashboard.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">💡</div>
+        <h3>Self-healing advice</h3>
+        <p>Crash-specific remediation suggestions — OOM, segfault, restart loop, or bad entrypoint — with copyable fix commands.</p>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-icon">📦</div>
+        <h3>Sneakernet bundle</h3>
+        <p>Export a self-contained HTML incident bundle — no server needed to review crash evidence on an air-gapped machine.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Toast notifications -->
 <div id="toasts" aria-live="polite"></div>
 <div id="chartTip" role="status" aria-hidden="true"></div>

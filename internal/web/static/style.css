@@ -506,3 +506,16 @@ body.drawer-open #sideScrim{display:block}
 .qb-wrap .qb-chip.qb-chip-active{background:color-mix(in srgb,var(--accent) 15%,var(--panel2));border-color:var(--accent)}
 .qb-wrap .qb-chip .qb-x{cursor:pointer;margin-left:6px;font-weight:bold;color:var(--muted)}
 .qb-wrap .qb-chip .qb-x:hover{color:var(--err)}
+
+/* ---- showcase: marketing feature grid ---- */
+.showcase{padding:48px 0;border-top:1px solid var(--line)}
+.showcase .container{max-width:1200px;margin:0 auto;padding:0 20px}
+.showcase-header{text-align:center;margin-bottom:40px}
+.showcase-header h2{font-size:28px;margin:0 0 10px}
+.showcase-header p{font-size:16px;color:var(--muted);margin:0}
+.showcase-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px}
+.showcase-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;transition:transform .2s,box-shadow .2s}
+.showcase-card:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+.showcase-icon{font-size:24px;margin-bottom:12px;display:inline-block}
+.showcase-card h3{margin:0 0 8px;font-size:16px;font-weight:600}
+.showcase-card p{font-size:13.5px;color:var(--muted);line-height:1.5;margin:0}
