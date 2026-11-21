@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -80,7 +81,20 @@ func serve(log *slog.Logger) error {
 	// Alerts (A1 to A7): an engine over the store, fed by hot-reloaded rules
 	// and notification channels. Runs independently of Docker connectivity.
 	chans := alerts.BuildChannels(cfg.AlertWebhookURL, cfg.AlertTelegramTok, cfg.AlertTelegramChat, cfg.AlertSlackURL, cfg.AlertDiscordURL, cfg.AlertNtfyURL, cfg.AlertNtfyToken)
-	eng := alerts.New(st, cfg.AlertsFile, cfg.AlertsInterval, chans, log)
+	var engOpts []alerts.Option
+	smtpPort := strconv.Itoa(cfg.SMTPPort)
+	if cfg.SMTPDigestInterval > 0 && cfg.SMTPHost != "" && cfg.SMTPFrom != "" && cfg.SMTPTo != "" {
+		// Digest mode: SMTP is not in chans. It's passed as a separate digest
+		// channel that buffers alerts and sends them as a summary email every
+		// digestInterval. Non-SMTP channels still fire immediately.
+		smtpChan := alerts.NewSMTP(cfg.SMTPHost, smtpPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom, cfg.SMTPTo)
+		engOpts = append(engOpts, alerts.WithDigestSMTP(&smtpChan), alerts.WithDigestInterval(cfg.SMTPDigestInterval))
+	} else if cfg.SMTPHost != "" && cfg.SMTPFrom != "" && cfg.SMTPTo != "" {
+		// Immediate email mode: SMTP is a regular channel, each alert fires
+		// its own email right away.
+		chans = append(chans, alerts.NewSMTP(cfg.SMTPHost, smtpPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom, cfg.SMTPTo))
+	}
+	eng := alerts.New(st, cfg.AlertsFile, cfg.AlertsInterval, chans, log, engOpts...)
 	go eng.Run(ctx)
 
 	mgr := collector.NewManager(cfg, dk, st, h, log)

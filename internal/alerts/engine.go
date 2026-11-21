@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +33,14 @@ type Engine struct {
 	rmt   time.Time // mtime of the rules file when last loaded
 
 	firingTotal atomic.Int64 // total alert firings (prometheus: capscope_alerts_firing_total)
+
+	// Digest mode: when digestSMTP is non-nil and digestInterval > 0, alert
+	// firings are buffered instead of sent immediately via SMTP. A ticker
+	// flushes the buffer as a single summary email every interval.
+	digestSMTP    *Channel   // nil when digest disabled
+	digestInterval time.Duration
+	digestMu      sync.Mutex   // guards digestBuf
+	digestBuf     []string   // buffered alert messages
 }
 
 // Option tweaks the engine (tests use WithClock).
@@ -38,6 +48,13 @@ type Option func(*Engine)
 
 // WithClock replaces the engine clock.
 func WithClock(now func() time.Time) Option { return func(e *Engine) { e.now = now } }
+
+// WithDigestSMTP enables digest mode: alert firings are buffered and sent as
+// a single summary email via the given SMTP channel every digestInterval.
+func WithDigestSMTP(ch *Channel) Option { return func(e *Engine) { e.digestSMTP = ch } }
+
+// WithDigestInterval sets the digest flush interval. Zero disables digest mode.
+func WithDigestInterval(d time.Duration) Option { return func(e *Engine) { e.digestInterval = d } }
 
 // New builds an engine over the store. path is the JSON rules file (may not
 // exist yet); interval is the evaluation period (default one minute);
@@ -125,9 +142,17 @@ func (e *Engine) SaveRules(rules []Rule) error {
 
 // Run evaluates on a ticker until ctx is done. Collector events (A6) are
 // handled out-of-band so event rules fire the moment Docker emits them.
+// When digest mode is enabled, a second ticker flushes buffered alerts as a
+// single summary email every digestInterval.
 func (e *Engine) Run(ctx context.Context) {
 	t := time.NewTicker(e.interval)
 	defer t.Stop()
+	var digestCh <-chan time.Time
+	if e.digestInterval > 0 {
+		digestT := time.NewTicker(e.digestInterval)
+		defer digestT.Stop()
+		digestCh = digestT.C
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -139,7 +164,39 @@ func (e *Engine) Run(ctx context.Context) {
 			}
 		case ev := <-e.evCh:
 			e.handleEvent(ctx, ev)
+		case <-digestCh:
+			e.sendDigest(ctx)
 		}
+	}
+}
+
+// sendDigest compiles buffered alert messages into a single summary email and
+// sends it via the digest SMTP channel. Called on the digest ticker.
+func (e *Engine) sendDigest(ctx context.Context) {
+	e.digestMu.Lock()
+	if len(e.digestBuf) == 0 {
+		e.digestMu.Unlock()
+		return
+	}
+	msgs := e.digestBuf
+	e.digestBuf = nil
+	e.digestMu.Unlock()
+
+	var b strings.Builder
+	b.WriteString("CapScope Alert Digest\n")
+	b.WriteString("Generated: " + e.now().Format(time.RFC3339) + "\n")
+	b.WriteString("Alerts fired: " + strconv.Itoa(len(msgs)) + "\n\n")
+	for i, m := range msgs {
+		if i > 0 {
+			b.WriteString("\n---\n")
+		}
+		b.WriteString(m)
+	}
+
+	if err := e.digestSMTP.Send(ctx, b.String()); err != nil {
+		e.log.Error("alerts: digest send failed", "err", err)
+	} else {
+		e.log.Info("alerts: digest sent", "count", len(msgs))
 	}
 }
 
@@ -202,6 +259,14 @@ func (e *Engine) record(ctx context.Context, r Rule, app string, a store.Alert) 
 	a.Delivery = status
 	if err := e.st.SetAlertDelivery(id, status); err != nil {
 		e.log.Error("alerts: cannot record delivery status", "rule", r.Name, "app", app, "err", err)
+	}
+	// Digest mode: buffer the alert message instead of sending via SMTP
+	// immediately. Non-SMTP channels (webhook, Slack, etc.) have already been
+	// notified by e.notify() above because SMTP is not in e.chans.
+	if e.digestSMTP != nil {
+		e.digestMu.Lock()
+		e.digestBuf = append(e.digestBuf, a.Message)
+		e.digestMu.Unlock()
 	}
 	return a
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/smtp"
 	"net/http"
 	"os"
 	"strings"
@@ -184,8 +185,63 @@ func NewDiscord(webhookURL string) Channel {
 	}
 }
 
+// NewSMTP sends alert messages via SMTP. Host, port, user, pass, from, and
+// to may use ${ENV} placeholders, expanded per send. Uses STARTTLS when the
+// server advertises it; falls back to plaintext otherwise.
+func NewSMTP(host, port, user, pass, from, to string) Channel {
+	return Channel{
+		Name:   "smtp",
+		Client: nil, // SMTP doesn't use an HTTP client
+		Send: func(ctx context.Context, msg string) error {
+			h, err := expandEnv(host)
+			if err != nil {
+				return err
+			}
+			p, err := expandEnv(port)
+			if err != nil {
+				return err
+			}
+			u, err := expandEnv(user)
+			if err != nil {
+				return err
+			}
+			pw, err := expandEnv(pass)
+			if err != nil {
+				return err
+			}
+			f, err := expandEnv(from)
+			if err != nil {
+				return err
+			}
+			t, err := expandEnv(to)
+			if err != nil {
+				return err
+			}
+			if h == "" || f == "" || t == "" {
+				return fmt.Errorf("smtp: host, from, and to are required")
+			}
+			addr := h + ":" + p
+			auth := smtp.PlainAuth("", u, pw, h)
+			body := []byte("From: " + f + "\r\n" +
+				"To: " + t + "\r\n" +
+				"Subject: CapScope Alert\r\n" +
+				"MIME-Version: 1.0\r\n" +
+				"Content-Type: text/plain; charset=UTF-8\r\n" +
+				"\r\n" +
+				msg + "\r\n")
+			err = smtp.SendMail(addr, auth, f, []string{t}, body)
+			if err != nil {
+				return fmt.Errorf("smtp: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
 // BuildChannels constructs the configured channels from raw settings; empty
 // entries are skipped. Used by main and by tests (payload shape check).
+// SMTP is NOT included here: serve.go decides whether to add it as a regular
+// channel or as a digest channel (see WithDigestSMTP/WithDigestInterval).
 func BuildChannels(webhookURL, telegramToken, telegramChat, slackURL, discordURL, ntfyURL, ntfyToken string) []Channel {
 	var out []Channel
 	if webhookURL != "" {

@@ -65,6 +65,17 @@ type Config struct {
 	AlertNtfyURL      string // ntfy topic URL, e.g. https://ntfy.sh/capscope
 	AlertNtfyToken    string // optional ntfy access token
 
+	// SMTP alert delivery (A5): when SMTP_HOST is set, alert rules can send
+	// email notifications. SMTP_DIGEST_INTERVAL>0 enables digest mode: alert
+	// firings are buffered and sent as a single summary email every interval.
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUser          string
+	SMTPPass          string
+	SMTPFrom          string
+	SMTPTo            string
+	SMTPDigestInterval time.Duration
+
 	// A7: daily jittered registry check comparing each container's image
 	// manifest digest; fires "update_available" pseudo-alert events. Spin-free
 	// installs can turn it off here.
@@ -138,6 +149,12 @@ func Load() (Config, error) {
 		AlertDiscordURL:            os.Getenv("ALERT_DISCORD_URL"),
 		AlertNtfyURL:               os.Getenv("ALERT_NTFY_URL"),
 		AlertNtfyToken:             os.Getenv("ALERT_NTFY_TOKEN"),
+		SMTPHost:                   os.Getenv("SMTP_HOST"),
+		SMTPPort:                   envInt("SMTP_PORT", 587, &errs),
+		SMTPUser:                   os.Getenv("SMTP_USER"),
+		SMTPPass:                   os.Getenv("SMTP_PASS"),
+		SMTPFrom:                   os.Getenv("SMTP_FROM"),
+		SMTPTo:                     os.Getenv("SMTP_TO"),
 		UpdateCheck:                envBool("UPDATE_CHECK", true, &errs),
 		AgentHostID:                env("AGENT_HOST_ID", os.Getenv("CAPSCOPE_HOST_ID")),
 		AgentHub:                   env("AGENT_HUB", ""),
@@ -169,6 +186,7 @@ func Load() (Config, error) {
 	c.RestartLoopWindow = dur("RESTART_LOOP_WINDOW", "5m")
 	c.AlertsInterval = dur("ALERTS_INTERVAL", "1m")
 	c.UpdateCheckInterval = dur("UPDATE_CHECK_INTERVAL", "24h")
+	c.SMTPDigestInterval = dur("SMTP_DIGEST_INTERVAL", "0") // 0 = digest disabled
 
 	for _, k := range strings.Split(env("SNAPSHOT_KINDS", "crash,oom,unhealthy"), ",") {
 		if k = strings.TrimSpace(k); k != "" {
