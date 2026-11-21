@@ -287,3 +287,36 @@ func (s *Server) costs(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"costs": out, "cpu_rate": cpuRate, "mem_rate": memRate})
 }
+
+// logClusters returns semantic log clusters grouped by template fingerprint.
+// Query params: app, host, since_ms, until_ms, limit.
+func (s *Server) logClusters(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	sinceMs := int64(0)
+	if v := r.URL.Query().Get("since_ms"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			sinceMs = n
+		}
+	}
+	untilMs := int64(0)
+	if v := r.URL.Query().Get("until_ms"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			untilMs = n
+		}
+	}
+
+	out, err := s.st.ListLogClusters(ctx, r.URL.Query().Get("host"), r.URL.Query().Get("app"), sinceMs, untilMs, limit)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"clusters": out})
+}

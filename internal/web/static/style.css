@@ -60,6 +60,7 @@ kbd{font:10px/16px var(--font-mono);background:var(--panel2);border:1px solid va
 .chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;background:var(--panel);white-space:nowrap}
 .chip.live{color:var(--ok);border-color:transparent;background:var(--ok-bg);animation:connPulse 2s infinite ease-in-out}
 .chip.bad{color:var(--err);border-color:transparent;background:var(--err-bg)}
+.chip.cluster{font-family:var(--font-mono);font-size:10px;white-space:pre-wrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
 .resource-chip{height:30px;gap:8px;padding:3px 9px;font-variant-numeric:tabular-nums}
 .resource-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-size:11px}
 .resource-meter{display:inline-flex;align-items:center;gap:4px}

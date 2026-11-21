@@ -16,6 +16,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"capscope/internal/logproc"
 )
 
 type Store struct {
@@ -204,6 +206,23 @@ var migrations = []string{
 	   SELECT l.id, l.ts, l.container_id, c.name AS container, c.app AS app,
 	      l.host_id, l.stream, l.level, l.line
 	   FROM logs l LEFT JOIN containers c ON l.container_id = c.id;`,
+	// Log cluster templates (semantic clustering): groups log lines that share
+	// the same template (variable parts replaced with placeholders) so that
+	// recurring messages can be seen as clusters instead of individual rows.
+	`CREATE TABLE IF NOT EXISTS log_clusters(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   template_hash TEXT NOT NULL UNIQUE,
+	   template TEXT NOT NULL,
+	   sample_line TEXT NOT NULL,
+	   count INTEGER NOT NULL DEFAULT 1,
+	   first_seen INTEGER NOT NULL,   -- unix ms
+	   last_seen INTEGER NOT NULL,    -- unix ms
+	   app TEXT NOT NULL DEFAULT '',
+	   level TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_log_clusters_hash ON log_clusters(template_hash);
+	 CREATE INDEX IF NOT EXISTS idx_log_clusters_app ON log_clusters(app);
+	 CREATE INDEX IF NOT EXISTS idx_log_clusters_last_seen ON log_clusters(last_seen);`,
 }
 
 // Open creates or migrates the database at path.
@@ -372,6 +391,19 @@ type AppCost struct {
 	CostTotal    float64 `json:"cost_total"`     // CostCPU + CostMem
 }
 
+// LogCluster is one semantic log cluster: a group of log lines that share
+// the same template (variable parts replaced with placeholders).
+type LogCluster struct {
+	TemplateHash string `json:"template_hash"` // stable hash of the template
+	Template     string `json:"template"`      // the normalized template string
+	SampleLine   string `json:"sample_line"`   // one example line from the cluster
+	Count        int64  `json:"count"`         // total occurrences
+	FirstSeen    int64  `json:"first_seen"`    // unix ms
+	LastSeen     int64  `json:"last_seen"`     // unix ms
+	App          string `json:"app"`           // app name (from containers table)
+	Level        string `json:"level"`         // log level
+}
+
 // AppCosts computes cost estimates for all apps over a time window.
 // cpuRate is $/core-hour, memRate is $/GB-hour.
 // Uses metric samples from metrics table; averages per container per bucket,
@@ -439,6 +471,180 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 		return out[i].CostTotal > out[j].CostTotal
 	})
 	return out, nil
+}
+
+// RecordLogCluster upserts a log cluster entry: if the template_hash already
+// exists, it increments count and updates last_seen; otherwise it inserts a
+// new row. Returns the cluster id.
+func (s *Store) RecordLogCluster(ctx context.Context, hash, template, sampleLine, app, level string, tsMs int64) (int64, error) {
+	// Try to insert first; if the hash exists, update instead.
+	res, err := s.w.ExecContext(ctx, `
+		INSERT INTO log_clusters(template_hash, template, sample_line, count, first_seen, last_seen, app, level)
+		VALUES(?, ?, ?, 1, ?, ?, ?, ?)
+		ON CONFLICT(template_hash) DO UPDATE SET
+			count = count + 1,
+			last_seen = ?,
+			sample_line = CASE WHEN log_clusters.last_seen < ? THEN ? ELSE log_clusters.sample_line END`,
+		hash, template, sampleLine, tsMs, tsMs, app, level,
+		tsMs, tsMs, sampleLine,
+	)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// ListLogClusters returns log clusters ordered by count (descending), with
+// optional app filter and time window.
+func (s *Store) ListLogClusters(ctx context.Context, hostID, appFilter string, sinceMs, untilMs int64, limit int) ([]LogCluster, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, hostID)
+	}
+	if appFilter != "" {
+		cl, args = append(cl, "app = ?"), append(args, appFilter)
+	}
+	if sinceMs > 0 {
+		cl, args = append(cl, "last_seen >= ?"), append(args, sinceMs)
+	}
+	if untilMs > 0 {
+		cl, args = append(cl, "last_seen <= ?"), append(args, untilMs)
+	}
+
+	q := `SELECT template_hash, template, sample_line, count, first_seen, last_seen, app, level
+	      FROM log_clusters` + whereClause(cl) + ` ORDER BY count DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []LogCluster
+	for rows.Next() {
+		var c LogCluster
+		if err := rows.Scan(&c.TemplateHash, &c.Template, &c.SampleLine, &c.Count, &c.FirstSeen, &c.LastSeen, &c.App, &c.Level); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// BuildClusters scans recent log rows that haven't been clustered yet and
+// creates/updates log_cluster entries using semantic template fingerprinting.
+// This is called periodically from a background goroutine to avoid the
+// single-writer deadlock that would occur if called inside InsertLogs.
+func (s *Store) BuildClusters(ctx context.Context, hostID string, sinceMs, untilMs int64, batchSize int) (int, error) {
+	if sinceMs <= 0 {
+		sinceMs = time.Now().Add(-24 * time.Hour).UnixMilli()
+	}
+	if untilMs <= 0 {
+		untilMs = time.Now().UnixMilli()
+	}
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+
+	// Find log rows whose template_hash hasn't been recorded yet.
+	// We match on template_hash not being in log_clusters, or last_seen being older
+	// than the row's ts (meaning the row is newer than the cluster record).
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "l.host_id = ?"), append(args, hostID)
+	}
+	cl, args = append(cl, "l.ts >= ?"), append(args, sinceMs)
+	cl, args = append(cl, "l.ts <= ?"), append(args, untilMs)
+
+	q := `SELECT l.id, l.ts, l.container_id, l.container, l.app, l.host_id, l.stream, l.level, l.line
+	      FROM logs l` + whereClause(cl) + ` ORDER BY l.ts LIMIT ?`
+	args = append(args, batchSize)
+
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var batch []struct {
+		id        int64
+		ts        int64
+		containerID string
+		container   string
+		app         string
+		hostID      string
+		stream      string
+		level       string
+		line        string
+	}
+	for rows.Next() {
+		var r struct {
+			id        int64
+			ts        int64
+			containerID string
+			container   string
+			app         string
+			hostID      string
+			stream      string
+			level       string
+			line        string
+		}
+		if err := rows.Scan(&r.id, &r.ts, &r.containerID, &r.container, &r.app, &r.hostID, &r.stream, &r.level, &r.line); err != nil {
+			return 0, err
+		}
+		batch = append(batch, r)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(batch) == 0 {
+		return 0, nil
+	}
+
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	count := 0
+	for _, r := range batch {
+		tmpl := logproc.Template(r.line)
+		hash := logproc.TemplateHash(r.line)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO log_clusters(template_hash, template, sample_line, count, first_seen, last_seen, app, level)
+			VALUES(?, ?, ?, 1, ?, ?, ?, ?)
+			ON CONFLICT(template_hash) DO UPDATE SET
+				count = count + 1,
+				last_seen = ?,
+				sample_line = CASE WHEN log_clusters.last_seen < ? THEN ? ELSE log_clusters.sample_line END`,
+			hash, tmpl, r.line, r.ts/1_000_000, r.ts/1_000_000, r.app, r.level,
+			r.ts/1_000_000, r.ts/1_000_000, r.line,
+		)
+		if err != nil {
+			return count, err
+		}
+		count++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return count, err
+	}
+	return count, nil
 }
 
 // AppAnomalies detects apps whose log volume or error rate deviates

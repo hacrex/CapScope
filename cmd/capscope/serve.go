@@ -110,6 +110,26 @@ func serve(log *slog.Logger) error {
 		log.Info("forward: log forwarding enabled", "loki", cfg.ForwardLokiURL, "es", cfg.ForwardESURL)
 	}
 
+	// Log clustering (P0): periodically build semantic log clusters from recent
+	// log rows for anomaly detection and noise reduction on the dashboard.
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := st.BuildClusters(ctx, cfg.AgentHostID, 0, 0, 500)
+				if err != nil {
+					log.Warn("cluster build failed", "err", err)
+				} else if n > 0 {
+					log.Debug("cluster build complete", "rows", n)
+				}
+			}
+		}
+	}()
+
 	if cfg.UpdateCheck {
 		up := alerts.NewUpdater(mgr, func(ctx context.Context, image string) ([]string, error) {
 			ii, err := dk.ImageInspect(ctx, image)

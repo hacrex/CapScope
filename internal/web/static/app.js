@@ -2425,6 +2425,24 @@ async function loadOverview(){
       box.append(rs4.wrap);
     }
   }catch(e){/* cost estimates are best-effort */ }
+  // Log clusters: semantic grouping of recurring log lines by template.
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const cl=await api('/api/log-clusters'+q+'&limit=50');
+    if(cl&&cl.clusters&&cl.clusters.length){
+      const rs5=secBlock('LOG CLUSTERS',cl.clusters.length);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      cl.clusters.forEach(c=>{
+        const chip=document.createElement('span');chip.className='k cluster';chip.style.cursor='pointer';
+        chip.textContent=`×${c.Count} ${c.Template}`;
+        chip.title=`Template hash: ${c.TemplateHash}\nApp: ${c.App||'—'}\nLevel: ${c.Level||'—'}\nFirst: ${new Date(c.FirstSeen).toLocaleString()}\nLast: ${new Date(c.LastSeen).toLocaleString()}\nSample: ${c.SampleLine}`;
+        chip.onclick=()=>{$('#q').value=c.Template;$('#smode').value='rx';S.app=c.App||'';setTab('logs');show();};
+        line.append(chip);
+      });
+      rs5.body.append(line);
+      box.append(rs5.wrap);
+    }
+  }catch(e){/* log clusters are best-effort */ }
   // auto-refresh while visible
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }

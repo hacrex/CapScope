@@ -2,6 +2,8 @@
 package logproc
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"strconv"
 	"strings"
@@ -145,4 +147,70 @@ func otelLevel(s string) string {
 		return "error"
 	}
 	return ""
+}
+
+// Template fingerprinting for semantic log clustering.
+//
+// Template() normalizes a log line by replacing variable parts (IPs, numbers,
+// UUIDs, hex strings, quoted values) with stable placeholders. Lines that
+// share the same template are likely the same recurring log message with
+// different data, so they can be clustered together for anomaly detection
+// and noise reduction.
+//
+// The template is deterministic: the same input always produces the same
+// output, which makes it safe to use as a grouping key in SQLite.
+func Template(line string) string {
+	t := line
+
+	// UUIDs: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	t = uuidRe.ReplaceAllString(t, "<uuid>")
+
+	// IPv4 addresses
+	t = ipv4Re.ReplaceAllString(t, "<ip>")
+
+	// Hex strings (6+ chars): hashes, object IDs, colors
+	t = hexRe.ReplaceAllString(t, "<hex>")
+
+	// Numbers (standalone, not part of words): replace digit sequences
+	// with <num>. We do this after UUID/IP/hex so those are already masked.
+	t = numRe.ReplaceAllString(t, "<num>")
+
+	// Quoted string values: "value" -> "<str>" (but not JSON keys)
+	t = quotedRe.ReplaceAllString(t, "<str>")
+
+	// Collapse multiple whitespace into single space
+	t = whitespaceRe.ReplaceAllString(t, " ")
+
+	return strings.TrimSpace(t)
+}
+
+var (
+	// uuidRe matches standard UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	uuidRe = regexp.MustCompile(`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`)
+
+	// ipv4Re matches IPv4 addresses: 1.2.3.4
+	ipv4Re = regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`)
+
+	// hexRe matches hex strings of 6+ characters (hashes, colors, IDs)
+	hexRe = regexp.MustCompile(`\b[0-9a-fA-F]{6,}\b`)
+
+	// numRe matches standalone digit sequences (not part of larger words).
+	// UUIDs, IPs, and hex strings are replaced before this runs, so remaining
+	// digit sequences are typically version numbers, port numbers, etc.
+	numRe = regexp.MustCompile(`\b[0-9]+\b`)
+
+	// quotedRe matches double-quoted string values
+	quotedRe = regexp.MustCompile(`"[^"]*"`)
+
+	// whitespaceRe matches runs of whitespace
+	whitespaceRe = regexp.MustCompile(`\s+`)
+)
+
+// TemplateHash returns a stable SHA256-based hash of the template for use
+// as a database grouping key. It returns the first 16 hex chars (64 bits),
+// which is more than enough for clustering within a single database.
+func TemplateHash(line string) string {
+	t := Template(line)
+	h := sha256.Sum256([]byte(t))
+	return hex.EncodeToString(h[:])[:16]
 }
