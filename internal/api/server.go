@@ -147,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
 	mux.HandleFunc("GET /api/snapshots/{id}/export", s.snapshotExport)
 	mux.HandleFunc("GET /api/snapshots/{id}/incident.html", s.snapshotIncident)
+	mux.HandleFunc("GET /api/snapshots/{id}/bundle", s.snapshotBundle)
 	mux.HandleFunc("GET /api/alerts", s.alertsList)
 	mux.HandleFunc("GET /api/alerts/rules", s.alertsRules)
 	mux.HandleFunc("POST /api/alerts/test", s.alertsTest)
@@ -1778,5 +1779,122 @@ func SnapshotMarkdown(sn store.Snapshot) string {
 		fmt.Fprintf(&b, "%s %s %s\n", time.UnixMilli(l.TSMs).UTC().Format("15:04:05.000"), st, l.Line)
 	}
 	b.WriteString("```\n")
+	return b.String()
+}
+
+// SnapshotBundle renders a self-contained HTML incident bundle for air-gapped
+// / sneakernet transfer. It embeds all CSS/JS inline so the file can be opened
+// offline without any external dependencies.
+// GET /api/snapshots/{id}/bundle
+func (s *Server) snapshotBundle(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	sn, err := s.snapshotEnriched(r.Context(), id)
+	if err != nil {
+		fail(w, 404, err)
+		return
+	}
+	if !s.requireScopedApp(w, r, sn.App) {
+		return
+	}
+
+	html := buildBundleHTML(sn)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="capscope-incident-%d.html"`, sn.ID))
+	fmt.Fprint(w, html)
+}
+
+// buildBundleHTML creates a self-contained HTML incident report with embedded
+// CSS and minimal JS for offline viewing.
+func buildBundleHTML(sn store.Snapshot) string {
+	var b strings.Builder
+	t := time.UnixMilli(sn.TS).UTC().Format(time.RFC3339)
+
+	idStr := strconv.FormatInt(sn.ID, 10)
+	exitCodeStr := strconv.Itoa(sn.ExitCode)
+	b.WriteString(fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CapScope Incident</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#333;max-width:1200px;margin:0 auto;padding:20px}
+h1{font-size:24px;border-bottom:2px solid #eee;padding-bottom:10px}
+h2{font-size:18px;margin-top:24px;border-bottom:1px solid #eee;padding-bottom:5px}
+.kv{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px}
+.kv b{min-width:160px;color:#666}
+.pre{background:#f6f8fa;border:1px solid #e1e4e8;border-radius:6px;padding:16px;font-family:monospace;font-size:12px;overflow:auto;white-space:pre-wrap}
+.chart{margin:20px 0;border:1px solid #e1e4e8;border-radius:6px;padding:16px}
+.badge{display:inline-block;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600}
+.badge.oom{background:#fdecea;color:#c53030}
+.badge.crash{background:#fdf3d7;color:#b7791f}
+.badge.clean_exit{background:#e6fffa;color:#2f855a}
+.badge.killed{background:#faf5ff;color:#6b46c1}
+.mono{font-family:monospace;font-size:11px}
+.small{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<h1>CapScope Incident #%s</h1>
+<p class="small">App: <b>%s</b> | Container: <b>%s</b> | Image: <b>%s</b></p>
+<p class="small">Time: <b>%s</b> | Kind: <span class="badge %s">%s</b> | Exit code: <b>%s</b></p>
+<p class="small">Git commit: <span class="mono">%s</span></p>
+
+<h2>Summary</h2>
+<p class="pre">%s</p>
+
+<h2>Last %s log lines</h2>
+<pre class="pre">%s</pre>
+
+<h2>Resource trend (last %s samples)</h2>
+<div class="chart">
+<table>
+<thead><tr><th>Time (UTC)</th><th>CPU %%</th><th>Memory MiB</th></tr></thead>
+<tbody>%s</tbody>
+</table>
+</div>
+
+<h2>Evidence</h2>
+<p class="small">This file is a self-contained snapshot of the crash at the time of export. It can be opened offline and shared via email, USB, or any file transfer mechanism.</p>
+<p class="small">Database ID: <span class="mono">%s</span> | Generated: <span class="mono">%s</span> UTC</p>
+</body>
+</html>`, idStr, sn.App, sn.Container, sn.Image, t,
+		strings.ToLower(sn.Kind), strings.Title(strings.ToLower(sn.Kind)), exitCodeStr,
+		sn.GitCommit,
+		sn.Summary, strconv.Itoa(len(sn.Logs)), escapeHTML(strings.Join(logLines(sn.Logs), "\n")),
+		strconv.Itoa(len(sn.Metrics)), metricsTable(sn.Metrics),
+		idStr, time.Now().UTC().Format(time.RFC3339)))
+	return b.String()
+}
+
+// escapeHTML escapes HTML special characters.
+func escapeHTML(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+}
+
+// logLines returns log lines as formatted strings.
+func logLines(logs []store.LogRow) []string {
+	lines := make([]string, 0, len(logs))
+	for _, l := range logs {
+		st := "out"
+		if l.Stream == "e" {
+			st = "err"
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s",
+			time.UnixMilli(l.TSMs).UTC().Format("15:04:05.000"), st, l.Line))
+	}
+	return lines
+}
+
+// metricsTable returns HTML table rows for metric samples.
+func metricsTable(mets []store.MetricPoint) string {
+	var b strings.Builder
+	for _, m := range mets {
+		fmt.Fprintf(&b, "<tr><td>%s</td><td>%.1f</td><td>%.1f</td></tr>\n",
+			time.UnixMilli(m.TS).UTC().Format("15:04:05"), m.CPU, float64(m.Mem)/1048576)
+	}
 	return b.String()
 }
