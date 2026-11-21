@@ -284,6 +284,80 @@
       </div>
     </section>
 
+    <!-- ============ SHOWCASE ============ -->
+    <section class="section section-alt">
+      <div class="container">
+        <div class="section-head center reveal">
+          <span class="kicker">Showcase</span>
+          <h2>What CapScope looks like in practice</h2>
+          <p>Zero-config crash forensics, live cost attribution, and AI-free incident reasoning — built into one binary.</p>
+        </div>
+
+        <div class="showcase-grid reveal">
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🐛</div>
+            <h3>Crash snapshots</h3>
+            <p>Automatic snapshots on OOM, exit, or health-check failure — exit code, restart count, uptime, last log lines, metric trend and a plain-language summary. Download as Markdown or HTML.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🔍</div>
+            <h3>Semantic log clustering</h3>
+            <p>Recurring log lines are fingerprinted by template, so ten thousand "database connection failed" lines collapse into one cluster with a count — not ten thousand rows to scroll through.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🔒</div>
+            <h3>Immutable evidence chain</h3>
+            <p>Every batch of log rows is chained by SHA-256 (previous-hash + data-hash). Modify a row and every later link breaks — verifiable proof that evidence wasn't tampered with.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🤖</div>
+            <h3>Local-first crash explainer</h3>
+            <p>MCP-powered crash analysis via your local Ollama instance with rule-based fallback — AI incident analysis that never leaves your network.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🔗</div>
+            <h3>Code-to-log correlation</h3>
+            <p>Git commit SHA captured from Docker image labels. Trace a crash back to the exact commit that introduced it — no guesswork about which deploy broke it.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">📧</div>
+            <h3>SMTP alerts & digest</h3>
+            <p>Email notifications with immediate or digest mode. Combine with webhook, Slack, Discord, Telegram, ntfy, PagerDuty and Opsgenie channels.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">☸️</div>
+            <h3>Helm chart for Kubernetes</h3>
+            <p>Official Helm chart with RBAC, PVC for SQLite, mTLS agent hub, and multi-host aggregation — deploy CapScope anywhere.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">📊</div>
+            <h3>Log forwarding</h3>
+            <p>Stream retained logs to Loki or Elasticsearch for long-term retention beyond CapScope's SQLite cap.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">💰</div>
+            <h3>FinOps cost attribution</h3>
+            <p>Per-app CPU core-hours and memory GB-hours, right-sizing recommendations (CPU under 30%, memory under 50%) and estimated carbon footprint.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🚨</div>
+            <h3>On-call war room</h3>
+            <p>Unified view of anomalies and recent crashes — page the right person faster with a single operational dashboard.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">💡</div>
+            <h3>Self-healing advice</h3>
+            <p>Crash-specific remediation suggestions — OOM, segfault, restart loop, bad entrypoint — with copyable fix commands.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">📦</div>
+            <h3>Sneakernet bundle</h3>
+            <p>Export a self-contained HTML incident snapshot — no server needed to review crash evidence on an air-gapped machine.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ HOW IT WORKS ============ -->
     <section class="section section-alt">
       <div class="container">

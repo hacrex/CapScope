@@ -1179,6 +1179,62 @@ html[data-theme="light"] .hl-key { color: #7c3aed; }
   flex-wrap: wrap;
 }
 
+/* ---------- Showcase ---------- */
+.showcase {
+  padding: 72px 0;
+  overflow: hidden;
+}
+.showcase-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+.showcase-header h2 {
+  font-size: 34px;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+.showcase-header p {
+  color: var(--muted);
+  font-size: 17px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 22px;
+}
+.showcase-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.showcase-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.showcase-icon-badge {
+  font-size: 26px;
+  margin-bottom: 14px;
+  display: inline-block;
+}
+.showcase-card h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.showcase-card p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
 /* ---------- Docs / guides layout ---------- */
 .docs-layout {
   display: grid;
