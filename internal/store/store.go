@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -344,6 +346,160 @@ type AppSummary struct {
 	LastSeen   int64  `json:"last_seen"`
 	Errors1h   int64  `json:"errors_1h"`
 	Warns1h    int64  `json:"warns_1h"`
+}
+
+// AppAnomaly is one anomalous signal for an app: log volume or error rate
+// deviating significantly from the 24-hour baseline. Score is a 0-100
+// confidence estimate; Reason is a human-readable explanation.
+type AppAnomaly struct {
+	App      string `json:"app"`
+	Kind     string `json:"kind"`       // "volume" or "errors"
+	Score    int    `json:"score"`      // 0-100
+	Current  int64  `json:"current"`    // current 1h count
+	Baseline int64  `json:"baseline"`   // baseline per-hour count (24h avg)
+	Reason   string `json:"reason"`     // human-readable explanation
+}
+
+// AppAnomalies detects apps whose log volume or error rate deviates
+// significantly from their 24-hour baseline. Returns anomalies sorted by
+// score (highest first). threshold is the multiplier above which a deviation
+// is flagged (2.0 = current must be 2x baseline).
+func (s *Store) AppAnomalies(ctx context.Context, hostID string, threshold float64) ([]AppAnomaly, error) {
+	if threshold <= 0 {
+		threshold = 2.0
+	}
+	now := time.Now()
+	// Baselines: per-hour averages over the last 24 hours.
+	baselineStart := now.Add(-24 * time.Hour).UnixMilli()
+	currentStart := now.Add(-time.Hour).UnixMilli()
+
+	var cl []string
+	var args []any
+	if hostID != "" {
+		cl, args = append(cl, "host_id = ?"), append(args, hostID)
+	}
+
+	// Current 1h counts per app.
+	type counts struct {
+		app   string
+		total int64
+		errs  int64
+	}
+	current := map[string]counts{}
+
+	// Total lines per app in the last hour.
+	qTotal := `SELECT app, COUNT(*) FROM logs_view WHERE ts >= ?` + whereClause(cl) + ` GROUP BY app`
+	argsTotal := append([]any{currentStart}, args...)
+	rows, err := s.r.QueryContext(ctx, qTotal, argsTotal...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var app string
+		var total int64
+		if err := rows.Scan(&app, &total); err != nil {
+			return nil, err
+		}
+		current[app] = counts{app: app, total: total}
+	}
+	rows.Close()
+
+	// Error lines per app in the last hour.
+	qErrs := `SELECT app, COUNT(*) FROM logs_view WHERE ts >= ? AND level='error'` + whereClause(cl) + ` GROUP BY app`
+	argsErrs := append([]any{currentStart}, args...)
+	r2, err := s.r.QueryContext(ctx, qErrs, argsErrs...)
+	if err != nil {
+		return nil, err
+	}
+	defer r2.Close()
+	for r2.Next() {
+		var app string
+		var errs int64
+		if err := r2.Scan(&app, &errs); err != nil {
+			return nil, err
+		}
+		if c, ok := current[app]; ok {
+			c.errs = errs
+			current[app] = c
+		} else {
+			current[app] = counts{app: app, errs: errs}
+		}
+	}
+	r2.Close()
+
+	// Baseline: per-hour averages over the last 24h.
+	qBaseTotal := `SELECT app, COUNT(*) / 24.0 FROM logs_view WHERE ts >= ? AND ts < ?` + whereClause(cl) + ` GROUP BY app`
+	argsBaseTotal := append([]any{baselineStart, currentStart}, args...)
+	r3, err := s.r.QueryContext(ctx, qBaseTotal, argsBaseTotal...)
+	if err != nil {
+		return nil, err
+	}
+	defer r3.Close()
+	baselineTotal := map[string]float64{}
+	for r3.Next() {
+		var app string
+		var avg float64
+		if err := r3.Scan(&app, &avg); err != nil {
+			return nil, err
+		}
+		baselineTotal[app] = avg
+	}
+	r3.Close()
+
+	qBaseErrs := `SELECT app, COUNT(*) / 24.0 FROM logs_view WHERE ts >= ? AND ts < ? AND level='error'` + whereClause(cl) + ` GROUP BY app`
+	argsBaseErrs := append([]any{baselineStart, currentStart}, args...)
+	r4, err := s.r.QueryContext(ctx, qBaseErrs, argsBaseErrs...)
+	if err != nil {
+		return nil, err
+	}
+	defer r4.Close()
+	baselineErrs := map[string]float64{}
+	for r4.Next() {
+		var app string
+		var avg float64
+		if err := r4.Scan(&app, &avg); err != nil {
+			return nil, err
+		}
+		baselineErrs[app] = avg
+	}
+	r4.Close()
+
+	var out []AppAnomaly
+	for app, c := range current {
+		// Volume anomaly
+		bt := baselineTotal[app]
+		if bt > 0 && float64(c.total)/bt >= threshold {
+			score := int(math.Min(100, float64(c.total)/bt*20))
+			out = append(out, AppAnomaly{
+				App:      app,
+				Kind:     "volume",
+				Score:    score,
+				Current:  c.total,
+				Baseline: int64(bt + 0.5),
+				Reason:   fmt.Sprintf("log volume %dx above 24h baseline", int64(float64(c.total)/bt+0.5)),
+			})
+		}
+		// Error anomaly
+		be := baselineErrs[app]
+		if be > 0 && float64(c.errs)/be >= threshold {
+			score := int(math.Min(100, float64(c.errs)/be*20))
+			out = append(out, AppAnomaly{
+				App:      app,
+				Kind:     "errors",
+				Score:    score,
+				Current:  c.errs,
+				Baseline: int64(be + 0.5),
+				Reason:   fmt.Sprintf("error rate %dx above 24h baseline", int64(float64(c.errs)/be+0.5)),
+			})
+		}
+	}
+
+	// Sort by score descending.
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Score > out[j].Score
+	})
+	return out, nil
 }
 
 // User is one multi-user account (Phase 3.3). Role is "admin" or "viewer".

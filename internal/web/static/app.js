@@ -2389,6 +2389,24 @@ async function loadOverview(){
     rs2.body.append(line);
     box.append(rs2.wrap);
   }
+  // Anomaly detection: log volume/error rate deviating from 24h baseline.
+  try{
+    const q=host?'?host='+encodeURIComponent(host):'';
+    const an=await api('/api/anomalies'+q+'&threshold=2');
+    if(an&&an.anomalies&&an.anomalies.length){
+      const rs3=secBlock('ANOMALIES',an.anomalies.length);
+      const line=document.createElement('div');line.style.display='flex';line.style.gap='8px';line.style.flexWrap='wrap';line.style.padding='2px 0 8px';
+      an.anomalies.forEach(a=>{
+        const chip=document.createElement('span');chip.className='k bad';chip.style.cursor='pointer';
+        chip.textContent=`${a.app} · ${a.kind} ${a.reason}`;
+        chip.title=`Score ${a.score}/100 · current ${a.Current}/h vs baseline ${a.Baseline}/h`;
+        chip.onclick=()=>{S.app=a.app;setTab('logs');show();};
+        line.append(chip);
+      });
+      rs3.body.append(line);
+      box.append(rs3.wrap);
+    }
+  }catch(e){/* anomalies are best-effort; never break the dashboard */ }
   // auto-refresh while visible
   dashTimer=setTimeout(()=>{if(S.tab==='dashboard' && !S.app)loadOverview();},15000);
 }

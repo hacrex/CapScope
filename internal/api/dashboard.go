@@ -228,3 +228,22 @@ func (s *Server) crashLoops(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"loops": out, "window_ms": crashLoopWindow.Milliseconds()})
 }
+
+// anomalies returns per-app log volume/error rate deviations from the
+// 24-hour baseline (v0.9 anomaly detection).
+func (s *Server) anomalies(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	threshold := 2.0
+	if v := r.URL.Query().Get("threshold"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			threshold = f
+		}
+	}
+	out, err := s.st.AppAnomalies(ctx, r.URL.Query().Get("host"), threshold)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"anomalies": out})
+}
