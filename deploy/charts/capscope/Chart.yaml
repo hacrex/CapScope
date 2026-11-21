@@ -1,0 +1,20 @@
+apiVersion: v2
+name: capscope
+description: |
+  CapScope: A self-hosted container log and stats viewer with persistent
+  history, crash snapshots, access logs, and alerting.
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - docker
+  - logs
+  - monitoring
+  - caprover
+  - observability
+home: https://github.com/hacrex/CapScope
+sources:
+  - https://github.com/hacrex/CapScope
+maintainers:
+  - name: hacrex
+    url: https://github.com/hacrex

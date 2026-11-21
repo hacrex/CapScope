@@ -1,0 +1,143 @@
+# CapScope Helm chart values
+# See values.yaml for all configuration options.
+
+# --- Image ---
+image:
+  repository: capscope/capscope
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# --- Service ---
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# --- Ingress (optional) ---
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: capscope.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: capscope-tls
+  #    hosts:
+  #      - capscope.local
+
+# --- RBAC ---
+rbac:
+  enabled: true
+  serviceAccount:
+    name: capscope
+    annotations: {}
+    automountServiceAccountToken: true
+
+# --- Persistence (SQLite database) ---
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  mountPath: /data
+
+# --- Resources ---
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# --- Environment variables ---
+env:
+  # --- Authentication ---
+  # Set AUTH_PASS to require authentication. Leave empty to disable (not
+  # recommended for production).
+  AUTH_PASS: ""
+  AUTH_USER: "admin"
+  AUTH_PROVIDER: "local"
+
+  # --- Database ---
+  DB_PATH: "/data/capscope.db"
+  MAX_DB_MB: "1024"
+
+  # --- Docker ---
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+
+  # --- Retention ---
+  LOG_RETENTION: "7d"
+  METRICS_RETENTION: "7d"
+  SNAPSHOT_RETENTION: "30d"
+
+  # --- Alerting ---
+  # ALERT_WEBHOOK_URL: "https://hooks.slack.com/services/..."
+  # ALERT_TELEGRAM_TOKEN: "..."
+  # ALERT_TELEGRAM_CHAT_ID: "..."
+  # ALERT_SLACK_URL: "..."
+  # ALERT_DISCORD_URL: "..."
+  # ALERT_NTFY_URL: "..."
+  # ALERT_NTFY_TOKEN: "..."
+
+  # --- SMTP email notifications (optional) ---
+  # SMTP_HOST: "smtp.example.com"
+  # SMTP_PORT: "587"
+  # SMTP_USER: "..."
+  # SMTP_PASS: "..."
+  # SMTP_FROM: "capscope@example.com"
+  # SMTP_TO: "ops@example.com"
+  # SMTP_DIGEST_INTERVAL: "0" # 0 = immediate, "1h"/"6h"/"24h" = digest
+
+  # --- PagerDuty / Opsgenie (optional) ---
+  # ALERT_PAGERDUTY_KEY: "..."
+  # ALERT_OPSGENIE_KEY: "..."
+
+  # --- Redaction ---
+  REDACT: "true"
+
+  # --- Snapshot retention ---
+  SNAPSHOT_KINDS: "crash,oom,unhealthy"
+
+# --- Pod security context ---
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# --- Container security context ---
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+# --- Node selector / tolerations / affinity ---
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# --- Liveness / readiness probes ---
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3

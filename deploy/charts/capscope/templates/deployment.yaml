@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "capscope.fullname" . }}
+  labels:
+    {{- include "capscope.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "capscope.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "capscope.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "capscope.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          env:
+            - name: LISTEN
+              value: ":8080"
+            - name: DB_PATH
+              value: "/data/capscope.db"
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
+            - name: AUTH_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "capscope.fullname" . }}-auth
+                  key: password
+              optional: true
+            - name: AUTH_USER
+              value: {{ .Values.env.AUTH_USER | quote }}
+            - name: AUTH_PROVIDER
+              value: {{ .Values.env.AUTH_PROVIDER | quote }}
+            - name: MAX_DB_MB
+              value: {{ .Values.env.MAX_DB_MB | quote }}
+            - name: LOG_RETENTION
+              value: {{ .Values.env.LOG_RETENTION | quote }}
+            - name: METRICS_RETENTION
+              value: {{ .Values.env.METRICS_RETENTION | quote }}
+            - name: SNAPSHOT_RETENTION
+              value: {{ .Values.env.SNAPSHOT_RETENTION | quote }}
+            - name: REDACT
+              value: {{ .Values.env.REDACT | quote }}
+            - name: SNAPSHOT_KINDS
+              value: {{ .Values.env.SNAPSHOT_KINDS | quote }}
+            {{- if .Values.env.ALERT_WEBHOOK_URL }}
+            - name: ALERT_WEBHOOK_URL
+              value: {{ .Values.env.ALERT_WEBHOOK_URL | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_TELEGRAM_TOKEN }}
+            - name: ALERT_TELEGRAM_TOKEN
+              value: {{ .Values.env.ALERT_TELEGRAM_TOKEN | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_TELEGRAM_CHAT }}
+            - name: ALERT_TELEGRAM_CHAT_ID
+              value: {{ .Values.env.ALERT_TELEGRAM_CHAT | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_SLACK_URL }}
+            - name: ALERT_SLACK_URL
+              value: {{ .Values.env.ALERT_SLACK_URL | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_DISCORD_URL }}
+            - name: ALERT_DISCORD_URL
+              value: {{ .Values.env.ALERT_DISCORD_URL | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_NTFY_URL }}
+            - name: ALERT_NTFY_URL
+              value: {{ .Values.env.ALERT_NTFY_URL | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_NTFY_TOKEN }}
+            - name: ALERT_NTFY_TOKEN
+              value: {{ .Values.env.ALERT_NTFY_TOKEN | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_PAGERDUTY_KEY }}
+            - name: ALERT_PAGERDUTY_KEY
+              value: {{ .Values.env.ALERT_PAGERDUTY_KEY | quote }}
+            {{- end }}
+            {{- if .Values.env.ALERT_OPSGENIE_KEY }}
+            - name: ALERT_OPSGENIE_KEY
+              value: {{ .Values.env.ALERT_OPSGENIE_KEY | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_HOST }}
+            - name: SMTP_HOST
+              value: {{ .Values.env.SMTP_HOST | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_PORT }}
+            - name: SMTP_PORT
+              value: {{ .Values.env.SMTP_PORT | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_USER }}
+            - name: SMTP_USER
+              value: {{ .Values.env.SMTP_USER | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_PASS }}
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "capscope.fullname" . }}-auth
+                  key: smtp_pass
+              optional: true
+            {{- end }}
+            {{- if .Values.env.SMTP_FROM }}
+            - name: SMTP_FROM
+              value: {{ .Values.env.SMTP_FROM | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_TO }}
+            - name: SMTP_TO
+              value: {{ .Values.env.SMTP_TO | quote }}
+            {{- end }}
+            {{- if .Values.env.SMTP_DIGEST_INTERVAL }}
+            - name: SMTP_DIGEST_INTERVAL
+              value: {{ .Values.env.SMTP_DIGEST_INTERVAL | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+              readOnly: true
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+      volumes:
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "capscope.fullname" . }}-data
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

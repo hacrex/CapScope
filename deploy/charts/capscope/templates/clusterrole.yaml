@@ -1,0 +1,15 @@
+{{- if .Values.rbac.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "capscope.serviceAccountName" . }}
+  labels:
+    {{- include "capscope.labels" . | nindent 4 }}
+rules:
+  # Docker socket access via mounted socket - no API calls needed
+  # CapScope uses the Docker socket directly, not the Kubernetes API.
+  # These rules are minimal: only needed for future operator features.
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+{{- end }}
