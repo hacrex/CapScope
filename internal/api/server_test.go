@@ -199,6 +199,10 @@ func TestAuthAndUI(t *testing.T) {
 func TestLogsAPIAndSnapshotExport(t *testing.T) {
 	srv, st, _ := setup(t)
 	now := time.Now()
+	// Ensure container exists so logs_view's JOIN with containers resolves.
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: now.UnixMilli(), LastSeen: now.UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
 	_ = st.InsertLogs([]store.LogRow{
 		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "o", Level: "info", Line: "hello"},
 		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: "bad thing"},
@@ -226,6 +230,9 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 func TestSQLAPI(t *testing.T) {
 	srv, st, _ := setup(t)
 	now := time.Now()
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: now.UnixMilli(), LastSeen: now.UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
 	_ = st.InsertLogs([]store.LogRow{
 		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "o", Level: "info", Line: "hello"},
 		{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: "bad thing"},
@@ -321,6 +328,9 @@ func TestAccessAPIAndExports(t *testing.T) {
 	var many []store.LogRow
 	for i := 0; i < 600; i++ {
 		many = append(many, store.LogRow{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `something "bad", happened`})
+	}
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: now.UnixMilli(), LastSeen: now.UnixMilli()}); err != nil {
+		t.Fatal(err)
 	}
 	_ = st.InsertLogs(append(many, store.LogRow{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: "web.1", App: "web", Stream: "e", Level: "error", Line: `last row`}))
 	r = get(t, srv.URL+"/api/logs/export?app=web", true)
@@ -617,6 +627,9 @@ func TestLogsExportPagination(t *testing.T) {
 			Level:       "info",
 			Line:        fmt.Sprintf("line %d", i),
 		})
+	}
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: now.UnixMilli(), LastSeen: now.UnixMilli()}); err != nil {
+		t.Fatal(err)
 	}
 	if err := st.InsertLogs(batch); err != nil {
 		t.Fatal(err)

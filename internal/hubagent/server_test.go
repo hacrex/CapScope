@@ -46,6 +46,11 @@ func TestServerIngestLogsDirect(t *testing.T) {
 	s := New(st, nil, nil, slogDiscard())
 	ctx := context.Background()
 
+	// Ensure container exists so logs_view's JOIN with containers resolves.
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: 1, LastSeen: 1}); err != nil {
+		t.Fatal(err)
+	}
+
 	s.ingestLogs("node-1", transport.LogBatch{
 		HostID: "node-1",
 		Rows:   []store.LogRow{{ContainerID: "c1", Container: "web.1", App: "web", Stream: "o", Level: "info", Line: "direct log"}},
@@ -204,6 +209,10 @@ func TestFullRoundTripIngestsLogs(t *testing.T) {
 	_ = hubKey
 
 	// Log batch - send and check persistence directly (don't wait for Ack).
+	// Ensure container exists so logs_view's JOIN with containers resolves.
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: "web.1", App: "web", Image: "img", State: "running", FirstSeen: 1, LastSeen: 1}); err != nil {
+		t.Fatal(err)
+	}
 	if err := conn.Send(transport.LogBatch{
 		HostID: "node-1",
 		Rows:   []store.LogRow{{ContainerID: "c1", Container: "web.1", App: "web", Stream: "o", Level: "info", Line: "remote log"}},

@@ -12,9 +12,13 @@ func TestPrunePerApp(t *testing.T) {
 	now := time.Now()
 
 	// web has old rows; api has old rows too.
-	if err := s.InsertLogs([]LogRow{
+	if err := insertLogsWithContainer(s, "web", []LogRow{
 		row("web", "old", "info", now.Add(-48*time.Hour)),
 		row("web", "new", "info", now.Add(-1*time.Hour)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLogsWithContainer(s, "api", []LogRow{
 		row("api", "old", "info", now.Add(-48*time.Hour)),
 	}); err != nil {
 		t.Fatal(err)
@@ -54,7 +58,7 @@ func TestAppLogBytes(t *testing.T) {
 		t.Fatalf("empty app bytes=%d err=%v", b, err)
 	}
 
-	if err := s.InsertLogs([]LogRow{
+	if err := insertLogsWithContainer(s, "web", []LogRow{
 		row("web", "hello", "info", now),
 		row("web", "world!", "info", now),
 	}); err != nil {
@@ -84,7 +88,10 @@ func TestEnforcePerAppSize(t *testing.T) {
 	}
 	rows = append(rows, row("api", "small", "info", now))
 	rows = append(rows, row("api", "small", "info", now))
-	if err := s.InsertLogs(rows); err != nil {
+	if err := insertLogsWithContainer(s, "web", rows[:20]); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLogsWithContainer(s, "api", rows[20:]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -116,7 +123,7 @@ func TestEnforcePerAppSize(t *testing.T) {
 func TestEnforcePerAppSizeZeroBudgetSkipped(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	if err := s.InsertLogs([]LogRow{row("web", "x", "info", time.Now())}); err != nil {
+	if err := insertLogsWithContainer(s, "web", []LogRow{row("web", "x", "info", time.Now())}); err != nil {
 		t.Fatal(err)
 	}
 	d, err := s.EnforcePerAppSize(ctx, map[string]int64{"web": 0})

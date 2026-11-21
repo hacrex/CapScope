@@ -20,7 +20,8 @@ type Store struct {
 	w *sql.DB // single writer connection
 	r *sql.DB // read-only pool
 
-	prunesTotal atomic.Int64 // rows pruned by retention / size enforcement (prometheus: capscope_retention_prunes_total)
+	prunesTotal  atomic.Int64 // rows pruned by retention / size enforcement (prometheus: capscope_retention_prunes_total)
+	normalized   atomic.Bool  // true after NormalizeSchema has removed container/app columns from logs
 }
 
 var migrations = []string{
@@ -192,6 +193,15 @@ var migrations = []string{
 	   PRIMARY KEY(user_id, app)
 	 );
 	 CREATE INDEX idx_user_apps_app ON user_apps(app);`,
+	// S6 row normalization compatibility view: exposes the old `logs` column
+	// set (including container and app names) via a JOIN with containers, so
+	// existing SQL queries and /api/sql keep working after NormalizeSchema
+	// removes those columns from the logs table itself. Uses LEFT JOIN so
+	// log rows survive even if their container row has been removed.
+	`CREATE VIEW IF NOT EXISTS logs_view AS
+	   SELECT l.id, l.ts, l.container_id, c.name AS container, c.app AS app,
+	      l.host_id, l.stream, l.level, l.line
+	   FROM logs l LEFT JOIN containers c ON l.container_id = c.id;`,
 }
 
 // Open creates or migrates the database at path.
@@ -379,20 +389,38 @@ func (s *Store) InsertLogs(rows []LogRow) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO logs(ts,container_id,container,app,host_id,stream,level,line) VALUES(?,?,?,?,?,?,?,?)`)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	defer stmt.Close()
-	for i := range rows {
-		r := &rows[i]
-		res, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.HostID, r.Stream, r.Level, r.Line)
+	if s.normalized.Load() {
+		stmt, err := tx.Prepare(`INSERT INTO logs(ts,container_id,host_id,stream,level,line) VALUES(?,?,?,?,?,?)`)
 		if err != nil {
 			tx.Rollback()
 			return err
 		}
-		r.ID, _ = res.LastInsertId()
+		defer stmt.Close()
+		for i := range rows {
+			r := &rows[i]
+			res, err := stmt.Exec(r.TS, r.ContainerID, r.HostID, r.Stream, r.Level, r.Line)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+			r.ID, _ = res.LastInsertId()
+		}
+	} else {
+		stmt, err := tx.Prepare(`INSERT INTO logs(ts,container_id,container,app,host_id,stream,level,line) VALUES(?,?,?,?,?,?,?,?)`)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		defer stmt.Close()
+		for i := range rows {
+			r := &rows[i]
+			res, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.HostID, r.Stream, r.Level, r.Line)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+			r.ID, _ = res.LastInsertId()
+		}
 	}
 	return tx.Commit()
 }
@@ -557,7 +585,7 @@ func (s *Store) QueryLogs(ctx context.Context, q LogQuery) ([]LogRow, error) {
 	if q.AfterID > 0 || q.Asc {
 		order = "ASC"
 	}
-	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs" + where + " ORDER BY id " + order
+	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs_view" + where + " ORDER BY id " + order
 	if q.Regex == nil {
 		query += " LIMIT ?"
 		args = append(args, q.Limit)
@@ -616,7 +644,7 @@ func (s *Store) queryLogsFTS(ctx context.Context, q LogQuery) ([]LogRow, error) 
 	if q.AfterID > 0 {
 		order = "ASC"
 	}
-	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs" + where + " ORDER BY id " + order + " LIMIT ?"
+	query := "SELECT id, ts, container_id, container, app, host_id, stream, level, line FROM logs_view" + where + " ORDER BY id " + order + " LIMIT ?"
 	args = append(args, q.Limit)
 	rows, err := s.r.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -766,7 +794,7 @@ func (s *Store) AppSummaries(ctx context.Context, hostID string) ([]AppSummary, 
 	if hostID != "" {
 		lc, la = append(lc, "host_id = ?"), append(la, hostID)
 	}
-	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs`+whereClause(append([]string{"ts >= ?"}, lc...))+` GROUP BY app`, append([]any{since}, la...)...)
+	r2, err := s.r.QueryContext(ctx, `SELECT app, SUM(CASE WHEN level='error' THEN 1 ELSE 0 END), SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END) FROM logs_view`+whereClause(append([]string{"ts >= ?"}, lc...))+` GROUP BY app`, append([]any{since}, la...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1601,7 +1629,14 @@ func (s *Store) PrunePerApp(ctx context.Context, ret map[string]time.Duration) (
 			{"logs", "ts", cutoff},
 			{"access", "ts", now.Add(-keep).UnixMilli()},
 		} {
-			res, err := s.w.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE app=? AND %s<?`, tbl.name, tbl.col), app, tbl.cutoff)
+			var query string
+			if tbl.name == "logs" {
+				// After normalization, logs no longer has an app column; match via containers.
+				query = fmt.Sprintf(`DELETE FROM %s WHERE container_id IN (SELECT id FROM containers WHERE app=?) AND %s<?`, tbl.name, tbl.col)
+			} else {
+				query = fmt.Sprintf(`DELETE FROM %s WHERE app=? AND %s<?`, tbl.name, tbl.col)
+			}
+			res, err := s.w.ExecContext(ctx, query, app, tbl.cutoff)
 			if err != nil {
 				return total, err
 			}
@@ -1617,7 +1652,7 @@ func (s *Store) PrunePerApp(ctx context.Context, ret map[string]time.Duration) (
 // enough to enforce a budget without a per-row size table.
 func (s *Store) AppLogBytes(ctx context.Context, app string) (int64, error) {
 	var n, chars int64
-	if err := s.r.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(LENGTH(line)),0) FROM logs WHERE app=?`, app).Scan(&n, &chars); err != nil {
+	if err := s.r.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(LENGTH(line)),0) FROM logs_view WHERE app=?`, app).Scan(&n, &chars); err != nil {
 		return 0, err
 	}
 	return chars + n*rowOverhead, nil
@@ -1645,7 +1680,7 @@ func (s *Store) EnforcePerAppSize(ctx context.Context, budgets map[string]int64)
 				break
 			}
 			var n int64
-			if err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM logs WHERE app=?`, app).Scan(&n); err != nil || n == 0 {
+			if err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM logs_view WHERE app=?`, app).Scan(&n); err != nil || n == 0 {
 				break
 			}
 			drop := n / 10
@@ -1655,7 +1690,7 @@ func (s *Store) EnforcePerAppSize(ctx context.Context, budgets map[string]int64)
 			if drop > n {
 				drop = n
 			}
-			res, err := s.w.ExecContext(ctx, `DELETE FROM logs WHERE id IN (SELECT id FROM logs WHERE app=? ORDER BY id LIMIT ?)`, app, drop)
+			res, err := s.w.ExecContext(ctx, `DELETE FROM logs WHERE id IN (SELECT id FROM logs_view WHERE app=? ORDER BY id LIMIT ?)`, app, drop)
 			if err != nil {
 				return deleted, err
 			}
@@ -1766,6 +1801,7 @@ func (s *Store) NormalizeSchema(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("normalize: commit: %w", err)
 	}
+	s.normalized.Store(true)
 	return nil
 }
 
@@ -1842,7 +1878,7 @@ func (s *Store) LastAlertTS(ctx context.Context, rule, app string) int64 {
 // or 0 when the app has no logs. Feeds the dead-man rule (A1).
 func (s *Store) LastLogTS(ctx context.Context, app string) int64 {
 	var ts int64
-	_ = s.r.QueryRowContext(ctx, `SELECT MAX(ts) FROM logs WHERE app=?`, app).Scan(&ts)
+	_ = s.r.QueryRowContext(ctx, `SELECT MAX(ts) FROM logs_view WHERE app=?`, app).Scan(&ts)
 	if ts > 0 {
 		return ts / 1_000_000
 	}
@@ -1902,7 +1938,7 @@ func (s *Store) CountAppDeathsSince(ctx context.Context, app string, sinceMs int
 // whose line matches re. Feeds the log-pattern alert rule (A4). The scan is
 // capped like regex search so a huge window cannot pin the read pool.
 func (s *Store) CountLogsMatching(ctx context.Context, app string, re *regexp.Regexp, sinceMs int64) (int64, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT line FROM logs WHERE app=? AND ts>=?`, app, sinceMs*1_000_000)
+	rows, err := s.r.QueryContext(ctx, `SELECT line FROM logs_view WHERE app=? AND ts>=?`, app, sinceMs*1_000_000)
 	if err != nil {
 		return 0, err
 	}

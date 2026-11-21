@@ -23,6 +23,25 @@ func row(app, line, level string, ts time.Time) LogRow {
 	return LogRow{TS: ts.UnixNano(), TSMs: ts.UnixMilli(), ContainerID: "c1abc", Container: app + ".1", App: app, Stream: "o", Level: level, Line: line}
 }
 
+// insertLogsWithContainer inserts a container row for the app (matching the
+// row() helper's ContainerID/Container/App) and then the log rows. In
+// production the collector always upserts containers before inserting logs,
+// so this mirrors real usage and keeps logs_view's JOIN working.
+func insertLogsWithContainer(s *Store, app string, rows []LogRow) error {
+	ctx := context.Background()
+	now := time.Now()
+	containerID := "c1abc-" + app // unique per app so multiple apps don't collide
+	for i := range rows {
+		rows[i].ContainerID = containerID
+		rows[i].Container = app + ".1"
+	}
+	if _, err := s.w.ExecContext(ctx, `INSERT OR REPLACE INTO containers(id,name,app,image,replica,host_id,state,first_seen,last_seen) VALUES(?,?,?,'test','1','','running',?,?)`,
+		containerID, app+".1", app, now.UnixMilli(), now.UnixMilli()); err != nil {
+		return err
+	}
+	return s.InsertLogs(rows)
+}
+
 func TestLogsInsertQueryFilters(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
@@ -33,7 +52,10 @@ func TestLogsInsertQueryFilters(t *testing.T) {
 		row("web", "100% done_ok", "info", now.Add(2*time.Second)),
 		row("api", "other app", "info", now.Add(3*time.Second)),
 	}
-	if err := s.InsertLogs(rows); err != nil {
+	if err := insertLogsWithContainer(s, "web", rows[:3]); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLogsWithContainer(s, "api", rows[3:]); err != nil {
 		t.Fatal(err)
 	}
 	if rows[0].ID == 0 || rows[3].ID <= rows[0].ID {
@@ -83,7 +105,10 @@ func TestFTSSearch(t *testing.T) {
 		row("web", "normal line", "info", now.Add(2*time.Second)),
 		row("api", "database replica lagging", "warn", now.Add(3*time.Second)),
 	}
-	if err := s.InsertLogs(rows); err != nil {
+	if err := insertLogsWithContainer(s, "web", rows[:3]); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLogsWithContainer(s, "api", rows[3:]); err != nil {
 		t.Fatal(err)
 	}
 	// token match across words
@@ -130,7 +155,7 @@ func TestFTSRespectsAsc(t *testing.T) {
 		row("web", "beta db second", "info", now.Add(time.Second)),
 		row("web", "gamma db third", "info", now.Add(2*time.Second)),
 	}
-	if err := s.InsertLogs(rows); err != nil {
+	if err := insertLogsWithContainer(s, "web", rows); err != nil {
 		t.Fatal(err)
 	}
 	// QueryLogs always returns oldest-first (store flips DESC→ASC), so the
@@ -220,7 +245,7 @@ func TestPruneAndSizeCap(t *testing.T) {
 		rows = append(rows, row("web", fmt.Sprintf("old line %d", i), "info", old))
 	}
 	rows = append(rows, row("web", "fresh", "info", time.Now()))
-	if err := s.InsertLogs(rows); err != nil {
+	if err := insertLogsWithContainer(s, "web", rows); err != nil {
 		t.Fatal(err)
 	}
 	n, err := s.Prune(ctx, 24*time.Hour, time.Hour, time.Hour)
@@ -349,8 +374,14 @@ func TestAppSummariesHostFilter(t *testing.T) {
 
 	now = now.Add(time.Minute)
 	insertLog := func(app, host, level string) {
+		now2 := now
+		containerID := "c1-" + app
+		if _, err := s.w.ExecContext(ctx, `INSERT OR REPLACE INTO containers(id,name,app,image,replica,host_id,state,first_seen,last_seen) VALUES(?,?,?,'test','1','','running',?,?)`,
+			containerID, app+".1", app, now2.UnixMilli(), now2.UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
 		if err := s.InsertLogs([]LogRow{
-			{TS: now.UnixNano(), TSMs: now.UnixMilli(), ContainerID: "c1", Container: app + ".1", App: app, Stream: "o", Level: level, Line: "msg", HostID: host},
+			{TS: now2.UnixNano(), TSMs: now2.UnixMilli(), ContainerID: "c1-" + app, Container: app + ".1", App: app, Stream: "o", Level: level, Line: "msg", HostID: host},
 		}); err != nil {
 			t.Fatal(err)
 		}

@@ -39,10 +39,14 @@ func seedApp(t *testing.T, st *store.Store, app string) {
 
 func seedLogs(t *testing.T, st *store.Store, app, line string, tsMs ...int64) {
 	t.Helper()
+	// Ensure the container exists so logs_view's JOIN with containers resolves.
+	if err := st.UpsertContainer(store.ContainerRow{ID: "id-" + app, Name: app + "-1", App: app, Image: "img", State: "running", FirstSeen: 1, LastSeen: 1}); err != nil {
+		t.Fatal(err)
+	}
 	var rows []store.LogRow
 	for _, ms := range tsMs {
 		rows = append(rows, store.LogRow{
-			TS: ms * 1_000_000, TSMs: ms, ContainerID: "c1", Container: app + "-1", App: app,
+			TS: ms * 1_000_000, TSMs: ms, ContainerID: "id-" + app, Container: app + "-1", App: app,
 			Stream: "o", Level: "info", Line: line,
 		})
 	}

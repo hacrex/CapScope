@@ -128,6 +128,10 @@ func TestShareBadBodyRejected(t *testing.T) {
 
 func seedLogsForAPI(t *testing.T, st *store.Store, app, line string, tsMs int64) {
 	t.Helper()
+	// Ensure the container exists so logs_view's JOIN with containers resolves.
+	if err := st.UpsertContainer(store.ContainerRow{ID: "c1", Name: app + "-1", App: app, Image: "img", State: "running", FirstSeen: 1, LastSeen: 1}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.InsertLogs([]store.LogRow{{TS: tsMs * 1_000_000, TSMs: tsMs, ContainerID: "c1", Container: app + "-1", App: app, Stream: "o", Level: "error", Line: line}}); err != nil {
 		t.Fatal(err)
 	}

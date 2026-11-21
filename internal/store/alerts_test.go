@@ -80,7 +80,7 @@ func TestLastLogTS(t *testing.T) {
 		t.Fatalf("empty last log ts = %d", ts)
 	}
 	now := time.Now()
-	if err := s.InsertLogs([]LogRow{
+	if err := insertLogsWithContainer(s, "app", []LogRow{
 		row("app", "a", "info", now.Add(-time.Minute)),
 		row("app", "b", "info", now),
 	}); err != nil {
@@ -129,7 +129,7 @@ func TestCountLogsMatching(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 	now := time.Now()
-	if err := s.InsertLogs([]LogRow{
+	if err := insertLogsWithContainer(s, "app", []LogRow{
 		row("app", "status=500 broken", "error", now.Add(-10*time.Minute)),
 		row("app", "status=503 broken", "error", now.Add(-time.Minute)),
 		row("app", "status=200 ok", "info", now),
