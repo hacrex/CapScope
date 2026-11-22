@@ -597,7 +597,7 @@ func generateAdvice(sn store.Snapshot) []adviceItem {
 		})
 	}
 
-	if sn.GitCommit != "" && sn.GitCommit != "" {
+	if sn.GitCommit != "" {
 		items = append(items, adviceItem{
 			Category:  "deploy",
 			Severity:  "medium",
