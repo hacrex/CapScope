@@ -1,1 +1,0 @@
-FAKE_DAEMON_SOCKET=C:\Users\ITSUPP~1\AppData\Local\Temp\capscope-demo.sock

@@ -24,6 +24,8 @@ import (
 	"capscope/internal/forward"
 	"capscope/internal/hub"
 	"capscope/internal/hubagent"
+	"capscope/internal/opentelemetry"
+	"capscope/internal/pipeline"
 	"capscope/internal/store"
 
 	"golang.org/x/crypto/bcrypt"
@@ -100,6 +102,34 @@ func serve(log *slog.Logger) error {
 
 	mgr := collector.NewManager(cfg, dk, st, h, log)
 	mgr.SetEventSink(eng.FeedEvent) // event rules (A6) fire on live Docker events
+
+	// Phase 2: logs→metrics pipelines. Load pipelines.yaml (hot-reloaded on
+	// change) and attach the engine to the manager so every log row is
+	// evaluated for rollup metrics.
+	if cfg.PipelinesFile != "" {
+		pe := pipeline.NewEngine(log)
+		if n, err := pe.Load(cfg.PipelinesFile); err != nil {
+			log.Warn("pipelines: failed to load", "file", cfg.PipelinesFile, "err", err)
+		} else {
+			log.Info("pipelines: loaded", "file", cfg.PipelinesFile, "rules", n)
+			mgr.SetPipelineEngine(pe)
+			// Hot-reload pipelines every 30 seconds.
+			go func() {
+				ticker := time.NewTicker(30 * time.Second)
+				defer ticker.Stop()
+				for range ticker.C {
+					if ctx.Err() != nil {
+						return
+					}
+					if n, err := pe.MaybeReload(); err != nil {
+						log.Debug("pipelines: reload failed", "err", err)
+					} else if n > 0 {
+						log.Info("pipelines: reloaded", "rules", n)
+					}
+				}
+			}()
+		}
+	}
 	done := make(chan struct{})
 	go func() { mgr.Run(ctx); close(done) }()
 
@@ -108,6 +138,28 @@ func serve(log *slog.Logger) error {
 	if fw := forward.New(h, cfg.ForwardLokiURL, cfg.ForwardESURL, cfg.ForwardESIndex, 100, 5*time.Second, log); fw != nil {
 		go fw.Start(ctx)
 		log.Info("forward: log forwarding enabled", "loki", cfg.ForwardLokiURL, "es", cfg.ForwardESURL)
+	}
+
+	// Phase 4: storage tiering — archive hot SQLite data older than
+	// RETENTION_HOT_DAYS to Parquet/JSONL files in ARCHIVE_BUCKET.
+	if am := store.NewArchiveManager(st, cfg.ArchiveBucket, cfg.ArchivePrefix, cfg.RetentionHotDays, log); am.Enabled() {
+		go func() {
+			ticker := time.NewTicker(10 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if n, err := am.Rollup(ctx); err != nil {
+						log.Warn("archive: rollup failed", "err", err)
+					} else if n > 0 {
+						log.Info("archive: rollup complete", "rows", n)
+					}
+				}
+			}
+		}()
+		log.Info("archive: tiering enabled", "bucket", cfg.ArchiveBucket, "prefix", cfg.ArchivePrefix, "hot_days", cfg.RetentionHotDays)
 	}
 
 	// Log clustering (P0): periodically build semantic log clusters from recent
@@ -165,7 +217,7 @@ func serve(log *slog.Logger) error {
 
 	// Local password auth needs a session store; proxy header auth is sessionless.
 	// WithDocker gives /api/overview its host block (name/ncpu/disk/reclaimable).
-	opts := []func(*api.Server){api.WithAlerts(eng), api.WithUserStore(st), api.WithDocker(dk)}
+	opts := []func(*api.Server){api.WithAlerts(eng), api.WithUserStore(st), api.WithDocker(dk), api.WithIncidents(st)}
 	if cfg.AuthProvider != "proxy" {
 		// Sessions persist HMAC-signed next to the DB, so a restart does not
 		// log the browser out (Phase 3.1). The file never receives raw tokens.
@@ -189,11 +241,39 @@ func serve(log *slog.Logger) error {
 		}
 	}
 
+	s := api.New(cfg, st, mgr, h, log, opts...)
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           api.New(cfg, st, mgr, h, log, opts...).Handler(),
+		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second, // no WriteTimeout: SSE streams are long-lived
 	}
+	// OTLP ingestion (Phase 1): when OTEL_LISTEN is set, expose an OTLP HTTP
+	// receiver at /v1/logs, /v1/metrics, /v1/traces on a separate listen
+	// address. Auth reuses the same session/proxy-header middleware as the
+	// REST API (Phase 1 exit criteria).
+	if cfg.OTELListen != "" {
+		otlpr := opentelemetry.New(mgr.Sink(), log)
+		otlpSrv := &http.Server{
+			Addr:              cfg.OTELListen,
+			Handler:           s.OTELHandler(otlpr.Handler()),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		otlpLn, err := net.Listen("tcp", cfg.OTELListen)
+		if err != nil {
+			return fmt.Errorf("listen OTEL_LISTEN: %w", err)
+		}
+		go func() {
+			<-ctx.Done()
+			sctx, c := context.WithTimeout(context.Background(), 5*time.Second)
+			defer c()
+			_ = otlpSrv.Shutdown(sctx)
+		}()
+		go func() {
+			_ = otlpSrv.Serve(otlpLn)
+		}()
+		log.Info("otlp: receiver enabled", "listen", cfg.OTELListen, "path", cfg.OTELPath)
+	}
+
 	// Agent ingestion (Phase 4.4): accept agent connections over mTLS and
 	// ingest their logs/metrics/events tagged by host_id.
 	if cfg.AgentHubListen != "" {

@@ -5,11 +5,14 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/oschwald/geoip2-golang"
 
 	"capscope/internal/access"
 	"capscope/internal/alerts"
@@ -17,6 +20,7 @@ import (
 	"capscope/internal/docker"
 	"capscope/internal/hub"
 	"capscope/internal/logproc"
+	"capscope/internal/pipeline"
 	"capscope/internal/store"
 )
 
@@ -27,12 +31,12 @@ type Manager struct {
 	hub *hub.Hub
 	log *slog.Logger
 
-	lines           chan store.LogRow
-	accessRows      chan store.AccessRow
-	accDet          access.Detector
-	accDropped      atomic.Int64
-	lineDropped     atomic.Int64 // log rows dropped when the writer channel is full
-	linesIngested   atomic.Int64 // log rows accepted into the ingestion pipeline
+	lines         chan store.LogRow
+	accessRows    chan store.AccessRow
+	accDet        access.Detector
+	accDropped    atomic.Int64
+	lineDropped   atomic.Int64 // log rows dropped when the writer channel is full
+	linesIngested atomic.Int64 // log rows accepted into the ingestion pipeline
 
 	mu      sync.Mutex
 	tracked map[string]*tracker
@@ -60,11 +64,25 @@ type Manager struct {
 	// (agent mode: DockerFilter label selector).
 	trackIf func(docker.Container) bool
 
+	// pipe is the logs→metrics pipeline engine (Phase 2). When set, every log
+	// row is evaluated against compiled pipelines and matching rows emit
+	// MetricPoints into the same metrics table.
+	pipe *pipeline.Engine
+
 	// hostID is this CapScope instance's host identifier. Trackers created by
 	// this manager inherit it so Containers(hostID) can filter by host. Empty
 	// in serve mode unless AGENT_HOST_ID is set; set to the agent's host ID in
 	// agent mode.
 	hostID string
+
+	// host samples the host machine's own CPU and memory usage from
+	// /proc/stat and /proc/meminfo. Nil in agent mode (no local UI to chart
+	// it); the sampler itself is cheap and reads only /proc.
+	host *HostSampler
+
+	// geoip resolves client IPs to country codes for access-log rows (C9.7).
+	// Nil when GEOIP_DB is not configured.
+	geoip *geoip2.Reader
 }
 
 // pendingEv is an event flag waiting for its container's die event.
@@ -87,14 +105,30 @@ func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hu
 		// eagerly and each row may carry up to MaxLineBytes of text, so a
 		// deep buffer is retained memory that only ever fills under write
 		// pressure — where the non-blocking send drops and counts instead.
-		lines:      make(chan store.LogRow, 2048),
-		accessRows: make(chan store.AccessRow, 1024),
-		accDet:     access.NewDetector(cfg.AccessLog),
-		tracked:    map[string]*tracker{},
-		lastTS:     map[string]int64{},
-		pending:    map[string]pendingEv{},
+		lines:         make(chan store.LogRow, 2048),
+		accessRows:    make(chan store.AccessRow, 1024),
+		accDet:        access.NewDetector(cfg.AccessLog),
+		tracked:       map[string]*tracker{},
+		lastTS:        map[string]int64{},
+		pending:       map[string]pendingEv{},
 		lastUnhealthy: map[string]int64{},
-		hostID:     cfg.AgentHostID,
+		hostID:        cfg.AgentHostID,
+	}
+	// Host-level metrics (host CPU/mem) are charted beside per-container
+	// metrics in /api/overview. The sampler reads /proc directly and is
+	// independent of Docker; skip it in agent mode where there is no local UI.
+	if st != nil {
+		m.host = NewHostSampler()
+	}
+	// GeoIP country labels for access-log rows (C9.7): open the MMDB once and
+	// reuse it for every lookup. The reader is safe for concurrent use.
+	if cfg.GeoIPDB != "" {
+		if r, err := geoip2.Open(cfg.GeoIPDB); err == nil {
+			m.geoip = r
+			m.log.Info("geoip: country database loaded", "path", cfg.GeoIPDB)
+		} else {
+			m.log.Warn("geoip: cannot open database, country labels disabled", "path", cfg.GeoIPDB, "err", err)
+		}
 	}
 	m.sink = storeSink{st: st, h: h}
 	return m
@@ -159,6 +193,11 @@ func (m *Manager) SetEventSink(fn func(alerts.ContainerEvent)) { m.evSink = fn }
 // mode for Docker label filtering (DOCKER_FILTER).
 func (m *Manager) SetTrackIf(fn func(docker.Container) bool) { m.trackIf = fn }
 
+// SetPipelineEngine attaches the logs→metrics pipeline engine (Phase 2). When
+// set, every log row is evaluated against compiled pipelines and matching rows
+// emit MetricPoints into the same metrics table.
+func (m *Manager) SetPipelineEngine(eng *pipeline.Engine) { m.pipe = eng }
+
 // CurrentImages implements alerts.ImageLister for the update checker (A7):
 // the image of every tracked container, one entry per container. The updater
 // deduplicates replicas itself.
@@ -174,17 +213,17 @@ func (m *Manager) CurrentImages(ctx context.Context) []alerts.ImageRef {
 
 // ContainerInfo is the live view returned by the API.
 type ContainerInfo struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	App       string  `json:"app"`
-	Replica   string  `json:"replica"`
-	Image     string  `json:"image"`
-	HostID    string  `json:"host_id"`
-	Started   int64   `json:"started"`
-	CPU       float64 `json:"cpu"`
-	Mem       int64   `json:"mem"`
-	MemLimit  int64   `json:"mem_limit"`
-	SampleTS  int64   `json:"sample_ts"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	App      string  `json:"app"`
+	Replica  string  `json:"replica"`
+	Image    string  `json:"image"`
+	HostID   string  `json:"host_id"`
+	Started  int64   `json:"started"`
+	CPU      float64 `json:"cpu"`
+	Mem      int64   `json:"mem"`
+	MemLimit int64   `json:"mem_limit"`
+	SampleTS int64   `json:"sample_ts"`
 	// SizeRW is the writable-layer size in bytes from inspect?size=true:
 	// -1 until the first measurement (see sizeLoop).
 	SizeRW int64 `json:"size_rw"`
@@ -211,6 +250,31 @@ func (m *Manager) Containers(hostID string) []ContainerInfo {
 // filter names the local daemon (fill the host block) or a remote host
 // (report only the id/name and hide the rest).
 func (m *Manager) HostID() string { return m.hostID }
+
+// Sink returns this manager's row sink: SQLite+hub in serve mode, or the
+// transport stream in agent mode. The OTLP receiver reuses it so OTLP logs
+// and metrics flow into the same storage and live-tail path as Docker
+// collection.
+func (m *Manager) Sink() Sink { return m.sink }
+
+// HostCurrent returns the newest host CPU% (0-100 of total capacity) and mem%
+// (0-100 of MemTotal) readings, or (0, 0) until the first sample lands.
+func (m *Manager) HostCurrent() (cpu, mem float64) {
+	if m.host == nil {
+		return 0, 0
+	}
+	return m.host.Current()
+}
+
+// HostSeries returns bucketed host CPU% and mem% series matching the overview
+// grid (60 buckets of 10s ending at nowMs). Empty when no samples exist yet.
+func (m *Manager) HostSeries(nowMs int64) (cpu, mem Series) {
+	if m.host == nil {
+		empty := Series{StepMS: OverviewHistStepMS, V: []float64{}}
+		return empty, empty
+	}
+	return m.host.Series(nowMs)
+}
 
 // Ingested returns the total number of log rows accepted into the ingestion
 // pipeline (prometheus: capscope_ingest_lines_total).
@@ -245,6 +309,12 @@ func (m *Manager) Run(ctx context.Context) {
 			}
 		}
 	}()
+	// Host-level metrics: sample /proc once per tick so /api/overview can
+	// chart host CPU% and mem% beside per-container metrics. Exits on ctx
+	// cancel, so it never outlives the manager.
+	if m.host != nil {
+		go m.host.Run(ctx)
+	}
 	m.eventLoop(ctx)
 	wg.Wait()
 }
@@ -360,9 +430,9 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 	now := time.Now()
 	return &tracker{
 		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
-		hostID: m.hostID,
+		hostID:    m.hostID,
 		gitCommit: insp.Config.Labels["org.opencontainers.image.revision"],
-		tty: insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
+		tty:       insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone:    make(chan struct{}),
 		accessOnly: m.excluded(name, app),
 		acc:        m.accDet.Stream(app),
@@ -521,6 +591,9 @@ func (m *Manager) maybeAccess(t *tracker, text string, ns int64) {
 		Method: rec.Method, Path: logproc.Redact(rec.Path), Status: rec.Status,
 		Bytes: rec.Bytes, Referer: logproc.Redact(rec.Referer), UA: rec.UA,
 	}
+	// GeoIP country label uses the original client IP (anonymization only
+	// hides the IP in storage, not the derived country).
+	ar.Country = m.geoipCountry(rec.IP)
 	if m.cfg.AnonIPS {
 		ar.IP = access.Anonymize(rec.IP)
 	} else {
@@ -531,6 +604,19 @@ func (m *Manager) maybeAccess(t *tracker, text string, ns int64) {
 	default:
 		m.accDropped.Add(1)
 	}
+}
+
+// geoipCountry resolves an IP to a two-letter country code using the loaded
+// MMDB, or returns "" when GeoIP is disabled or the IP cannot be located.
+func (m *Manager) geoipCountry(ip string) string {
+	if m.geoip == nil || ip == "" {
+		return ""
+	}
+	rec, err := m.geoip.Country(net.ParseIP(ip))
+	if err != nil || rec == nil || rec.Country.IsoCode == "" {
+		return ""
+	}
+	return rec.Country.IsoCode
 }
 
 // accessWriter batches parsed access rows into SQLite.
@@ -589,6 +675,21 @@ func (m *Manager) writer(ctx context.Context) {
 			m.log.Error("insert logs failed", "err", err, "rows", len(batch))
 		} else {
 			m.sink.Publish(batch)
+			// Phase 2: evaluate log rows through the pipeline engine and emit
+			// matching metrics into the same metrics table.
+			if m.pipe != nil {
+				pts := make([]store.MetricPoint, 0, len(batch))
+				for _, row := range batch {
+					pts = append(pts, m.pipe.Evaluate(row)...)
+				}
+				if len(pts) > 0 {
+					for _, p := range pts {
+						if err := m.sink.InsertMetric(p.Container, p.App, p); err != nil {
+							m.log.Debug("pipeline insert metric failed", "err", err)
+						}
+					}
+				}
+			}
 		}
 		batch = batch[:0]
 	}

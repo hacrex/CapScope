@@ -70,19 +70,19 @@ type Config struct {
 	// SMTP alert delivery (A5): when SMTP_HOST is set, alert rules can send
 	// email notifications. SMTP_DIGEST_INTERVAL>0 enables digest mode: alert
 	// firings are buffered and sent as a single summary email every interval.
-	SMTPHost          string
-	SMTPPort          int
-	SMTPUser          string
-	SMTPPass          string
-	SMTPFrom          string
-	SMTPTo            string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUser           string
+	SMTPPass           string
+	SMTPFrom           string
+	SMTPTo             string
 	SMTPDigestInterval time.Duration
 
 	// Log forwarding (P3): forward collected log rows to external systems
 	// for long-term retention beyond CapScope's SQLite cap.
-	ForwardLokiURL  string // Loki push API URL, e.g. http://loki:3100/loki/api/v1/push
-	ForwardESURL    string // Elasticsearch bulk API URL, e.g. http://elasticsearch:9200/_bulk
-	ForwardESIndex  string // Elasticsearch index name prefix, default "capscope-logs"
+	ForwardLokiURL string // Loki push API URL, e.g. http://loki:3100/loki/api/v1/push
+	ForwardESURL   string // Elasticsearch bulk API URL, e.g. http://elasticsearch:9200/_bulk
+	ForwardESIndex string // Elasticsearch index name prefix, default "capscope-logs"
 
 	// A7: daily jittered registry check comparing each container's image
 	// manifest digest; fires "update_available" pseudo-alert events. Spin-free
@@ -125,6 +125,30 @@ type Config struct {
 	OIDCIssuer       string // OIDC issuer URL, used for Discovery
 	OIDCClientID     string // OAuth 2.0 client ID
 	OIDCClientSecret string // OAuth 2.0 client secret
+
+	// OTLP ingestion (Phase 1): when OTEL_LISTEN is set, CapScope exposes an
+	// OTLP HTTP receiver at OTEL_PATH (default "/v1") accepting logs/metrics/
+	// traces from any OTel-instrumented workload.
+	OTELListen string // host:port for the OTLP receiver; empty disables OTLP ingestion
+	OTELPath   string // URL path prefix for OTLP endpoints, default "/v1"
+
+	// Logs-to-metrics pipelines (Phase 2): PIPELINES_FILE points at a YAML
+	// file of ingest-time rollup rules, hot-reloaded on change.
+	PipelinesFile string
+
+	// Storage tiering (Phase 4): ARCHIVE_BUCKET is an S3/MinIO/local-disk
+	// destination for Parquet archive files; ARCHIVE_PREFIX is the key
+	// prefix; RETENTION_HOT_DAYS is how many days of data stay hot in SQLite
+	// before being rolled to the archive tier.
+	ArchiveBucket    string
+	ArchivePrefix    string
+	RetentionHotDays int
+
+	// GeoIP (C9.7): when GEOIP_DB points at a GeoLite2-Country MMDB file,
+	// parsed access-log rows get a country label so the Access dashboard can
+	// break traffic down by country. Empty disables GeoIP (no lookup, no
+	// dependency at runtime).
+	GeoIPDB string
 }
 
 // Load reads configuration from the environment and validates it.
@@ -183,6 +207,13 @@ func Load() (Config, error) {
 		OIDCIssuer:                 env("OIDC_ISSUER", ""),
 		OIDCClientID:               env("OIDC_CLIENT_ID", ""),
 		OIDCClientSecret:           env("OIDC_CLIENT_SECRET", ""),
+		OTELListen:                 env("OTEL_LISTEN", ""),
+		OTELPath:                   env("OTEL_PATH", "/v1"),
+		PipelinesFile:              env("PIPELINES_FILE", ""),
+		ArchiveBucket:              env("ARCHIVE_BUCKET", ""),
+		ArchivePrefix:              env("ARCHIVE_PREFIX", "capscope/"),
+		RetentionHotDays:           envInt("RETENTION_HOT_DAYS", 30, &errs),
+		GeoIPDB:                    env("GEOIP_DB", ""),
 	}
 
 	dur := func(key, def string) time.Duration {

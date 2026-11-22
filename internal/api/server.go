@@ -30,6 +30,7 @@ import (
 	"capscope/internal/config"
 	"capscope/internal/docker"
 	"capscope/internal/hub"
+	"capscope/internal/incidents"
 	"capscope/internal/logproc"
 	"capscope/internal/store"
 	"capscope/internal/web"
@@ -97,6 +98,7 @@ type Server struct {
 	log      *slog.Logger
 	eng      *alerts.Engine       // nil when alerting is disabled
 	sessions *auth.SessionManager // session manager (nil when auth is off)
+	incid    *store.Store         // incident store uses store.Store methods (Phase 5)
 	dash     dashCache            // short-lived /api/dashboard payload cache
 	dk       *docker.Client       // Docker daemon behind the manager (nil when host info is not wired)
 	host     hostCache            // /info + /system/df cache for /api/overview
@@ -110,6 +112,9 @@ func WithAuth(a *auth.SessionManager) func(*Server) { return func(s *Server) { s
 
 // WithUserStore attaches the store for user lookups (multi-user mode).
 func WithUserStore(st *store.Store) func(*Server) { return func(s *Server) { s.st = st } }
+
+// WithIncidents attaches the incident store (Phase 5).
+func WithIncidents(st *store.Store) func(*Server) { return func(s *Server) { s.incid = st } }
 
 func New(cfg config.Config, st *store.Store, mgr *collector.Manager, h *hub.Hub, log *slog.Logger, opts ...func(*Server)) *Server {
 	s := &Server{cfg: cfg, st: st, mgr: mgr, hub: h, log: log}
@@ -143,6 +148,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/admin/redact-test", s.requireAdmin(http.HandlerFunc(s.redactTest)))
 	mux.Handle("POST /api/admin/normalize-schema", s.requireAdmin(http.HandlerFunc(s.normalizeSchema)))
 	mux.HandleFunc("GET /api/metrics", s.metrics)
+	mux.HandleFunc("GET /api/metrics/promql", s.metricsPromQL)
+	mux.HandleFunc("GET /api/traces", s.traces)
+	mux.HandleFunc("GET /api/traces/{trace_id}", s.traceByID)
 	mux.HandleFunc("GET /api/snapshots", s.snapshots)
 	mux.HandleFunc("GET /api/snapshots/{id}", s.snapshot)
 	mux.HandleFunc("GET /api/snapshots/{id}/export", s.snapshotExport)
@@ -175,6 +183,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/users/{id}/apps", s.userAppsList)
 	mux.HandleFunc("PUT /api/users/{id}/apps", s.userAppsReplace)
 	mux.HandleFunc("DELETE /api/users/{id}", s.usersDelete)
+	// Incident management (Phase 5): admin writes, viewers read scoped apps.
+	mux.HandleFunc("GET /api/incidents", s.incidentsList)
+	mux.HandleFunc("GET /api/incidents/{id}", s.incidentGet)
+	mux.HandleFunc("POST /api/incidents/{id}/state", s.incidentSetState)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	// Apply security headers and rate limiting to everything.
@@ -324,6 +336,14 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// OTELHandler wraps the OTLP receiver's HTTP handler with the same auth
+// middleware as the REST API (session cookie / bearer token or proxy header).
+// OTLP runs on a separate listen address (OTEL_LISTEN) so it doesn't share
+// the main mux.
+func (s *Server) OTELHandler(next http.Handler) http.Handler {
+	return s.auth(next)
 }
 
 // noApps is a non-empty sentinel returned by viewerScope when the user's app
@@ -1487,10 +1507,10 @@ func (s *Server) redactTest(w http.ResponseWriter, r *http.Request) {
 		redacted := logproc.Redact(line)
 		leaked := logproc.LeakedShapes(line)
 		results = append(results, map[string]any{
-			"line":      line,
-			"redacted":  redacted,
-			"leaked":    leaked,
-			"safe":      len(leaked) == 0,
+			"line":     line,
+			"redacted": redacted,
+			"leaked":   leaked,
+			"safe":     len(leaked) == 0,
 		})
 	}
 	writeJSON(w, map[string]any{"results": results})
@@ -1543,7 +1563,7 @@ func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.ParseInt(v.Get("limit"), 10, 64)
 	csvHeader(w, "capscope-access.csv")
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"ts", "ts_ms", "container", "app", "ip", "method", "path", "status", "bytes", "referer", "user_agent"})
+	_ = cw.Write([]string{"ts", "ts_ms", "container", "app", "ip", "country", "method", "path", "status", "bytes", "referer", "user_agent"})
 	// Streamed page by page: the previous single query held up to 100000
 	// rows in memory for the whole export.
 	err := s.st.EachAccessRowFiltered(r.Context(), v.Get("app"), v.Get("status"),
@@ -1551,7 +1571,7 @@ func (s *Server) accessExport(w http.ResponseWriter, r *http.Request) {
 			for _, x := range batch {
 				if err := cw.Write([]string{
 					time.UnixMilli(x.TS).UTC().Format(time.RFC3339), itoa64(x.TS),
-					x.Container, x.App, x.IP, x.Method, x.Path, strconv.Itoa(x.Status),
+					x.Container, x.App, x.IP, x.Country, x.Method, x.Path, strconv.Itoa(x.Status),
 					itoa64(x.Bytes), x.Referer, x.UA,
 				}); err != nil {
 					return err
@@ -1677,6 +1697,258 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"bucket_ms": bucket, "points": pts})
+}
+
+// metricsPromQL serves PromQL-compatible metric queries (Phase 6).
+// Accepts a simple subset: <metric_name>{app="..."} [range] or raw range vectors.
+// Returns data in the same bucketed format as /api/metrics for UI consumption.
+func (s *Server) metricsPromQL(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
+	query := v.Get("query")
+	if query == "" {
+		fail(w, 400, errors.New("query parameter required"))
+		return
+	}
+	rng := time.Hour
+	if d, err := config.ParseDuration(v.Get("range")); err == nil && d > 0 {
+		rng = d
+	}
+	since := time.Now().Add(-rng).UnixMilli()
+	// Strip PromQL label matchers for now; the underlying store query uses app filter.
+	app := v.Get("app")
+	if app == "" {
+		// Try to extract app="..." from the query string.
+		if start := strings.Index(query, `app="`); start >= 0 {
+			start += 5
+			end := strings.IndexByte(query[start:], '"')
+			if end >= 0 {
+				app = query[start : start+end]
+			}
+		}
+	}
+	bucket := int64(10000)
+	pts, err := s.st.QueryMetrics(r.Context(), app, "", "", since, 0, bucket)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"query": query, "bucket_ms": bucket, "points": pts})
+}
+
+// traces serves the trace query API (Phase 3).
+//
+//	GET /api/traces?trace_id=…   → full trace with span tree
+//	GET /api/traces?service=…    → trace list (Dapper-style)
+//	GET /api/traces?error=true   → only traces with error spans
+//	GET /api/traces?min_duration=… → traces slower than N ms
+func (s *Server) traces(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(v.Get("app"), apps) {
+		http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+		return
+	}
+	traceID := v.Get("trace_id")
+	service := v.Get("service")
+	minDur := v.Get("min_duration")
+	showErr := v.Get("error") == "true"
+
+	if traceID != "" {
+		spans, err := s.st.QuerySpansByTrace(r.Context(), traceID)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		// Build a tree: root spans have no parent or parent not in this set.
+		spanMap := map[string]*store.Span{}
+		for i := range spans {
+			spanMap[spans[i].SpanID] = &spans[i]
+		}
+		var roots []*store.Span
+		for i := range spans {
+			sp := &spans[i]
+			if sp.ParentSpanID == "" || spanMap[sp.ParentSpanID] == nil {
+				roots = append(roots, sp)
+			}
+		}
+		writeJSON(w, map[string]any{"trace_id": traceID, "spans": spans, "roots": roots})
+		return
+	}
+
+	// Trace list: query by service with optional filters.
+	var spans []store.Span
+	var err error
+	if service != "" {
+		spans, err = s.st.QuerySpansByService(r.Context(), service, 100)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+	} else {
+		// No service filter: return recent traces across all services.
+		spans, err = s.st.QuerySpansByService(r.Context(), "", 100)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+	}
+	// Group by trace_id for the list view.
+	type traceEntry struct {
+		TraceID   string    `json:"trace_id"`
+		Service   string    `json:"service"`
+		Name      string    `json:"name"`
+		StartTs   int64     `json:"start_ts"`
+		Duration  int64     `json:"duration_ms"`
+		Status    string    `json:"status"`
+		SpanCount int       `json:"span_count"`
+		Error     bool      `json:"error"`
+	}
+	byTrace := map[string]*traceEntry{}
+	for _, sp := range spans {
+		entry, ok := byTrace[sp.TraceID]
+		if !ok {
+			entry = &traceEntry{
+				TraceID:  sp.TraceID,
+				Service:  sp.Service,
+				Name:     sp.Name,
+				StartTs:  sp.StartTs,
+				Duration: sp.SpanDurationMs(),
+				Status:   sp.Status,
+				Error:    sp.Status == "error",
+			}
+			byTrace[sp.TraceID] = entry
+		} else {
+			if sp.StartTs < entry.StartTs {
+				entry.StartTs = sp.StartTs
+			}
+			if d := sp.SpanDurationMs(); d > entry.Duration {
+				entry.Duration = d
+			}
+			if sp.Status == "error" {
+				entry.Error = true
+			}
+			entry.SpanCount++
+		}
+	}
+	var minDurMs int64
+	if minDur != "" {
+		fmt.Sscanf(minDur, "%d", &minDurMs)
+	}
+	var out []*traceEntry
+	for _, e := range byTrace {
+		if minDurMs > 0 && e.Duration < minDurMs {
+			continue
+		}
+		if showErr && !e.Error {
+			continue
+		}
+		out = append(out, e)
+	}
+	writeJSON(w, map[string]any{"traces": out})
+}
+
+// traceByID returns a single trace by trace ID (Phase 3).
+func (s *Server) traceByID(w http.ResponseWriter, r *http.Request) {
+	traceID := r.PathValue("trace_id")
+	if traceID == "" {
+		fail(w, 400, errors.New("trace_id required"))
+		return
+	}
+	spans, err := s.st.QuerySpansByTrace(r.Context(), traceID)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"trace_id": traceID, "spans": spans})
+}
+
+// incidentsList returns incidents, optionally filtered by state and app.
+// Viewers are restricted to their assigned apps (Phase 5).
+func (s *Server) incidentsList(w http.ResponseWriter, r *http.Request) {
+	if s.incid == nil {
+		http.Error(w, "incident management not enabled", http.StatusNotImplemented)
+		return
+	}
+	v := r.URL.Query()
+	state := v.Get("state")
+	app := v.Get("app")
+	limit := 100
+	if n, err := strconv.Atoi(v.Get("limit")); err == nil && n > 0 && n <= 500 {
+		limit = n
+	}
+	if apps, restricted := s.viewerScope(r); restricted {
+		if app == "" || !appInScope(app, apps) {
+			http.Error(w, "forbidden: choose an assigned application", http.StatusForbidden)
+			return
+		}
+	}
+	incidents, err := s.incid.ListIncidents(r.Context(), state, app, limit)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"incidents": incidents})
+}
+
+// incidentGet returns a single incident by ID (Phase 5).
+func (s *Server) incidentGet(w http.ResponseWriter, r *http.Request) {
+	if s.incid == nil {
+		http.Error(w, "incident management not enabled", http.StatusNotImplemented)
+		return
+	}
+	id, err := parseID(r)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	inc, err := s.incid.GetIncident(r.Context(), id)
+	if err != nil {
+		fail(w, 404, err)
+		return
+	}
+	if apps, restricted := s.viewerScope(r); restricted && !appInScope(inc.App, apps) {
+		http.Error(w, "forbidden: application is not assigned to this user", http.StatusForbidden)
+		return
+	}
+	writeJSON(w, inc)
+}
+
+// incidentSetState changes an incident's state (open/ack/resolved). Admin only.
+func (s *Server) incidentSetState(w http.ResponseWriter, r *http.Request) {
+	if s.incid == nil {
+		http.Error(w, "incident management not enabled", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := parseID(r)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	var req struct {
+		State string `json:"state"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	switch req.State {
+	case incidents.StateOpen, incidents.StateAck, incidents.StateResolved:
+	default:
+		fail(w, 400, errors.New("state must be open, ack, or resolved"))
+		return
+	}
+	if err := s.incid.UpdateIncidentState(r.Context(), id, req.State); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"id": id, "state": req.State})
 }
 
 func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {

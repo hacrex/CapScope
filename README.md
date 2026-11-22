@@ -122,7 +122,8 @@ make test       # full test suite
 | `REDACT` | `true` | Mask secrets before storage |
 | `ACCESS_LOG` | `auto` | Access-log parsing: `auto`, `all`, `off` |
 | `ANON_IPS` | `true` | Anonymize client IPs in stored access logs |
-| `SNAPSHOT_KINDS` | `crash,oom` | Which stops create snapshots |
+| `GEOIP_DB` | none | Path to a GeoLite2-Country MMDB file; labels parsed access-log rows with a two-letter country code (empty disables GeoIP) |
+| `SNAPSHOT_KINDS` | `crash,oom,unhealthy` | Which stops create snapshots (`unhealthy` = health-check-failure snapshots, PRD X8) |
 | `SNAPSHOT_LOG_LINES` | `200` | Log lines per crash snapshot |
 | `RESTART_LOOP_COUNT` | `3` | Deaths in window to flag a restart loop |
 | `RESTART_LOOP_WINDOW` | `5m` | Window for restart-loop detection |
@@ -148,6 +149,12 @@ make test       # full test suite
 | `OIDC_ISSUER` | none | OIDC issuer URL (required for `oidc` provider) |
 | `OIDC_CLIENT_ID` | none | OAuth 2.0 client ID (required for `oidc` provider) |
 | `OIDC_CLIENT_SECRET` | none | OAuth 2.0 client secret (required for `oidc` provider) |
+| `OTEL_LISTEN` | none | OTLP HTTP receiver listen address (host:port); empty disables OTLP ingestion (Phase 1) |
+| `OTEL_PATH` | `/v1` | URL path prefix for OTLP endpoints (`/v1/logs`, `/v1/metrics`, `/v1/traces`) |
+| `PIPELINES_FILE` | none | Path to a `pipelines.yaml` file of ingest-time log→metric rollup rules, hot-reloaded (Phase 2) |
+| `ARCHIVE_BUCKET` | none | S3/MinIO/local-disk destination for Parquet archive files (Phase 4) |
+| `ARCHIVE_PREFIX` | `capscope/` | Key prefix inside the archive bucket |
+| `RETENTION_HOT_DAYS` | `30` | Days of data kept hot in SQLite before rolling to the archive tier |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 ---
@@ -361,9 +368,9 @@ Issues and pull requests are welcome. See `docs/` for the PRD, architecture note
 - **v0.12** — Persistent login sessions across restarts, expiring share links/permalinks (`POST /api/share`, `/s/<token>`), any-range JSON export (`fmt=json`), self-contained HTML incident export (done)
 - **v0.13** — Multi-host visibility: host selector chip, per-host views (containers/crashes/metrics/dashboard filtered by `host_id`), `?host=` permalinks, `GET /api/hosts` (done)
 - **v0.14** — Multi-user auth: OIDC SSO (`AUTH_PROVIDER=oidc`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`), users table with `admin`/`viewer` roles, user management API, audit trail on `access` rows (done)
-- **v0.15** — MCP server over SQLite (Phase 6.4): `cmd/capscope mcp` runs an MCP server over stdio with tools `query_logs`, `list_snapshots`, `get_snapshot`, `run_sql`. Session-token authenticated.
+- **v0.15** — MCP server over SQLite: `cmd/capscope mcp` runs an MCP server over stdio with tools `query_logs`, `list_snapshots`, `get_snapshot`, `run_sql`. Session-token authenticated (done).
 - **v0.16** — Agent hub ingestion, per-app viewer RBAC, Admin application assignments, scoped live SSE/history/export APIs, webhook alert hardening, and `cmd/sse-bench` (done)
-- **Next** — Access-log app attribution improvements, optional GeoIP enrichment, and additional Dozzle-compatible operational polish
+- **Next** — Host-level metrics and GeoIP country labels on access logs (landed), OTLP receiver, logs→metrics pipelines, distributed tracing, Parquet archive tier, incident management, PromQL, and audit log (all just landed). Next: trace UI, service graph, dashboards, LLM observability, fine-grained RBAC, SAML/LDAP. See `IMPLEMENTATION_PLAN.md`.
 
 ---
 

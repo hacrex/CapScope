@@ -40,6 +40,8 @@ func run(log *slog.Logger, args []string) error {
 		return runGenerateCerts(log)
 	case "mcp":
 		return runMCP(log)
+	case "features":
+		return features(log)
 	case "-h", "--help", "help":
 		fmt.Print(usageText)
 		return errHelp
@@ -59,6 +61,7 @@ Commands:
   version          Print the build version.
   generate-certs   Generate a CA + agent certificate pair for mTLS.
   mcp              Run the MCP (Model Context Protocol) server over stdio.
+  features         List feature gates and whether each is enabled.
 
 Environment is read from 12-factor variables; see README.md for the full table.
 `

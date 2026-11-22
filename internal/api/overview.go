@@ -45,9 +45,9 @@ type overviewHost struct {
 // for remote hosts this process cannot probe — the UI falls back to the id.
 type overviewHostEntry struct {
 	overviewHost
-	Containers int            `json:"containers"`
-	CPU        overviewGauge  `json:"cpu"`
-	Mem        overviewGauge  `json:"mem"`
+	Containers int           `json:"containers"`
+	CPU        overviewGauge `json:"cpu"`
+	Mem        overviewGauge `json:"mem"`
 }
 
 // overviewGauge is one host metric: the current reading plus its 10-minute
@@ -110,26 +110,39 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		// aggregation so the host totals only include visible apps too.
 		keep = func(app string) bool { return appInScope(app, allowed) }
 	}
-	ov := s.mgr.Overview(time.Now(), hostFilter, keep)
+	now := time.Now()
+	ov := s.mgr.Overview(now, hostFilter, keep)
+	// Host-level metrics: chart the host machine's own CPU% and mem% (from
+	// /proc/stat and /proc/meminfo) beside per-container metrics. These
+	// reflect the machine itself even when no container is reporting.
+	hostCpuPct, hostMemPct := s.mgr.HostCurrent()
+	hostCpuSeries, hostMemSeries := s.mgr.HostSeries(now.UnixMilli())
+	useHost := len(hostCpuSeries.V) > 0 || len(hostMemSeries.V) > 0
 
 	resp := overviewResponse{
 		Host:       s.overviewHost(r.Context(), hostFilter),
 		WindowMS:   collector.OverviewWindowMS,
-		Mem:        gauge(ov.HostMem, float64(ov.MemValue)),
 		Containers: ov.Containers,
 	}
 	if resp.Containers == nil {
 		resp.Containers = []collector.OverviewContainer{}
 	}
-	// Host CPU is percent of total capacity: the tracker series sums container
-	// core-percent, so divide by the daemon's core count. Without a known
-	// core count the unit would be meaningless — report no data rather than a
-	// wrong percentage (ncpu 0 also marks the whole host block as unknown).
-	if resp.Host.NCPU > 0 {
-		f := 1 / float64(resp.Host.NCPU)
-		resp.CPU = gauge(scale(ov.HostCPU, f), ov.CPUValue*f)
+	if useHost {
+		// The sampler has primed: report the host's own readings.
+		resp.CPU = gauge(hostCpuSeries, hostCpuPct)
+		resp.Mem = gauge(hostMemSeries, hostMemPct)
 	} else {
-		resp.CPU = gauge(collector.Series{V: []float64{}}, 0)
+		// Sampler not yet primed (or host metrics unavailable): fall back to
+		// summed container metrics so existing behaviour and tests hold.
+		// Host CPU is percent of total capacity: the tracker series sums
+		// container core-percent, so divide by the daemon's core count.
+		if resp.Host.NCPU > 0 {
+			f := 1 / float64(resp.Host.NCPU)
+			resp.CPU = gauge(scale(ov.HostCPU, f), ov.CPUValue*f)
+		} else {
+			resp.CPU = gauge(collector.Series{V: []float64{}}, 0)
+		}
+		resp.Mem = gauge(ov.HostMem, float64(ov.MemValue))
 	}
 	// Host grid: one card per host with containers in the window. Only
 	// rendered when the UI has more than one host to show; the assembly is

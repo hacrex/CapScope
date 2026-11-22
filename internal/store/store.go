@@ -2,8 +2,8 @@
 package store
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -27,8 +27,8 @@ type Store struct {
 	w *sql.DB // single writer connection
 	r *sql.DB // read-only pool
 
-	prunesTotal  atomic.Int64 // rows pruned by retention / size enforcement (prometheus: capscope_retention_prunes_total)
-	normalized   atomic.Bool  // true after NormalizeSchema has removed container/app columns from logs
+	prunesTotal atomic.Int64 // rows pruned by retention / size enforcement (prometheus: capscope_retention_prunes_total)
+	normalized  atomic.Bool  // true after NormalizeSchema has removed container/app columns from logs
 }
 
 var migrations = []string{
@@ -245,6 +245,81 @@ var migrations = []string{
 	// Populated from Docker image labels (org.opencontainers.image.revision).
 	`ALTER TABLE containers ADD COLUMN git_commit TEXT NOT NULL DEFAULT '';`,
 	`CREATE INDEX IF NOT EXISTS idx_containers_git_commit ON containers(git_commit);`,
+
+	// Distributed tracing (Phase 3): spans table with indexes on trace_id and
+	// service for trace waterfall and service-graph queries.
+	`CREATE TABLE IF NOT EXISTS spans(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   trace_id TEXT NOT NULL,
+	   span_id TEXT NOT NULL,
+	   parent_span_id TEXT NOT NULL DEFAULT '',
+	   service TEXT NOT NULL,
+	   name TEXT NOT NULL,
+	   kind TEXT NOT NULL DEFAULT '',
+	   start_ts INTEGER NOT NULL,   -- unix nanoseconds
+	   end_ts INTEGER NOT NULL DEFAULT 0,  -- unix nanoseconds (0 = still open)
+	   status TEXT NOT NULL DEFAULT '',
+	   attributes TEXT NOT NULL DEFAULT '{}',  -- JSON blob
+	   host_id TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
+	 CREATE INDEX IF NOT EXISTS idx_spans_service ON spans(service);
+	 CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(parent_span_id);
+	 CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host_id);`,
+
+	// GeoIP (C9.7): country label on parsed access-log rows.
+	`ALTER TABLE access ADD COLUMN country TEXT NOT NULL DEFAULT '';
+	 CREATE INDEX IF NOT EXISTS idx_access_country ON access(country);`,
+
+	// Storage tiering (Phase 4): archive_index tracks which Parquet/JSONL
+	// archive files hold rolled-off data, so queries can fall back to the
+	// archive tier for older ranges.
+	`CREATE TABLE IF NOT EXISTS archive_index(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   kind TEXT NOT NULL,              -- logs | metrics | spans
+	   day TEXT NOT NULL,               -- YYYY-MM-DD partition
+	   app TEXT NOT NULL DEFAULT '',
+	   host_id TEXT NOT NULL DEFAULT '',
+	   path TEXT NOT NULL,              -- file path or object key
+	   rows INTEGER NOT NULL DEFAULT 0,
+	   min_ts INTEGER NOT NULL,         -- unix ms
+	   max_ts INTEGER NOT NULL,         -- unix ms
+	   created_ms INTEGER NOT NULL
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_archive_kind_day ON archive_index(kind, day);
+	 CREATE INDEX IF NOT EXISTS idx_archive_app ON archive_index(kind, app, day);
+	 CREATE INDEX IF NOT EXISTS idx_archive_ts ON archive_index(min_ts, max_ts);`,
+
+	// Incident management (Phase 5): incidents turn alert firings into
+	// operational workflow with open/ack/resolve lifecycle.
+	`CREATE TABLE IF NOT EXISTS incidents(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   title TEXT NOT NULL,
+	   severity TEXT NOT NULL DEFAULT 'warning',
+	   state TEXT NOT NULL DEFAULT 'open',   -- open | ack | resolved
+	   started_at INTEGER NOT NULL,          -- unix ms
+	   ended_at INTEGER NOT NULL DEFAULT 0,
+	   related_alert_ids TEXT NOT NULL DEFAULT '',  -- JSON array
+	   app TEXT NOT NULL DEFAULT '',
+	   host_id TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_incidents_state ON incidents(state);
+	 CREATE INDEX IF NOT EXISTS idx_incidents_app ON incidents(app);
+	 CREATE INDEX IF NOT EXISTS idx_incidents_started ON incidents(started_at);`,
+
+	// Audit log (Phase 7): append-only audit trail for security-sensitive actions.
+	`CREATE TABLE IF NOT EXISTS audit_log(
+	   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	   ts INTEGER NOT NULL,               -- unix ms
+	   actor TEXT NOT NULL,               -- user id or "anonymous"/"proxy"
+	   action TEXT NOT NULL,              -- sql | alert_rule | deploy | incident | user_mgmt
+	   resource TEXT NOT NULL,            -- e.g. "/api/sql", "alert_rules"
+	   target TEXT NOT NULL DEFAULT '',   -- target resource id or name
+	   meta TEXT NOT NULL DEFAULT '{}'    -- JSON blob of additional context
+	 );
+	 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+	 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor);
+	 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);`,
 }
 
 // Open creates or migrates the database at path.
@@ -379,7 +454,7 @@ type Snapshot struct {
 	Logs           []LogRow        `json:"logs,omitempty"`
 	Metrics        []MetricPoint   `json:"metrics,omitempty"`
 	Inspect        json.RawMessage `json:"inspect,omitempty"`
-	Deploy         *Deploy         `json:"deploy,omitempty"` // newest deploy before the crash (V9, API only, never stored)
+	Deploy         *Deploy         `json:"deploy,omitempty"`     // newest deploy before the crash (V9, API only, never stored)
 	GitCommit      string          `json:"git_commit,omitempty"` // git commit SHA from Docker image labels
 }
 
@@ -396,11 +471,11 @@ type AppSummary struct {
 // confidence estimate; Reason is a human-readable explanation.
 type AppAnomaly struct {
 	App      string `json:"app"`
-	Kind     string `json:"kind"`       // "volume" or "errors"
-	Score    int    `json:"score"`      // 0-100
-	Current  int64  `json:"current"`    // current 1h count
-	Baseline int64  `json:"baseline"`   // baseline per-hour count (24h avg)
-	Reason   string `json:"reason"`     // human-readable explanation
+	Kind     string `json:"kind"`     // "volume" or "errors"
+	Score    int    `json:"score"`    // 0-100
+	Current  int64  `json:"current"`  // current 1h count
+	Baseline int64  `json:"baseline"` // baseline per-hour count (24h avg)
+	Reason   string `json:"reason"`   // human-readable explanation
 }
 
 // LogCluster is one semantic log cluster: a group of log lines that share
@@ -427,12 +502,12 @@ type AppCost struct {
 	CostMem      float64 `json:"cost_mem"`       // MemGBHours * memRate
 	CostTotal    float64 `json:"cost_total"`     // CostCPU + CostMem
 	// Right-sizing recommendations
-	CPUPercent  float64 `json:"cpu_percent"`   // avg CPU usage as % of one core
-	MemPercent  float64 `json:"mem_percent"`   // avg mem as % of mem_limit (0 if unlimited)
-	CPUOverProvisioned bool `json:"cpu_overprovisioned"` // avg CPU < 30%
-	MemOverProvisioned   bool `json:"mem_overprovisioned"` // avg mem < 50% of limit
+	CPUPercent         float64 `json:"cpu_percent"`         // avg CPU usage as % of one core
+	MemPercent         float64 `json:"mem_percent"`         // avg mem as % of mem_limit (0 if unlimited)
+	CPUOverProvisioned bool    `json:"cpu_overprovisioned"` // avg CPU < 30%
+	MemOverProvisioned bool    `json:"mem_overprovisioned"` // avg mem < 50% of limit
 	// Carbon footprint estimate (kg CO2)
-	CarbonKg    float64 `json:"carbon_kg"`     // estimated CO2 kg for the window
+	CarbonKg        float64 `json:"carbon_kg"` // estimated CO2 kg for the window
 	CarbonKgPerHour float64 `json:"carbon_kg_per_hour"`
 }
 
@@ -465,9 +540,9 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 	defer rows.Close()
 
 	type appStats struct {
-		app      string
-		avgCPU   float64
-		avgMem   float64
+		app         string
+		avgCPU      float64
+		avgMem      float64
 		avgMemLimit float64
 	}
 	stats := map[string]appStats{}
@@ -485,7 +560,7 @@ func (s *Store) AppCosts(ctx context.Context, hostID string, sinceMs, untilMs in
 
 	var out []AppCost
 	for app, st := range stats {
-		cpuCoreHours := st.avgCPU / 100.0 * durationHours // cpu is percent of one core
+		cpuCoreHours := st.avgCPU / 100.0 * durationHours           // cpu is percent of one core
 		memGBHours := (st.avgMem / 1_073_741_824.0) * durationHours // mem is bytes
 		costCPU := cpuCoreHours * cpuRate
 		costMem := memGBHours * memRate
@@ -632,8 +707,8 @@ func (s *Store) BuildClusters(ctx context.Context, hostID string, sinceMs, until
 	defer rows.Close()
 
 	var batch []struct {
-		id        int64
-		ts        int64
+		id          int64
+		ts          int64
 		containerID string
 		container   string
 		app         string
@@ -644,8 +719,8 @@ func (s *Store) BuildClusters(ctx context.Context, hostID string, sinceMs, until
 	}
 	for rows.Next() {
 		var r struct {
-			id        int64
-			ts        int64
+			id          int64
+			ts          int64
 			containerID string
 			container   string
 			app         string
@@ -1104,6 +1179,7 @@ type AccessRow struct {
 	Container   string `json:"container"`
 	App         string `json:"app"`
 	IP          string `json:"ip"`
+	Country     string `json:"country,omitempty"` // GeoIP country code (GEOIP_DB), empty when disabled
 	Method      string `json:"method"`
 	Path        string `json:"path"`
 	Status      int    `json:"status"`
@@ -1766,7 +1842,7 @@ func (s *Store) InsertAccess(rows []AccessRow) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO access(ts,container_id,container,app,ip,method,path,status,bytes,referer,ua,user) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(`INSERT INTO access(ts,container_id,container,app,ip,country,method,path,status,bytes,referer,ua,user) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -1774,7 +1850,7 @@ func (s *Store) InsertAccess(rows []AccessRow) error {
 	defer stmt.Close()
 	for i := range rows {
 		r := rows[i]
-		if _, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.IP, r.Method, r.Path, r.Status, r.Bytes, r.Referer, r.UA, r.User); err != nil {
+		if _, err := stmt.Exec(r.TS, r.ContainerID, r.Container, r.App, r.IP, r.Country, r.Method, r.Path, r.Status, r.Bytes, r.Referer, r.UA, r.User); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -2015,7 +2091,10 @@ type AccessAggregates struct {
 	Paths    []AccessTop   `json:"paths"`
 	IPs      []AccessTop   `json:"ips"`
 	Refs     []AccessTop   `json:"refs"`
-	Tl       []AccessPoint `json:"timeline"`
+	// Countries is the top-N breakdown of requests by GeoIP country code
+	// (empty when GEOIP_DB is not configured).
+	Countries []AccessTop   `json:"countries,omitempty"`
+	Tl        []AccessPoint `json:"timeline"`
 }
 
 // QueryAccessRows returns raw parsed requests oldest-first, for CSV export.
@@ -2039,7 +2118,7 @@ func (s *Store) QueryAccessRowsFiltered(ctx context.Context, app, status string,
 	if lo, hi, ok := accessStatusRange(status); ok {
 		cl, args = append(cl, "status >= ? AND status < ?"), append(args, lo, hi)
 	}
-	rows, err := s.r.QueryContext(ctx, `SELECT ts,container_id,container,app,ip,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, limit)...)
+	rows, err := s.r.QueryContext(ctx, `SELECT ts,container_id,container,app,ip,country,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -2047,7 +2126,7 @@ func (s *Store) QueryAccessRowsFiltered(ctx context.Context, app, status string,
 	out := []AccessRow{}
 	for rows.Next() {
 		var r AccessRow
-		if err := rows.Scan(&r.TS, &r.ContainerID, &r.Container, &r.App, &r.IP, &r.Method, &r.Path, &r.Status, &r.Bytes, &r.Referer, &r.UA); err != nil {
+		if err := rows.Scan(&r.TS, &r.ContainerID, &r.Container, &r.App, &r.IP, &r.Country, &r.Method, &r.Path, &r.Status, &r.Bytes, &r.Referer, &r.UA); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -2086,7 +2165,7 @@ func (s *Store) EachAccessRowFiltered(ctx context.Context, app, status string, s
 		if left := limit - written; left < int64(n) {
 			n = int(left)
 		}
-		rows, err := s.r.QueryContext(ctx, `SELECT id,ts,container_id,container,app,ip,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, n)...)
+		rows, err := s.r.QueryContext(ctx, `SELECT id,ts,container_id,container,app,ip,country,method,path,status,bytes,referer,ua FROM access WHERE `+strings.Join(cl, " AND ")+` ORDER BY id LIMIT ?`, append(args, n)...)
 		if err != nil {
 			return err
 		}
@@ -2094,7 +2173,7 @@ func (s *Store) EachAccessRowFiltered(ctx context.Context, app, status string, s
 		for rows.Next() {
 			var r AccessRow
 			var id int64
-			if err := rows.Scan(&id, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.IP, &r.Method, &r.Path, &r.Status, &r.Bytes, &r.Referer, &r.UA); err != nil {
+			if err := rows.Scan(&id, &r.TS, &r.ContainerID, &r.Container, &r.App, &r.IP, &r.Country, &r.Method, &r.Path, &r.Status, &r.Bytes, &r.Referer, &r.UA); err != nil {
 				rows.Close()
 				return err
 			}
@@ -2120,6 +2199,44 @@ func (s *Store) EachAccessRowFiltered(ctx context.Context, app, status string, s
 	return nil
 }
 
+// RecordArchive records one archive file in the archive_index table so
+// queries can fall back to the archive tier for older ranges.
+func (s *Store) RecordArchive(ctx context.Context, kind, day, app, hostID, path string, rows, minTs, maxTs int64) error {
+	_, err := s.w.ExecContext(ctx, `
+		INSERT INTO archive_index(kind, day, app, host_id, path, rows, min_ts, max_ts, created_ms)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		kind, day, app, hostID, path, rows, minTs, maxTs, time.Now().UnixMilli(),
+	)
+	return err
+}
+
+// DeleteLogsBefore removes log rows older than cutoff (unix ms) from the hot
+// DB after they have been archived.
+func (s *Store) DeleteLogsBefore(ctx context.Context, cutoff int64) error {
+	_, err := s.w.ExecContext(ctx, `DELETE FROM logs WHERE ts < ?`, cutoff)
+	return err
+}
+
+// DeleteMetricsBefore removes metric samples older than cutoff (unix ms)
+// from the hot DB after they have been archived.
+func (s *Store) DeleteMetricsBefore(ctx context.Context, cutoff int64) error {
+	_, err := s.w.ExecContext(ctx, `DELETE FROM metrics WHERE ts < ?`, cutoff)
+	return err
+}
+
+// DeleteSpansBefore removes spans older than cutoff (unix ms) from the hot
+// DB after they have been archived.
+func (s *Store) DeleteSpansBefore(ctx context.Context, cutoff int64) error {
+	_, err := s.w.ExecContext(ctx, `DELETE FROM spans WHERE start_ts < ?`, cutoff*1_000_000)
+	return err
+}
+
+// QuerySpansBefore returns spans older than cutoff (unix ms), ordered by
+// start time ascending.
+func (s *Store) QuerySpansBefore(ctx context.Context, cutoff int64) ([]Span, error) {
+	return s.querySpans(ctx, `WHERE start_ts < ? ORDER BY start_ts`, cutoff*1_000_000)
+}
+
 // QueryAccess computes the dashboard aggregates over one window.
 // topN limits the "top paths/IPs/referrers" lists (clamped 0..100).
 func (s *Store) QueryAccess(ctx context.Context, app string, sinceMs, untilMs, bucketMs int64, topN int) (AccessAggregates, error) {
@@ -2135,7 +2252,7 @@ func (s *Store) QueryAccessFiltered(ctx context.Context, app, status string, sin
 		topN = 20
 	}
 	agg := AccessAggregates{SinceMs: sinceMs, UntilMs: untilMs, BucketMs: bucketMs,
-		Codes: []AccessCode{}, Paths: []AccessTop{}, IPs: []AccessTop{}, Refs: []AccessTop{}, Tl: []AccessPoint{}}
+		Codes: []AccessCode{}, Paths: []AccessTop{}, IPs: []AccessTop{}, Refs: []AccessTop{}, Countries: []AccessTop{}, Tl: []AccessPoint{}}
 
 	cl, args := []string{"ts >= ?"}, []any{sinceMs}
 	if untilMs > 0 {
@@ -2203,6 +2320,25 @@ func (s *Store) QueryAccessFiltered(ctx context.Context, app, status string, sin
 		if err := rows.Err(); err != nil {
 			return agg, err
 		}
+	}
+
+	// top countries by GeoIP (empty when GEOIP_DB is not configured)
+	rows, err = s.r.QueryContext(ctx, `SELECT country, COUNT(*), COALESCE(SUM(bytes),0), COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0) FROM access`+where+` AND country != '' GROUP BY country ORDER BY 2 DESC LIMIT ?`, withArgs(int64(topN))...)
+	if err != nil {
+		return agg, err
+	}
+	for rows.Next() {
+		var t AccessTop
+		if err := rows.Scan(&t.Key, &t.Hits, &t.Bytes, &t.Errors); err != nil {
+			rows.Close()
+			return agg, err
+		}
+		t.Key = strings.TrimSpace(t.Key)
+		agg.Countries = append(agg.Countries, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return agg, err
 	}
 
 	// timeline buckets
@@ -2842,3 +2978,210 @@ func extractIdent(s string) string {
 	s = strings.Fields(s)[0]
 	return strings.Trim(s, "`\"[]();,")
 }
+
+// Incident state constants used by CreateIncident / UpdateIncidentState.
+const (
+	StateOpen    = "open"
+	StateResolved = "resolved"
+)
+
+// Audit log (Phase 7): append-only audit trail for security-sensitive actions.
+const (
+	AuditActionSQL       = "sql"
+	AuditActionAlertRule = "alert_rule"
+	AuditActionDeploy    = "deploy"
+	AuditActionIncident  = "incident"
+	AuditActionUserMgmt  = "user_mgmt"
+)
+
+// ---- incident management (Phase 5) ----
+
+// CreateIncident inserts a new incident and returns its ID. If an open
+// incident with the same title+app already exists, returns its ID instead.
+func (s *Store) CreateIncident(ctx context.Context, title, severity, state string, startedAt int64, relatedAlerts []int64, app, hostID string) (int64, error) {
+	// Deduplicate open incidents by title+app.
+	if state == StateOpen {
+		var id int64
+		err := s.r.QueryRowContext(ctx, `SELECT id FROM incidents WHERE state='open' AND title=? AND app=? LIMIT 1`, title, app).Scan(&id)
+		if err == nil {
+			return id, nil
+		}
+	}
+	alertsJSON, _ := json.Marshal(relatedAlerts)
+	res, err := s.w.ExecContext(ctx, `
+		INSERT INTO incidents(title, severity, state, started_at, ended_at,
+		                      related_alert_ids, app, host_id)
+		VALUES(?, ?, ?, ?, 0, ?, ?, ?)`,
+		title, severity, state, startedAt, string(alertsJSON), app, hostID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// GetIncident returns the incident with the given ID, or nil if not found.
+func (s *Store) GetIncident(ctx context.Context, id int64) (*IncidentRow, error) {
+	var inc IncidentRow
+	var alertsJSON string
+	err := s.r.QueryRowContext(ctx, `
+		SELECT id, title, severity, state, started_at, ended_at,
+		       related_alert_ids, app, host_id FROM incidents WHERE id = ?`,
+		id).Scan(&inc.ID, &inc.Title, &inc.Severity, &inc.State,
+		&inc.StartedAt, &inc.EndedAt, &alertsJSON, &inc.App, &inc.HostID)
+	if err != nil {
+		return nil, err
+	}
+	if alertsJSON != "" {
+		_ = json.Unmarshal([]byte(alertsJSON), &inc.RelatedAlerts)
+	}
+	return &inc, nil
+}
+
+// ListIncidents returns incidents, optionally filtered by state and app.
+func (s *Store) ListIncidents(ctx context.Context, state, app string, limit int) ([]IncidentRow, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var cl []string
+	var args []any
+	if state != "" {
+		cl, args = append(cl, "state = ?"), append(args, state)
+	}
+	if app != "" {
+		cl, args = append(cl, "app = ?"), append(args, app)
+	}
+	where := ""
+	if len(cl) > 0 {
+		where = " WHERE " + strings.Join(cl, " AND ")
+	}
+	q := `SELECT id, title, severity, state, started_at, ended_at,
+	               related_alert_ids, app, host_id FROM incidents` + where +
+		` ORDER BY started_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []IncidentRow
+	for rows.Next() {
+		var inc IncidentRow
+		var alertsJSON string
+		if err := rows.Scan(&inc.ID, &inc.Title, &inc.Severity, &inc.State,
+			&inc.StartedAt, &inc.EndedAt, &alertsJSON, &inc.App, &inc.HostID); err != nil {
+			return nil, err
+		}
+		if alertsJSON != "" {
+			_ = json.Unmarshal([]byte(alertsJSON), &inc.RelatedAlerts)
+		}
+		out = append(out, inc)
+	}
+	return out, rows.Err()
+}
+
+// UpdateIncidentState changes an incident's state. When resolving, sets
+// ended_at to now.
+func (s *Store) UpdateIncidentState(ctx context.Context, id int64, state string) error {
+	var endedAt int64
+	if state == StateResolved {
+		endedAt = time.Now().UnixMilli()
+	}
+	_, err := s.w.ExecContext(ctx, `UPDATE incidents SET state=?, ended_at=? WHERE id=?`, state, endedAt, id)
+	return err
+}
+
+// AddIncidentAlert associates an alert firing ID with an incident.
+func (s *Store) AddIncidentAlert(ctx context.Context, incidentID, alertID int64) error {
+	inc, err := s.GetIncident(ctx, incidentID)
+	if err != nil {
+		return err
+	}
+	for _, a := range inc.RelatedAlerts {
+		if a == alertID {
+			return nil
+		}
+	}
+	inc.RelatedAlerts = append(inc.RelatedAlerts, alertID)
+	alertsJSON, _ := json.Marshal(inc.RelatedAlerts)
+	_, err = s.w.ExecContext(ctx, `UPDATE incidents SET related_alert_ids=? WHERE id=?`, string(alertsJSON), incidentID)
+	return err
+}
+
+// IncidentRow is the database row representation of an incident.
+type IncidentRow struct {
+	ID            int64   `json:"id"`
+	Title         string  `json:"title"`
+	Severity      string  `json:"severity"`
+	State         string  `json:"state"`
+	StartedAt     int64   `json:"started_at"`
+	EndedAt       int64   `json:"ended_at"`
+	RelatedAlerts []int64 `json:"related_alert_ids"`
+	App           string  `json:"app"`
+	HostID        string  `json:"host_id"`
+}
+
+// InsertAuditLog appends an audit entry (Phase 7). Fail-closed: any error is
+// returned so callers can decide whether to block the underlying action.
+func (s *Store) InsertAuditLog(ctx context.Context, actor, action, resource, target, meta string) error {
+	_, err := s.w.ExecContext(ctx, `
+		INSERT INTO audit_log(ts, actor, action, resource, target, meta)
+		VALUES(?, ?, ?, ?, ?, ?)`,
+		time.Now().UnixMilli(), actor, action, resource, target, meta,
+	)
+	return err
+}
+
+// ListAuditLog returns audit entries, newest first, optionally filtered by
+// actor or action.
+func (s *Store) ListAuditLog(ctx context.Context, actor, action string, limit int) ([]AuditLogRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	var cl []string
+	var args []any
+	if actor != "" {
+		cl, args = append(cl, "actor = ?"), append(args, actor)
+	}
+	if action != "" {
+		cl, args = append(cl, "action = ?"), append(args, action)
+	}
+	where := ""
+	if len(cl) > 0 {
+		where = " WHERE " + strings.Join(cl, " AND ")
+	}
+	q := `SELECT id, ts, actor, action, resource, target, meta FROM audit_log` + where +
+		` ORDER BY ts DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditLogRow
+	for rows.Next() {
+		var a AuditLogRow
+		var metaJSON string
+		if err := rows.Scan(&a.ID, &a.TS, &a.Actor, &a.Action, &a.Resource, &a.Target, &metaJSON); err != nil {
+			return nil, err
+		}
+		if metaJSON != "" {
+			_ = json.Unmarshal([]byte(metaJSON), &a.Meta)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// AuditLogRow is one audit log entry.
+type AuditLogRow struct {
+	ID      int64            `json:"id"`
+	TS      int64            `json:"ts"`
+	Actor   string           `json:"actor"`
+	Action  string           `json:"action"`
+	Resource string          `json:"resource"`
+	Target  string           `json:"target"`
+	Meta    map[string]string `json:"meta,omitempty"`
+}
+
+
