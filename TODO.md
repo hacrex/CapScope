@@ -68,7 +68,7 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [x] Phase 1 — OTLP ingestion — already implemented (receiver at /v1/logs,/v1/metrics,/v1/traces)
 - [x] Phase 2 — Logs → Metrics pipelines — already implemented (pipeline.Engine, hot-reload)
 - [x] Phase 3a — Trace storage + API (`/api/traces`) — spans table, InsertSpan, QuerySpans, OTLP traces endpoint done
-- [ ] Phase 3b — Trace UI: trace list, waterfall/flame graph, click log → trace, service graph
+- [x] Phase 3b — Trace UI: trace list, waterfall/flame graph, click log → trace, service graph — DONE (Traces tab, waterfall SVG, span table, service filter)
 - [x] Phase 4 — Storage tiering — ArchiveManager + Rollup done
 - [ ] Phase 5 — Incident management: incident UI (model + API done)
 - [x] Phase 6 — PromQL — `/api/metrics/promql` done

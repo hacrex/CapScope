@@ -473,6 +473,8 @@ $('#tabs').onclick=e=>{const t=e.target.dataset.t;if(t)setTab(t);};
 $('#crashchip').onclick=()=>setTab('crashes');
 $('#traceRefresh').onclick=()=>{loadTraces();traceServiceOptions();};
 $('#traceSearch').oninput=()=>{loadTraces();traceServiceOptions();};
+$('#incRefresh').onclick=()=>{loadIncidents();incStateOptions();};
+$('#incSearch').oninput=()=>{loadIncidents();incStateOptions();};
 /* v0.7-D: collapsible sidebar (persisted) */
 function setSidebar(narrow){
   S.sideNarrow=narrow;localStorage.setItem('sideNarrow',narrow?'1':'0');
@@ -565,6 +567,7 @@ function show(){
   if(S.tab==='alerts')loadAlerts();
   if(S.tab==='admin'&&S.role==='admin')loadAdmin();
   if(S.tab==='traces'){loadTraces();traceServiceOptions();}
+  if(S.tab==='incidents'){loadIncidents();incStateOptions();}
 }
 
 /* ---------- virtual list ---------- */
@@ -1991,6 +1994,88 @@ function traceServiceOptions(){
   sel.innerHTML='';
   const all=document.createElement('span');all.className='chip';all.textContent='All services';all.onclick=()=>{sel.textContent='All services';loadTraces();};sel.append(all);
   for(const svc of [...set].sort()){const b=document.createElement('span');b.className='chip';b.textContent=svc;b.onclick=()=>{sel.textContent=svc;loadTraces();};sel.append(b);}
+}
+
+/* ---------- incidents (Phase 5) ---------- */
+let incCurrent=null; // {id, ...}
+async function loadIncidents(){
+  const box=$('#incList');box.innerHTML='';
+  const state=$('#incStateFilter').textContent;
+  const q=$('#incSearch').value.trim();
+  const p=new URLSearchParams({limit:'100'});
+  if(state&&state!=='All states')p.set('state',state);
+  if(q)p.set('app',q);
+  let d;
+  try{d=await api('/api/incidents?'+p);}catch(e){box.innerHTML='<div class="empty">Incident list failed to load: '+(e.message||e)+'</div>';return;}
+  const incs=d.incidents||[];
+  if(!incs.length){box.innerHTML='<div class="empty">No incidents yet.</div>';return;}
+  const tbl=document.createElement('table');tbl.className='trace-table';
+  tbl.innerHTML='<thead><tr><th>ID</th><th>Title</th><th>Severity</th><th>State</th><th>App</th><th>Started</th><th>Alerts</th></tr></thead><tbody></tbody>';
+  const tb=tbl.querySelector('tbody');
+  incs.forEach(inc=>{
+    const tr=document.createElement('tr');tr.className='row';
+    const stateCls=inc.state==='resolved'?'k clean_exit':(inc.state==='ack'?'k starting':'k crash');
+    const started=inc.started_at?new Date(inc.started_at):null;
+    tr.innerHTML='<td class="trace-id">'+inc.id+'</td>'+
+      '<td>'+(inc.title||'—')+'</td>'+
+      '<td><span class="k '+(inc.severity||'warning')+'">'+(inc.severity||'warning')+'</span></td>'+
+      '<td><span class="'+stateCls+'">'+inc.state+'</span></td>'+
+      '<td>'+(inc.app||'—')+'</td>'+
+      '<td>'+(started?started.toLocaleString():'—')+'</td>'+
+      '<td>'+(inc.related_alert_ids?inc.related_alert_ids.length:0)+'</td>';
+    tr.onclick=()=>{incOpen(inc.id);};
+    tb.append(tr);
+  });
+  box.append(tbl);
+}
+function incOpen(id){
+  incCurrent=null;
+  setTab('incidents');
+  $('#incList').innerHTML='<div class="empty">Loading incident…</div>';
+  $('#incDetail').innerHTML='';
+  loadIncident(id);
+}
+async function loadIncident(id){
+  try{
+    const d=await api('/api/incidents/'+id);
+    incCurrent=d;
+    renderIncident(d);
+  }catch(e){$('#incDetail').innerHTML='<div class="empty">Incident failed to load: '+(e.message||e)+'</div>';}
+}
+function renderIncident(inc){
+  const box=$('#incDetail');box.innerHTML='';
+  const h=document.createElement('div');h.className='trace-detail';
+  const h3=document.createElement('h3');h3.textContent='Incident '+inc.id+': '+(inc.title||'—');
+  h.append(h3);
+  const kv=document.createElement('div');kv.className='kv';
+  kv.innerHTML='<b>State</b><span class="k '+(inc.state==='resolved'?'clean_exit':(inc.state==='ack'?'starting':'crash'))+'">'+inc.state+'</span>'+
+    '<b>Severity</b><span class="k '+(inc.severity||'warning')+'">'+(inc.severity||'warning')+'</span>'+
+    '<b>App</b><span>'+(inc.app||'—')+'</span>'+
+    '<b>Started</b><span>'+(inc.started_at?new Date(inc.started_at).toLocaleString():'—')+'</span>'+
+    '<b>Alerts</b><span>'+(inc.related_alert_ids?inc.related_alert_ids.length:0)+'</span>';
+  h.append(kv);
+  // State transitions.
+  const actions=document.createElement('div');actions.style.marginTop='12px';actions.style.display='flex';actions.style.gap='8px';
+  const mkBtn=(label,nextState,cls)=>{
+    const b=document.createElement('button');b.className='b '+cls;b.textContent=label;b.onclick=()=>{incSetState(id,nextState);};return b;
+  };
+  if(inc.state!=='open')actions.append(mkBtn('Re-open','open',''));
+  if(inc.state!=='ack')actions.append(mkBtn('Acknowledge','ack',''));
+  if(inc.state!=='resolved')actions.append(mkBtn('Resolve','resolved',''));
+  h.append(actions);
+  box.append(h);
+}
+async function incSetState(id,state){
+  try{await api('/api/incidents/'+id+'/state',{method:'POST',body:JSON.stringify({state})});}catch(e){toast('Incident state change failed: '+(e.message||e),'err');return;}
+  toast('Incident '+state,'ok');
+  loadIncidents();
+  if(incCurrent&&incCurrent.id===id)loadIncident(id);
+}
+function incStateOptions(){
+  const sel=$('#incStateFilter');
+  sel.innerHTML='';
+  const all=document.createElement('span');all.className='chip';all.textContent='All states';all.onclick=()=>{sel.textContent='All states';loadIncidents();};sel.append(all);
+  for(const st of ['open','ack','resolved']){const b=document.createElement('span');b.className='chip';b.textContent=st;b.onclick=()=>{sel.textContent=st;loadIncidents();};sel.append(b);}
 }
 function sessionWarning(){
   if(!S.sessionExpires)return;
