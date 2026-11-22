@@ -576,6 +576,7 @@ function show(){
   if(S.tab==='admin'&&S.role==='admin')loadAdmin();
   if(S.tab==='traces'){loadTraces();traceServiceOptions();}
   if(S.tab==='incidents'){loadIncidents();incStateOptions();}
+  if(S.tab==='settings')loadSettings();
 }
 
 /* ---------- virtual list ---------- */
@@ -2084,6 +2085,33 @@ function incStateOptions(){
   sel.innerHTML='';
   const all=document.createElement('span');all.className='chip';all.textContent='All states';all.onclick=()=>{sel.textContent='All states';loadIncidents();};sel.append(all);
   for(const st of ['open','ack','resolved']){const b=document.createElement('span');b.className='chip';b.textContent=st;b.onclick=()=>{sel.textContent=st;loadIncidents();};sel.append(b);}
+}
+
+/* ---------- settings (P3) ---------- */
+async function loadSettings(){
+  const box=$('#view-settings');box.innerHTML='';
+  let d;
+  try{d=await api('/api/settings');}catch(e){box.innerHTML='<div class="empty">Settings failed to load: '+(e.message||e)+'</div>';return;}
+  const sec=(title,rows)=>{
+    const wrap=document.createElement('div');wrap.className='card';wrap.style.marginBottom='16px';
+    const h=document.createElement('h3');h.textContent=title;h.style.margin='0 0 10px';h.style.fontSize='15px';h.style.borderBottom='1px solid var(--line)';h.style.paddingBottom='6px';
+    const tbl=document.createElement('table');tbl.className='table';tbl.style.fontSize='13px';
+    const tb=document.createElement('tbody');
+    for(const [k,v]of Object.entries(rows)){
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td');td1.textContent=k;td1.style.width='30%';td1.style.color='var(--muted)';td1.style.fontWeight='500';
+      const td2=document.createElement('td');td2.textContent=v===true?'yes':(v===false?'no':(v===null||v===''?'(not set)':String(v)));
+      tr.append(td1,td2);tb.append(tr);
+    }
+    tbl.append(tb);wrap.append(h,tbl);box.append(wrap);
+  };
+  const s=d.server||{},a=d.auth||{},st=d.storage||{},c=d.collection||{},al=d.alerts||{},ag=d.agent||{};
+  sec('Server',{Listen:s.listen,'DB path':s.db_path,'Docker host':s.docker_host});
+  sec('Auth',{Provider:a.provider,'Proxy header':a.proxy_header,'Allow no auth':a.allow_no_auth,'Auth user':a.auth_user,'Auth password set':a.auth_pass_set});
+  sec('Storage',{'Max DB (MB)':st.max_db_mb,'Log retention':st.log_retention,'Metrics retention':st.metrics_retention,'Snapshot retention':st.snapshot_retention,Redact:st.redact,'Initial tail':st.initial_tail,'Max line bytes':st.max_line_bytes,'Snapshot kinds':st.snapshot_kinds?st.snapshot_kinds.join(', '):''});
+  sec('Collection',{'Stats interval':c.stats_interval,'Access log':c.access_log,'Anonymize IPs':c.anon_ips,'GeoIP DB':c.geoip_db,Include:c.include||'(not set)',Exclude:c.exclude||'(not set)'});
+  sec('Alerts',{'Alerts file':al.alerts_file,'Alerts interval':al.alerts_interval,'Webhook':al.webhook?al.webhook.url||(al.webhook.configured?'configured':'not set'):'(not set)',Telegram:al.telegram?al.telegram.configured:'not set',Slack:al.slack?al.slack.url||(al.slack.configured?'configured':'not set'):'(not set)',Discord:al.discord?al.discord.url||(al.discord.configured?'configured':'not set'):'(not set)',Ntfy:al.ntfy?al.ntfy.url||(al.ntfy.configured?'configured':'not set'):'(not set)','SMTP host':al.smtp_host,'Update check':al.update_check});
+  sec('Agent/Platform',{'Agent host ID':ag.agent_host_id,'Agent hub':ag.agent_hub,'Agent hub listen':ag.agent_hub_listen,'Docker filter':ag.docker_filter,'OTLP listen':ag.otlp_listen,'OTLP path':ag.otlp_path,'Pipelines file':ag.pipelines_file,'Archive bucket':ag.archive_bucket,'Archive prefix':ag.archive_prefix,'Retention hot days':ag.retention_hot_days});
 }
 function sessionWarning(){
   if(!S.sessionExpires)return;

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -189,6 +190,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/incidents/{id}/state", s.incidentSetState)
 	// Audit log (Phase 7): admin-only append-only trail of security-sensitive actions.
 	mux.HandleFunc("GET /api/audit", s.auditList)
+	// Settings: sanitized configuration view (admin only). Secrets are omitted.
+	mux.HandleFunc("GET /api/settings", s.settings)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	// Apply security headers and rate limiting to everything.
@@ -1555,6 +1558,102 @@ func (s *Server) auditList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"audit": rows})
+}
+
+// settings returns a sanitized view of the running configuration for the
+// Settings page. Secrets (passwords, tokens, keys) are omitted; boolean
+// "configured" flags indicate whether each secret channel is set.
+// Admin only.
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
+	if _, _, role, ok := s.sessions.Validate(requestToken(r)); !ok || role != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
+	cfg := s.cfg
+	type channel struct {
+		URL     string `json:"url"`
+		Configured bool `json:"configured"`
+	}
+	out := map[string]any{
+		"server": map[string]any{
+			"listen":      cfg.Listen,
+			"db_path":     cfg.DBPath,
+			"docker_host": cfg.DockerHost,
+		},
+		"auth": map[string]any{
+			"provider":       cfg.AuthProvider,
+			"proxy_header":   cfg.ProxyUserHeader,
+			"allow_no_auth":  cfg.AllowNoAuth,
+			"auth_user":      cfg.AuthUser,
+			"auth_pass_set":  cfg.AuthPass != "",
+		},
+		"storage": map[string]any{
+			"max_db_mb":       cfg.MaxDBMB,
+			"log_retention":   cfg.LogRetention.String(),
+			"metrics_retention": cfg.MetricsRetention.String(),
+			"snapshot_retention": cfg.SnapshotRetention.String(),
+			"redact":           cfg.Redact,
+			"initial_tail":     cfg.InitialTail,
+			"max_line_bytes":   cfg.MaxLineBytes,
+			"snapshot_kinds":   sortedSnapshotKinds(cfg.SnapshotKinds),
+		},
+		"collection": map[string]any{
+			"stats_interval":  cfg.StatsInterval.String(),
+			"access_log":      cfg.AccessLog,
+			"anon_ips":        cfg.AnonIPS,
+			"geoip_db":        cfg.GeoIPDB,
+			"include":         includeExcludeStr(cfg.Include),
+			"exclude":         includeExcludeStr(cfg.Exclude),
+		},
+		"alerts": map[string]any{
+			"alerts_file":     cfg.AlertsFile,
+			"alerts_interval": cfg.AlertsInterval.String(),
+			"webhook":         channel{cfg.AlertWebhookURL, cfg.AlertWebhookURL != ""},
+			"telegram":        map[string]any{"configured": cfg.AlertTelegramTok != "" && cfg.AlertTelegramChat != ""},
+			"slack":           channel{cfg.AlertSlackURL, cfg.AlertSlackURL != ""},
+			"discord":         channel{cfg.AlertDiscordURL, cfg.AlertDiscordURL != ""},
+			"ntfy":            channel{cfg.AlertNtfyURL, cfg.AlertNtfyURL != ""},
+			"smtp_host":       cfg.SMTPHost,
+			"update_check":    cfg.UpdateCheck,
+		},
+		"agent": map[string]any{
+			"agent_host_id":   cfg.AgentHostID,
+			"agent_hub":       cfg.AgentHub,
+			"agent_hub_listen": cfg.AgentHubListen,
+			"docker_filter":   cfg.DockerFilter,
+			"otlp_listen":     cfg.OTELListen,
+			"otlp_path":       cfg.OTELPath,
+			"pipelines_file":  cfg.PipelinesFile,
+			"archive_bucket":  cfg.ArchiveBucket,
+			"archive_prefix":  cfg.ArchivePrefix,
+			"retention_hot_days": cfg.RetentionHotDays,
+		},
+	}
+	writeJSON(w, out)
+}
+
+// sortedSnapshotKinds returns the enabled snapshot kinds as a sorted slice.
+func sortedSnapshotKinds(kinds map[string]bool) []string {
+	var out []string
+	for k, v := range kinds {
+		if v {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// includeExcludeStr returns the include/exclude regex pattern or "" if unset.
+func includeExcludeStr(re *regexp.Regexp) string {
+	if re == nil {
+		return ""
+	}
+	return re.String()
 }
 
 // redactTest is an admin-only redaction audit endpoint. It feeds sample
