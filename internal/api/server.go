@@ -187,6 +187,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/incidents", s.incidentsList)
 	mux.HandleFunc("GET /api/incidents/{id}", s.incidentGet)
 	mux.HandleFunc("POST /api/incidents/{id}/state", s.incidentSetState)
+	// Audit log (Phase 7): admin-only append-only trail of security-sensitive actions.
+	mux.HandleFunc("GET /api/audit", s.auditList)
 	sub, _ := fs.Sub(web.FS, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	// Apply security headers and rate limiting to everything.
@@ -457,6 +459,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	// Authorization header, so /api/logs/stream (live tail) needs the cookie.
 	newSessionCookie(w, r, token, cookieMaxAge)
 	writeJSON(w, map[string]any{"token": token, "user": user.Name, "role": user.Role})
+	s.auditLog(r, "login", "auth", user.Name, map[string]string{"provider": s.cfg.AuthProvider})
 }
 
 // logout deletes the caller's session.
@@ -471,12 +474,20 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "logged out"})
 		return
 	}
-	if token := requestToken(r); token != "" {
+	token := requestToken(r)
+	var actor string
+	if token != "" {
+		if _, name, _, ok := s.sessions.Validate(token); ok {
+			actor = name
+		}
+	}
+	if token != "" {
 		s.sessions.Delete(token)
 	}
 	newSessionCookie(w, r, "", -1) // clear the login cookie
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
+	s.auditLog(r, "logout", "auth", actor, nil)
 }
 
 // session returns the authenticated user, or 401 when no valid session exists.
@@ -798,6 +809,7 @@ func (s *Server) usersCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, map[string]any{"id": id, "name": body.Name, "role": body.Role})
+	s.auditLog(r, "user_mgmt", "create", body.Name, map[string]string{"role": body.Role, "apps": strings.Join(body.Apps, ",")})
 }
 
 func (s *Server) userAppsList(w http.ResponseWriter, r *http.Request) {
@@ -850,6 +862,7 @@ func (s *Server) userAppsReplace(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessions.RevokeUser(id)
 	writeJSON(w, map[string]any{"ok": true, "apps": body.Apps})
+	s.auditLog(r, "user_mgmt", "apps", strconv.FormatInt(id, 10), map[string]string{"apps": strings.Join(body.Apps, ",")})
 }
 
 // usersSetRole changes a user's role (admin only).
@@ -882,6 +895,7 @@ func (s *Server) usersSetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessions.RevokeUser(id)
 	writeJSON(w, map[string]any{"ok": true})
+	s.auditLog(r, "user_mgmt", "role", strconv.FormatInt(id, 10), map[string]string{"role": body.Role})
 }
 
 // usersDelete removes a user (admin only).
@@ -914,6 +928,7 @@ func (s *Server) usersDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessions.RevokeUser(id)
 	writeJSON(w, map[string]any{"ok": true})
+	s.auditLog(r, "user_mgmt", "delete", strconv.FormatInt(id, 10), nil)
 }
 
 // sharePage redirects to the saved view when the capability token is still
@@ -1486,7 +1501,60 @@ func (s *Server) sql(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.auditLog(r, "sql", "query", query[:min(200, len(query))], map[string]string{"limit": strconv.Itoa(limit)})
 	writeJSON(w, res)
+}
+
+// auditLog appends an audit entry for a security-sensitive action. It never
+// blocks the underlying action: a DB failure is logged and the request
+// proceeds, because the audit trail must never take the UI offline.
+func (s *Server) auditLog(r *http.Request, action, resource, target string, meta map[string]string) {
+	if s.st == nil || s.sessions == nil {
+		return
+	}
+	actor := "proxy"
+	token := requestToken(r)
+	if token != "" {
+		if uid, name, _, ok := s.sessions.Validate(token); ok {
+			actor = name
+			if uid > 0 {
+				actor = strconv.FormatInt(uid, 10)
+			}
+		}
+	}
+	metaJSON := "{}"
+	if len(meta) > 0 {
+		if b, err := json.Marshal(meta); err == nil {
+			metaJSON = string(b)
+		}
+	}
+	if err := s.st.InsertAuditLog(r.Context(), actor, action, resource, target, metaJSON); err != nil {
+		s.log.Warn("audit: write failed", "action", action, "resource", resource, "err", err)
+	}
+}
+
+// auditList returns audit log entries, newest first. Admin only.
+// Query: ?actor=...&action=...&limit=...
+func (s *Server) auditList(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		http.Error(w, "forbidden: admin authentication is not configured", http.StatusForbidden)
+		return
+	}
+	if _, _, role, ok := s.sessions.Validate(requestToken(r)); !ok || role != auth.RoleAdmin {
+		http.Error(w, "forbidden: admin required", http.StatusForbidden)
+		return
+	}
+	actor := r.URL.Query().Get("actor")
+	action := r.URL.Query().Get("action")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := s.st.ListAuditLog(ctx, actor, action, limit)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"audit": rows})
 }
 
 // redactTest is an admin-only redaction audit endpoint. It feeds sample
@@ -1949,6 +2017,7 @@ func (s *Server) incidentSetState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"id": id, "state": req.State})
+	s.auditLog(r, "incident", "state", strconv.FormatInt(id, 10), map[string]string{"state": req.State})
 }
 
 func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {

@@ -372,4 +372,5 @@ func (s *Server) alertsRulesSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("alerts: rules updated via API", "count", len(rules), "path", s.eng.Path())
 	writeJSON(w, map[string]any{"ok": true, "count": len(rules)})
+	s.auditLog(r, "alert_rule", "save", strconv.Itoa(len(rules))+" rules", nil)
 }

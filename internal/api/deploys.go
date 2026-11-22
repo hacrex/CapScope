@@ -58,4 +58,5 @@ func (s *Server) deploysCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"id": id, "ts": in.TS, "app": in.App, "version": in.Version, "note": in.Note})
+	s.auditLog(r, "deploy", "create", in.App, map[string]string{"version": in.Version, "note": in.Note})
 }
