@@ -211,6 +211,8 @@ body.sql .hide-sql{display:none}
 /* ---- bookmarked log lines ---- */
 .ln.bk{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));border-left:2px solid var(--accent)}
 .ln.bk .act{opacity:1}
+.ln.diff{background:color-mix(in srgb,var(--warn) 12%,var(--panel2));border-left:2px solid var(--warn)}
+.ln.diff .act{opacity:1}
 #logs{flex:1;overflow:auto;font:12px/20px var(--font-mono);background:var(--bg);min-height:0}
 #panes{flex:1;display:none;min-height:0;background:var(--bg)}
 .pane+.pane{border-left:1px solid var(--line)}

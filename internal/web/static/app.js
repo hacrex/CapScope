@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
 function showLogin(){$('#loginOverlay').style.display='flex';}
 function hideLogin(){$('#loginOverlay').style.display='none';}
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true,pinned:new Set(JSON.parse(localStorage.getItem('pinnedApps')||'[]')),bookmarks:new Set(JSON.parse(localStorage.getItem('bookmarks')||'[]'))};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true,pinned:new Set(JSON.parse(localStorage.getItem('pinnedApps')||'[]')),bookmarks:new Set(JSON.parse(localStorage.getItem('bookmarks')||'[]')),diffMode:localStorage.getItem('diffMode')==='1'};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -412,6 +412,50 @@ function toggleBookmark(r,bk){
   renderSel();
   toast(S.bookmarks.has(bk)?'Bookmarked':'Bookmark removed');
 }
+
+/* ---------- split-pane diff (P4) ---------- */
+// Collect the set of line texts that appear in more than one open pane.
+// Lines whose text is in this set are "shared"; lines not in it are unique
+// to their pane and get highlighted in diff mode.
+function diffSharedTexts(){
+  const counts=new Map();
+  for(const p of S.panes){
+    const seen=new Set(); // dedupe within a pane
+    for(const r of (p.vl&&p.vl.rows)||[]){
+      if(r.d)continue; // skip deploy markers
+      const t=r.line||'';
+      if(seen.has(t))continue;
+      seen.add(t);
+      counts.set(t,(counts.get(t)||0)+1);
+    }
+  }
+  const shared=new Set();
+  for(const [t,n]of counts)if(n>1)shared.add(t);
+  return shared;
+}
+function applyDiffHighlight(){
+  if(!S.diffMode){document.querySelectorAll('#logs .ln,.plog .ln').forEach(d=>d.classList.remove('diff'));return;}
+  const shared=diffSharedTexts();
+  document.querySelectorAll('#logs .ln,.plog .ln').forEach(d=>{
+    const r=d.__row; // back-reference set in lineEl
+    if(r&&!r.d&&!shared.has(r.line||''))d.classList.add('diff');
+    else d.classList.remove('diff');
+  });
+}
+function toggleDiff(){
+  S.diffMode=!S.diffMode;
+  $('#diffBtn').classList.toggle('on',S.diffMode);
+  localStorage.setItem('diffMode',S.diffMode?'1':'0');
+  applyDiffHighlight();
+}
+// Store a back-reference on each rendered line so applyDiffHighlight can
+// check its text against the shared set without re-parsing the DOM.
+const _lineEl=lineEl;
+lineEl=function(r){
+  const el=_lineEl(r);
+  el.__row=r;
+  return el;
+}
 function selectContainer(id,c){
   S.app=c.app;S.sel=new Set([c.name]);S.selCont=c;
   markSidebar();
@@ -489,6 +533,7 @@ $('#traceRefresh').onclick=()=>{loadTraces();traceServiceOptions();};
 $('#traceSearch').oninput=()=>{loadTraces();traceServiceOptions();};
 $('#incRefresh').onclick=()=>{loadIncidents();incStateOptions();};
 $('#incSearch').oninput=()=>{loadIncidents();incStateOptions();};
+$('#diffBtn').onclick=toggleDiff;
 /* v0.7-D: collapsible sidebar (persisted) */
 function setSidebar(narrow){
   S.sideNarrow=narrow;localStorage.setItem('sideNarrow',narrow?'1':'0');
@@ -891,6 +936,9 @@ function restartLogs(){
   }
   for(const p of S.panes)startPane(p);
   updateCnt();
+  // Diff button only makes sense with 2+ panes.
+  $('#diffBtn').style.display=S.panes.length>=2?'':'none';
+  if(S.panes.length>=2)applyDiffHighlight();
 }
 /* SQL mode: one ad-hoc SELECT rendered into a single pane, no live stream. */
 async function runSQL(){
@@ -1147,11 +1195,13 @@ function paneAppend(pane,rs,pin){
     if(!wasBottom)noteUnread(fresh.length,fresh[0]);
   }
   updateCnt();
+  if(S.diffMode)applyDiffHighlight();
 }
 function flushPending(pane){
   const p=pane.pending;pane.pending=[];
   if(p.length)paneAppend(pane,p,true);
   updateCnt();
+  if(S.diffMode)applyDiffHighlight();
 }
 function updateCnt(){
   let n=0;for(const p of S.panes)n+=p.vl.rows.length;

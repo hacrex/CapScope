@@ -87,7 +87,8 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [ ] Sidebar search + filters + pin/star (P2)
 - [x] Settings UI page (P3) - GET /api/settings endpoint + Settings tab with Server/Auth/Storage/Collection/Alerts/Agent sections
 - [ ] Alert rule builder UI + channel tester (P3)
-- [ ] Log bookmarks + split-pane diff (P4)
+- [x] Log bookmarks (P4) - bookmark toggle in line hover actions, .bk highlight, localStorage persistence
+- [ ] Split-pane diff (P4) - compare lines across panes, highlight differences
 - [ ] Crash timeline + one-click restart (P4) — conflicts with read-only stance; needs decision
 
 ---
