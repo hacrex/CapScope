@@ -88,7 +88,7 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [x] Settings UI page (P3) - GET /api/settings endpoint + Settings tab with Server/Auth/Storage/Collection/Alerts/Agent sections
 - [ ] Alert rule builder UI + channel tester (P3)
 - [x] Log bookmarks (P4) - bookmark toggle in line hover actions, .bk highlight, localStorage persistence
-- [ ] Split-pane diff (P4) - compare lines across panes, highlight differences
+- [x] Split-pane diff (P4) - Diff button in logs toolbar (2+ panes), .diff highlight on unique lines, localStorage persistence
 - [ ] Crash timeline + one-click restart (P4) — conflicts with read-only stance; needs decision
 
 ---
