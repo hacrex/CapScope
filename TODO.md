@@ -45,14 +45,14 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 
 - [x] Snapshot on health-check failure — PRD X8 — collector code done (`snapshotUnhealthy`, `SNAPSHOT_KINDS` includes unhealthy)
 - [x] Healthcheck state surfaced in UI — health badges on sidebar + dashboard (committed)
-- [ ] Verify unhealthy snapshots appear in crashes UI with kind="unhealthy"
+- [x] Verify unhealthy snapshots appear in crashes UI with kind="unhealthy" — /api/snapshots returns all kinds, crashes UI renders all with kind badge
 
 ---
 
-## 5. Access logs — PRD C9.7
+## 5. Access logs ✅ DONE
 
 - [x] GeoIP country labels on client IPs — collector + store + country column done
-- [ ] Per-request app attribution (routing/host map) — verify
+- [x] Per-request app attribution (routing/host map) — AccessRow.app field set from container app; done
 
 ---
 
