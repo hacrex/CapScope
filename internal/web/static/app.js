@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
 function showLogin(){$('#loginOverlay').style.display='flex';}
 function hideLogin(){$('#loginOverlay').style.display='none';}
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true,pinned:new Set(JSON.parse(localStorage.getItem('pinnedApps')||'[]'))};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -235,7 +235,7 @@ async function refreshApps(){
       fillReplicas();fillMetricsContainers();updateContainerStat();return;
     }
     const appList=[...names].map(n=>{const h=byName[n]||{};return{name:n,errs:h.errors_1h||0,warns:h.warns_1h||0,crashes:S.appCrashes.get(n)||0,cs:(live[n]||[]).slice().sort((x,y)=>String(x.replica||x.name)<String(y.replica||y.name)?-1:1)};});
-    appList.sort((x,y)=>(y.crashes-x.crashes)||(y.errs-x.errs)||(x.name<y.name?-1:x.name>y.name?1:0));
+    appList.sort((x,y)=>(S.pinned.has(y.name)?1:0)-(S.pinned.has(x.name)?1:0)||(y.crashes-x.crashes)||(y.errs-x.errs)||(x.name<y.name?-1:x.name>y.name?1:0));
     if(S.sideMode==='containers')renderContainerList(box,appList,a);
     else renderAppList(box,appList,a);
     $('#conn').textContent=`${S.conts.length} containers`;$('#conn').className='chip live';
@@ -249,10 +249,11 @@ async function refreshApps(){
 /* Sidebar, "Apps" mode: one row per app with resource meters and error badges. */
 function renderAppList(box,appList,a){
   const row=(n,label,cs,cpu,mem,errs,warns,crashes)=>{
-    const el=document.createElement('div');el.className='app';el.dataset.n=n;
+    const el=document.createElement('div');el.className='app'+(S.pinned.has(n)?' pinned':'');el.dataset.n=n;
     const nm=document.createElement('div');nm.className='n';
     const icon=cs[0]?.image?appIcon(cs[0].image):'📦';
     const t=document.createElement('span');t.textContent=icon+' '+label;nm.append(t);
+    const star=document.createElement('button');star.type='button';star.className='star';star.textContent=S.pinned.has(n)?'★':'☆';star.title='Pin '+n;star.onclick=e=>{e.stopPropagation();togglePin(n);};nm.append(star);
     const b=document.createElement('span');
     if(crashes){const d=document.createElement('span');d.className='badge e';d.textContent=crashes+' crash'+(crashes>1?'es':'');d.title='crash snapshots in the last 24h';b.append(d,' ');}
     if(errs){const e=document.createElement('span');e.className='badge e';e.textContent=errs;e.title='errors in the last hour';b.append(e,' ');}
@@ -319,6 +320,7 @@ function renderContainerList(box,appList,a){
     head.innerHTML='<span class="dot"></span><span class="hn"></span><span class="badges"></span>';
     head.querySelector('.dot').classList.toggle('on',cs.length>0);
     head.querySelector('.hn').textContent=name;
+    const cstar=document.createElement('button');cstar.type='button';cstar.className='star';cstar.textContent=S.pinned.has(name)?'★':'☆';cstar.title='Pin '+name;cstar.onclick=e=>{e.stopPropagation();togglePin(name);};head.append(cstar);
     const bl=head.querySelector('.badges');
     const badge=(cls,txt,title)=>{const b=document.createElement('span');b.className=cls;b.textContent=txt;b.title=title;bl.append(b);};
     if(crashes)badge('badge e',crashes+' crash'+(crashes>1?'es':''),'crash snapshots in the last 24h');
@@ -397,6 +399,12 @@ function selectApp(n){
   syncURL();
   show();
   updateContainerStat();
+}
+function togglePin(n){
+  if(!n)return;
+  if(S.pinned.has(n))S.pinned.delete(n);else S.pinned.add(n);
+  localStorage.setItem('pinnedApps',JSON.stringify([...S.pinned]));
+  refreshApps();
 }
 function selectContainer(id,c){
   S.app=c.app;S.sel=new Set([c.name]);S.selCont=c;
