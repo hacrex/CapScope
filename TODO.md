@@ -70,7 +70,7 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [x] Phase 3a — Trace storage + API (`/api/traces`) — spans table, InsertSpan, QuerySpans, OTLP traces endpoint done
 - [x] Phase 3b — Trace UI: trace list, waterfall/flame graph, click log → trace, service graph — DONE (Traces tab, waterfall SVG, span table, service filter)
 - [x] Phase 4 — Storage tiering — ArchiveManager + Rollup done
-- [ ] Phase 5 — Incident management: incident UI (model + API done)
+- [x] Phase 5 — Incident management: incident UI (model + API done; Incidents tab with list/detail/state transitions just added)
 - [x] Phase 6 — PromQL — `/api/metrics/promql` done
 - [ ] Phase 6 — Dashboard builder (template vars, panel types, drag-drop)
 - [x] Phase 7 — Audit log — just wired
