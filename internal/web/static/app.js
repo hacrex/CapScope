@@ -471,6 +471,8 @@ function setTab(t){
 }
 $('#tabs').onclick=e=>{const t=e.target.dataset.t;if(t)setTab(t);};
 $('#crashchip').onclick=()=>setTab('crashes');
+$('#traceRefresh').onclick=()=>{loadTraces();traceServiceOptions();};
+$('#traceSearch').oninput=()=>{loadTraces();traceServiceOptions();};
 /* v0.7-D: collapsible sidebar (persisted) */
 function setSidebar(narrow){
   S.sideNarrow=narrow;localStorage.setItem('sideNarrow',narrow?'1':'0');
@@ -562,6 +564,7 @@ function show(){
   if(S.tab==='crashes')loadCrashes();
   if(S.tab==='alerts')loadAlerts();
   if(S.tab==='admin'&&S.role==='admin')loadAdmin();
+  if(S.tab==='traces'){loadTraces();traceServiceOptions();}
 }
 
 /* ---------- virtual list ---------- */
@@ -1866,6 +1869,128 @@ async function loadCrashCounts(){
 async function crashChip(){
   await loadCrashCounts();let n=0;for(const v of S.appCrashes.values())n+=v;
   const c=$('#crashchip');c.style.display=n?'':'none';c.textContent=n+' crash'+(n>1?'es':'')+' in 24h';c.className='chip bad';
+}
+
+/* ---------- traces (Phase 3b) ---------- */
+let traceCurrent=null; // {traceId, spans}
+async function loadTraces(){
+  const box=$('#traceList');box.innerHTML='';
+  const svc=$('#traceServiceFilter').textContent;
+  const q=$('#traceSearch').value.trim();
+  const p=new URLSearchParams();
+  if(svc&&svc!=='All services')p.set('service',svc);
+  if(q)p.set('trace_id',q);
+  let d;
+  try{d=await api('/api/traces?'+p);}catch(e){box.innerHTML='<div class="empty">Trace list failed to load: '+(e.message||e)+'</div>';return;}
+  const traces=d.traces||[];
+  if(!traces.length){box.innerHTML='<div class="empty">No traces yet. Send OTLP traces to CapScope and they will appear here.</div>';return;}
+  const tbl=document.createElement('table');tbl.className='trace-table';
+  tbl.innerHTML='<thead><tr><th>Trace ID</th><th>Service</th><th>Name</th><th>Start</th><th>Duration</th><th>Spans</th><th>Status</th></tr></thead><tbody></tbody>';
+  const tb=tbl.querySelector('tbody');
+  traces.slice().reverse().forEach(t=>{
+    const tr=document.createElement('tr');tr.className='row';
+    const errCls=t.error?'k crash':'k clean_exit';
+    const started=t.start_ts?new Date(t.start_ts/1e6):null;
+    tr.innerHTML='<td class="trace-id">'+(t.trace_id||'')+'</td>'+
+      '<td>'+(t.service||'—')+'</td>'+
+      '<td>'+(t.name||'—')+'</td>'+
+      '<td>'+(started?started.toLocaleString():'—')+'</td>'+
+      '<td>'+(t.duration?t.duration+' ms':'—')+'</td>'+
+      '<td>'+t.span_count+'</td>'+
+      '<td><span class="'+errCls+'">'+(t.error?'error':'ok')+'</span></td>';
+    tr.onclick=()=>{traceOpen(t.trace_id);};
+    tb.append(tr);
+  });
+  box.append(tbl);
+}
+function traceOpen(traceId){
+  S.app=null;
+  setTab('traces');
+  traceCurrent={traceId,spans:[]};
+  $('#traceList').innerHTML='<div class="empty">Loading trace…</div>';
+  $('#traceDetail').innerHTML='';
+  loadTraceDetail(traceId);
+}
+async function loadTraceDetail(traceId){
+  try{
+    const d=await api('/api/traces/'+encodeURIComponent(traceId));
+    traceCurrent.spans=d.spans||[];
+    renderTraceDetail(d.trace_id||traceId,traceCurrent.spans);
+  }catch(e){$('#traceDetail').innerHTML='<div class="empty">Trace failed to load: '+(e.message||e)+'</div>';}
+}
+function renderTraceDetail(traceId,spans){
+  const box=$('#traceDetail');box.innerHTML='';
+  if(!spans||!spans.length){box.innerHTML='<div class="empty">No spans in this trace.</div>';return;}
+  // Sort by start time.
+  spans.sort((a,b)=>a.start_ts-b.start_ts);
+  const t0=spans[0].start_ts;
+  let t1=t0;
+  for(const s of spans){const e=s.end_ts||s.start_ts;if(e>t1)t1=e;}
+  const spanMs=Math.max(1,t1-t0);
+  // Header.
+  const h=document.createElement('div');h.className='trace-detail';
+  const h3=document.createElement('h3');h3.textContent='Trace '+traceId;
+  h.append(h3);
+  const kv=document.createElement('div');kv.className='kv';
+  kv.innerHTML='<b>Spans</b><span>'+spans.length+'</span><b>Duration</b><span>'+Math.round(spanMs/1e6)+' ms</span><b>Root</b><span>'+(spans.find(s=>!s.parent_span_id)?.name||'—')+'</span>';
+  h.append(kv);
+  // Waterfall canvas as SVG for crisp text.
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.className='trace-waterfall';svg.setAttribute('viewBox','0 0 700 260');
+  // Lanes: one per service.
+  const services=[...new Set(spans.map(s=>s.service||'unknown'))];
+  const laneH=260/services.length;
+  const svcY={};services.forEach((s,i)=>{svcY[s]=i*laneH;});
+  // Axis.
+  for(let i=0;i<=5;i++){const x=i/5*600+40;const t=t0+spanMs*i/5;const el=document.createElementNS('http://www.w3.org/2000/svg','text');el.setAttribute('x',x);el.setAttribute('y',250);el.setAttribute('font-size','10');el.setAttribute('fill','var(--muted)');el.textContent=new Date(t/1e6).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});svg.append(el);}
+  // Bars.
+  spans.forEach(s=>{
+    const y=svcY[s.service||'unknown']+2;
+    const x=40+(s.start_ts-t0)/spanMs*600;
+    const w=Math.max(6,((s.end_ts||s.start_ts)-s.start_ts)/spanMs*600);
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',x);rect.setAttribute('y',y);rect.setAttribute('width',w);rect.setAttribute('height',laneH-4);
+    rect.setAttribute('class',s.status==='error'?'error':'ok');
+    rect.setAttribute('rx','2');
+    g.append(rect);
+    const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x',x+4);label.setAttribute('y',y+laneH/2+3);label.setAttribute('font-size','10');label.setAttribute('fill','var(--text)');
+    label.textContent=s.name||'span';
+    g.append(label);
+    svg.append(g);
+  });
+  // Lane labels.
+  services.forEach(s=>{
+    const el=document.createElementNS('http://www.w3.org/2000/svg','text');
+    el.setAttribute('x',4);el.setAttribute('y',svcY[s]+laneH/2+3);el.setAttribute('font-size','11');el.setAttribute('fill','var(--muted)');el.setAttribute('font-family','var(--font-mono)');el.textContent=s;svg.append(el);
+  });
+  h.append(svg);
+  // Span table.
+  const st=document.createElement('table');st.className='trace-table';
+  st.innerHTML='<thead><tr><th>Span</th><th>Service</th><th>Kind</th><th>Start (ms)</th><th>Dur (ms)</th><th>Status</th><th>Parent</th></tr></thead><tbody></tbody>';
+  const stb=st.querySelector('tbody');
+  spans.forEach(s=>{
+    const tr=document.createElement('tr');tr.className='row';
+    tr.innerHTML='<td class="trace-id">'+(s.span_id||'')+'</td>'+
+      '<td>'+(s.service||'—')+'</td>'+
+      '<td><span class="kind '+(s.kind||'')+'">'+(s.kind||'—')+'</span></td>'+
+      '<td>'+((s.start_ts-t0)/1e6).toFixed(0)+'</td>'+
+      '<td>'+(((s.end_ts||s.start_ts)-s.start_ts)/1e6).toFixed(0)+'</td>'+
+      '<td><span class="'+(s.status==='error'?'k crash':'k clean_exit')+'">'+(s.status||'—')+'</span></td>'+
+      '<td class="trace-id">'+(s.parent_span_id||'—')+'</td>';
+    stb.append(tr);
+  });
+  h.append(st);
+  box.append(h);
+}
+function traceServiceOptions(){
+  const sel=$('#traceServiceFilter');
+  const set=new Set();
+  if(traceCurrent&&traceCurrent.spans.length){for(const s of traceCurrent.spans)set.add(s.service||'unknown');}
+  sel.innerHTML='';
+  const all=document.createElement('span');all.className='chip';all.textContent='All services';all.onclick=()=>{sel.textContent='All services';loadTraces();};sel.append(all);
+  for(const svc of [...set].sort()){const b=document.createElement('span');b.className='chip';b.textContent=svc;b.onclick=()=>{sel.textContent=svc;loadTraces();};sel.append(b);}
 }
 function sessionWarning(){
   if(!S.sessionExpires)return;

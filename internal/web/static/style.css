@@ -522,3 +522,28 @@ body.drawer-open #sideScrim{display:block}
 .showcase-icon{font-size:24px;margin-bottom:12px;display:inline-block}
 .showcase-card h3{margin:0 0 8px;font-size:16px;font-weight:600}
 .showcase-card p{font-size:13.5px;color:var(--muted);line-height:1.5;margin:0}
+
+/* ---- trace waterfall (Phase 3b) ---- */
+.trace-table{font-size:13px}
+.trace-table th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
+.trace-table td{padding:8px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+.trace-table tr:hover{background:var(--panel2)}
+.trace-table .trace-id{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.trace-waterfall{position:relative;height:220px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg);margin-top:10px}
+.trace-waterfall .lane{position:absolute;left:0;right:0;height:26px;border-bottom:1px solid var(--line2)}
+.trace-waterfall .lane:last-child{border-bottom:none}
+.trace-waterfall .lane-label{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);font-family:var(--font-mono);pointer-events:none}
+.trace-waterfall .bar{position:absolute;top:4px;bottom:4px;height:18px;border-radius:3px;cursor:pointer}
+.trace-waterfall .bar.ok{background:color-mix(in srgb,var(--ok) 30%,transparent);border:1px solid var(--ok)}
+.trace-waterfall .bar.error{background:color-mix(in srgb,var(--err) 30%,transparent);border:1px solid var(--err)}
+.trace-waterfall .bar span{position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 8px)}
+.trace-waterfall .axis{position:absolute;top:0;left:0;right:0;height:20px;pointer-events:none;z-index:1}
+.trace-waterfall .axis span{position:absolute;font-size:9.5px;color:var(--muted);white-space:nowrap}
+.trace-detail{margin-top:16px}
+.trace-detail h3{font-size:14px;margin:0 0 8px;font-weight:600}
+.trace-detail .kv{margin-bottom:16px}
+.trace-table .kind{font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.trace-table .kind.server{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));border-color:var(--accent);color:var(--accent)}
+.trace-table .kind.client{background:color-mix(in srgb,var(--ok) 12%,var(--panel2));border-color:var(--ok);color:var(--ok)}
+.trace-table .kind.producer{background:color-mix(in srgb,var(--warn) 12%,var(--panel2));border-color:var(--warn);color:var(--warn)}
+.trace-table .kind.consumer{background:color-mix(in srgb,var(--muted) 12%,var(--panel2));border-color:var(--line);color:var(--muted)}

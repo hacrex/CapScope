@@ -51,7 +51,7 @@
   </aside>
   <section class="content">
     <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
-      <button data-t="dashboard" class="sel" role="tab" aria-selected="true" aria-controls="view-dashboard">Dashboard</button><button data-t="logs" role="tab" aria-selected="false" aria-controls="view-logs">Logs</button><button data-t="metrics" role="tab" aria-selected="false" aria-controls="view-metrics">Metrics</button><button data-t="access" role="tab" aria-selected="false" aria-controls="view-access">Access</button><button data-t="crashes" role="tab" aria-selected="false" aria-controls="view-crashes">Crashes</button><button data-t="alerts" role="tab" aria-selected="false" aria-controls="view-alerts">Alerts</button><button data-t="admin" id="adminTab" role="tab" aria-selected="false" aria-controls="view-admin" style="display:none">Admin</button>
+      <button data-t="dashboard" class="sel" role="tab" aria-selected="true" aria-controls="view-dashboard">Dashboard</button><button data-t="logs" role="tab" aria-selected="false" aria-controls="view-logs">Logs</button><button data-t="metrics" role="tab" aria-selected="false" aria-controls="view-metrics">Metrics</button><button data-t="access" role="tab" aria-selected="false" aria-controls="view-access">Access</button><button data-t="crashes" role="tab" aria-selected="false" aria-controls="view-crashes">Crashes</button><button data-t="traces" role="tab" aria-selected="false" aria-controls="view-traces">Traces</button><button data-t="alerts" role="tab" aria-selected="false" aria-controls="view-alerts">Alerts</button><button data-t="admin" id="adminTab" role="tab" aria-selected="false" aria-controls="view-admin" style="display:none">Admin</button>
     </nav>
     <div id="view-dashboard" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-logs" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -126,6 +126,15 @@
       </div>
     </div>
     <div id="view-crashes" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
+    <div id="view-traces" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:auto;padding:16px">
+      <div class="bar" style="margin:-16px -16px 16px;border-top:0">
+        <span class="chip" id="traceServiceFilter" style="cursor:pointer">All services</span>
+        <input type="search" id="traceSearch" placeholder="Filter traces by service or trace id">
+        <button class="b" id="traceRefresh" title="Refresh trace list">↻</button>
+      </div>
+      <div id="traceList"></div>
+      <div id="traceDetail" style="margin-top:16px"></div>
+    </div>
     <div id="view-alerts" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
     <div id="view-admin" style="display:none;flex:1;min-height:0;overflow:auto;padding:16px"></div>
   </section>
