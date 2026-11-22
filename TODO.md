@@ -44,8 +44,8 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 
 ## 4. Crash / health features — PRD "Not done"
 
-- [ ] **Snapshot on health-check failure** — PRD X8 (next implementation item)
-- [ ] Healthcheck state surfaced in UI — GAP-ANALYSIS §4
+- [x] **Snapshot on health-check failure** — PRD X8 (code side already implemented: `snapshotUnhealthy`, `SNAPSHOT_KINDS` includes unhealthy) — DONE in code
+- [x] **Healthcheck state surfaced in UI** — GAP-ANALYSIS §4 — DONE (health field in inspect, tracker, /api/containers, sidebar badge, dashboard cell)
 
 ---
 
