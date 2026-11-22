@@ -79,6 +79,9 @@ type Inspect struct {
 		Error      string `json:"Error"`
 		StartedAt  string `json:"StartedAt"`
 		FinishedAt string `json:"FinishedAt"`
+		Health     struct {
+			Status string `json:"Status"`
+		} `json:"Health"`
 	} `json:"State"`
 	HostConfig struct {
 		Memory        int64 `json:"Memory"`

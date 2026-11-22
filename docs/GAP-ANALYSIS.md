@@ -122,7 +122,7 @@ Notes:
 - ❌ Health-check-failure snapshots (PRD X8)
 - ❌ Access-log app attribution + GeoIP (PRD C9.7)
 - ❌ Acceptance items: real-CapRover verification, image deployed on CapRover, soak test
-- ⚠️ README roadmap table stale (says v0.4 = Prometheus + agent mode)
+- ✅ README roadmap table synced with actual code state (OIDC/multi-user/audit/host-level-metrics/GeoIP/audit-log marked as pending, not done)
 - ⚠️ UI is a single ~1,700-line embedded HTML file; adequate now but a component
   split is worth revisiting if v1.0 lands
 

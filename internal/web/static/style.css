@@ -322,6 +322,9 @@ tr.row:hover{background:var(--panel2)}
 .k.killed{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
 .k.clean_exit{background:var(--ok-bg);color:var(--ok)}
 .k.loop{background:var(--warn-bg);color:var(--warn)}
+.k.healthy{background:var(--ok-bg);color:var(--ok)}
+.k.unhealthy{background:var(--err-bg);color:var(--err)}
+.k.starting{background:var(--warn-bg);color:var(--warn)}
 .empty{color:var(--muted);padding:48px 24px;text-align:center;border:1px dashed var(--line);border-radius:10px;margin:16px}
 .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 20px;margin:10px 0 16px;font-size:13px}
 .kv b{color:var(--muted);font-weight:500}

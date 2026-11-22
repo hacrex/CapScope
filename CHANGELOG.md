@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Bug fixes
+- `fix(api)`: dropped a duplicated `sn.GitCommit != ""` condition in crash advice (`internal/api/dashboard.go`) that `go vet` flagged as redundant and which broke the `internal/api` build.
+
 ### Live resource header and high-volume SSE profiling
 - **Selected-container resource chip**: the header now shows live CPU %, memory
   %, and memory used versus limit for the clicked container, refreshed with the

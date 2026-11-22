@@ -230,6 +230,10 @@ type ContainerInfo struct {
 	// GitCommit is the git commit SHA from Docker image labels
 	// (org.opencontainers.image.revision).
 	GitCommit string `json:"git_commit,omitempty"`
+	// Health is the container's last known Docker health status
+	// ("healthy", "unhealthy", "starting", "no"; "" when no health check is
+	// configured). Updated on health_status events.
+	Health string `json:"health,omitempty"`
 }
 
 func (m *Manager) Containers(hostID string) []ContainerInfo {
@@ -432,6 +436,7 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 		id: id, name: name, app: app, replica: replica, image: insp.Config.Image,
 		hostID:    m.hostID,
 		gitCommit: insp.Config.Labels["org.opencontainers.image.revision"],
+		health:    insp.State.Health.Status,
 		tty:       insp.Config.Tty, created: now, started: parseStartedAt(insp.State.StartedAt, now),
 		logDone:    make(chan struct{}),
 		accessOnly: m.excluded(name, app),
@@ -916,6 +921,11 @@ func (m *Manager) handleEvent(ctx context.Context, ev docker.Event) {
 			}
 		}
 	case "health_status":
+		// Track the container's health status on every transition so the
+		// UI can surface it (live badge) even when the container keeps running.
+		if t := m.get(id); t != nil {
+			t.setHealth(ev.Actor.Attributes["status"])
+		}
 		// X8: health-check-failure snapshot. When a container transitions to
 		// unhealthy, capture its current state (logs, metrics, inspect) as
 		// evidence without disturbing the live tracker — the container is

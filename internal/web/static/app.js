@@ -330,9 +330,11 @@ function renderContainerList(box,appList,a){
       const row=document.createElement('div');
       row.className='crow';row.dataset.id=c.id;row.dataset.n=name;row.dataset.c=c.name;
       row.title=c.name+(c.image?' — '+c.image:'')+' — open logs';
-      row.innerHTML='<span class="dot"></span><span class="cico"></span><span class="cn"></span>';
+      row.innerHTML='<span class="dot"></span><span class="cico"></span><span class="cn"></span><span class="ch"></span>';
       row.querySelector('.cico').textContent=appIcon(c.image);
       row.querySelector('.cn').textContent=c.name;
+      const ch=row.querySelector('.ch');
+      if(c.health&&c.health!=='healthy'){ch.textContent=c.health;ch.className='ch k k-'+c.health;ch.title='Health: '+c.health;}
       row.onclick=()=>{selectContainer(c.id,c);if(S.tab!=='logs')setTab('logs');};
       grp.append(row);
     }
@@ -2184,6 +2186,7 @@ function ovRow(c,multi){
   const sub=document.createElement('div');sub.className='sub';
   sub.textContent=(c.app||'')+(multi&&c.host_id?' · '+c.host_id:'');
   if(c.image){const im=document.createElement('span');im.className='mono';im.textContent=' · '+c.image;sub.append(im);}
+  if(c.health&&c.health!=='healthy'){const h=document.createElement('span');h.className='mono';h.textContent=' · health: '+c.health;h.style.color=c.health==='unhealthy'?'var(--err)':'var(--warn)';sub.append(h);}
   txt.append(nm,sub);cw.append(dot,ico,txt);name.append(cw);tr.append(name);
   // Metric cells: filled by the helpers above so later polls can patch them.
   const cpu=document.createElement('td');cpu.className='chart';fillCpu(cpu,c);

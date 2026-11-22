@@ -367,10 +367,10 @@ Issues and pull requests are welcome. See `docs/` for the PRD, architecture note
 - **v0.11** — Alerts to Dozzle parity: container-event rules (die/OOM/health/update-available), metric smoothing + `cooldown`, ntfy channel, `${ENV}` channel placeholders, daily update-available registry checks (done)
 - **v0.12** — Persistent login sessions across restarts, expiring share links/permalinks (`POST /api/share`, `/s/<token>`), any-range JSON export (`fmt=json`), self-contained HTML incident export (done)
 - **v0.13** — Multi-host visibility: host selector chip, per-host views (containers/crashes/metrics/dashboard filtered by `host_id`), `?host=` permalinks, `GET /api/hosts` (done)
-- **v0.14** — Multi-user auth: OIDC SSO (`AUTH_PROVIDER=oidc`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`), users table with `admin`/`viewer` roles, user management API, audit trail on `access` rows (done)
+- **v0.14** — Multi-user auth: OIDC SSO (`AUTH_PROVIDER=oidc`) and multi-user/per-app RBAC are **planned, not yet landed**; `AUTH_PROVIDER=proxy` forward-proxy header auth (v0.9) and per-app viewer scopes are implemented. OIDC SSO, users table, user management API, and audit trail on `access` rows are pending (PRD Z4/Z5, GAP-ANALYSIS §2).
 - **v0.15** — MCP server over SQLite: `cmd/capscope mcp` runs an MCP server over stdio with tools `query_logs`, `list_snapshots`, `get_snapshot`, `run_sql`. Session-token authenticated (done).
-- **v0.16** — Agent hub ingestion, per-app viewer RBAC, Admin application assignments, scoped live SSE/history/export APIs, webhook alert hardening, and `cmd/sse-bench` (done)
-- **Next** — Host-level metrics and GeoIP country labels on access logs (landed), OTLP receiver, logs→metrics pipelines, distributed tracing, Parquet archive tier, incident management, PromQL, and audit log (all just landed). Next: trace UI, service graph, dashboards, LLM observability, fine-grained RBAC, SAML/LDAP. See `IMPLEMENTATION_PLAN.md`.
+- **v0.16** — Agent hub ingestion, Admin application assignments, scoped live SSE/history/export APIs, webhook alert hardening, and `cmd/sse-bench` (done). Per-app viewer RBAC is partially implemented; full multi-user + audit is pending.
+- **Next** — OTLP receiver, logs→metrics pipelines, distributed tracing, Parquet archive tier, incident management, PromQL, fine-grained RBAC, audit log, SAML/LDAP, host-level metrics, GeoIP country labels, health-check-failure snapshots, OIDC. Host-level metrics and GeoIP are **not yet landed**. See `IMPLEMENTATION_PLAN.md` (Phases 0–7) and `GAP-ANALYSIS.md` for the outstanding list.
 
 ---
 
