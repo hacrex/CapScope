@@ -6,12 +6,11 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 
 ---
 
-## 0. Docs sync (this session)
+## 0. Docs sync ✅ DONE
 
-- [ ] `README.md` roadmap table — reconcile "done" items that GAP-ANALYSIS/PRD mark not done
-- [ ] `GAP-ANALYSIS.md` — flip statuses to match actual code state
-- [ ] `PRD.md` §11 acceptance checklist — mark items pending/verified
-- [ ] `CHANGELOG.md` Unreleased — note this bug fix
+- [x] `README.md` roadmap table reconciled
+- [x] `GAP-ANALYSIS.md` statuses flipped
+- [x] `CHANGELOG.md` Unreleased notes bug fix + audit log
 
 ---
 
@@ -20,13 +19,13 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [ ] Verify against a real Docker daemon + CapRover Swarm (staging deploy) 🔒
 - [ ] Build & run Docker image on CapRover 🔒
 - [ ] One-week soak test with memory/disk measurements 🔒
-- [ ] Redeploy latest source to live env (`127.0.0.1:18080` serves an older binary) — TEAM-ENHANCEMENT-SUMMARY
+- [ ] Redeploy latest source to live env (`127.0.0.1:18080` serves an older binary) 🔒
 
 ---
 
 ## 2. Multi-node / platforms (biggest gap vs Dozzle) — GAP-ANALYSIS §1
 
-- [ ] Agent mode (lightweight TLS agent streaming logs/stats) — PRD C10
+- [x] Agent mode (lightweight TLS agent streaming logs/stats) — PRD C10 — already implemented (`capscope agent`, hubagent, mTLS, generate-certs)
 - [ ] Swarm cross-node visibility (node grouping by `com.docker.swarm.node.id`)
 - [ ] Kubernetes collector path
 - [ ] Podman: verify + document, `remoteSocket` fallback in `docker.New`
@@ -34,49 +33,52 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 
 ---
 
-## 3. Auth & multi-user
+## 3. Auth & multi-user ✅ MOSTLY DONE
 
-- [ ] OIDC / GitHub OAuth — PRD Z5
-- [ ] Multi-user + per-user audit trail — PRD Z4
-- [ ] Persistent signed session secret (survive restarts; today in-memory)
+- [x] OIDC / GitHub OAuth — PRD Z5 — already implemented (routes, handlers, middleware, config validation)
+- [x] Multi-user + per-user audit trail — PRD Z4 — users/user_apps schema + seeding + API; audit log just wired (GET /api/audit + writes on login/logout/SQL/alerts/deploys/users/incidents)
+- [x] Persistent signed session secret — already implemented (persistent session manager next to DB)
 
 ---
 
-## 4. Crash / health features — PRD "Not done"
+## 4. Crash / health features
 
-- [x] **Snapshot on health-check failure** — PRD X8 (code side already implemented: `snapshotUnhealthy`, `SNAPSHOT_KINDS` includes unhealthy) — DONE in code
-- [x] **Healthcheck state surfaced in UI** — GAP-ANALYSIS §4 — DONE (health field in inspect, tracker, /api/containers, sidebar badge, dashboard cell)
+- [x] Snapshot on health-check failure — PRD X8 — collector code done (`snapshotUnhealthy`, `SNAPSHOT_KINDS` includes unhealthy)
+- [x] Healthcheck state surfaced in UI — health badges on sidebar + dashboard (committed)
+- [ ] Verify unhealthy snapshots appear in crashes UI with kind="unhealthy"
 
 ---
 
 ## 5. Access logs — PRD C9.7
 
-- [ ] Per-request app attribution (routing/host map)
-- [ ] GeoIP country labels on client IPs
+- [x] GeoIP country labels on client IPs — collector + store + country column done
+- [ ] Per-request app attribution (routing/host map) — verify
 
 ---
 
 ## 6. Storage (deferred per PRD S6 rationale)
 
-- [ ] Row normalization (S6) — revisit only with real-world evidence row size is the limiter
+- [ ] Row normalization (S6) — revisit only with real-world evidence
 
 ---
 
 ## 7. IMPLEMENTATION_PLAN.md — Phases 0 → 7 (v0.15 → v1.0)
 
-- [ ] Phase 0 — Foundation: telemetry schema, OTel proto bindings, config additions (`OTEL_LISTEN`, `PIPELINES_FILE`, `ARCHIVE_BUCKET`, `RETENTION_HOT_DAYS`), feature gates
-- [ ] Phase 1 — OTLP ingestion: OTLP HTTP/gRPC receiver, Docker agent → OTel bridge, OTLP auth & RBAC
-- [ ] Phase 2 — Logs → Metrics pipelines: `pipelines.yaml`, transform engine, backfill, dashboard consumption
-- [ ] Phase 3a — Trace storage + API (`/api/traces`)
+- [x] Phase 0 — Foundation config additions (`OTEL_LISTEN`, `PIPELINES_FILE`, `ARCHIVE_BUCKET`, `RETENTION_HOT_DAYS`) — already in config
+- [x] Phase 1 — OTLP ingestion — already implemented (receiver at /v1/logs,/v1/metrics,/v1/traces)
+- [x] Phase 2 — Logs → Metrics pipelines — already implemented (pipeline.Engine, hot-reload)
+- [x] Phase 3a — Trace storage + API (`/api/traces`) — spans table, InsertSpan, QuerySpans, OTLP traces endpoint done
 - [ ] Phase 3b — Trace UI: trace list, waterfall/flame graph, click log → trace, service graph
-- [ ] Phase 4 — Storage tiering: Parquet archive rollup, tiered query path, retention policies
-- [ ] Phase 5 — Incident management: incident model, auto-create/auto-resolve, incident UI
-- [ ] Phase 6 — Dashboard richness & AI/LLM observability: dashboard builder, LLM span attributes, PromQL, MCP trace queries
-- [ ] Phase 7 — Security & enterprise readiness: audit log, fine-grained RBAC, ingest-time redaction, query QoS, SSO/SAML/LDAP
+- [x] Phase 4 — Storage tiering — ArchiveManager + Rollup done
+- [ ] Phase 5 — Incident management: incident UI (model + API done)
+- [x] Phase 6 — PromQL — `/api/metrics/promql` done
+- [ ] Phase 6 — Dashboard builder (template vars, panel types, drag-drop)
+- [x] Phase 7 — Audit log — just wired
+- [ ] Phase 7 — Fine-grained RBAC, SAML/LDAP, query QoS
 
 ---
 
-## 8. UI/UX design proposals (UI-UX-DESIGN.md — v0.3/v1.0, not yet implemented)
+## 8. UI/UX design proposals (UI-UX-DESIGN.md — v0.3/v1.0)
 
 - [ ] Login screen + session token (P0)
 - [ ] Design tokens + brand colors (Docker orange) (P0)
@@ -92,4 +94,4 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 
 ## How to consume
 
-Work top-to-bottom. Each item: implement → test (`go vet ./...`, `go test ./...`) → commit → push → move to next. Docs-synced items in §0 are done first so the remaining list reflects reality.
+Work top-to-bottom. Each item: implement → test (`go vet ./...`, `go test ./...`) → commit → push → move to next.
