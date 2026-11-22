@@ -208,6 +208,9 @@ body.sql .hide-sql{display:none}
 .app .star,.apphead .star{border:0;background:none;cursor:pointer;font-size:12px;padding:0 4px;color:var(--muted);margin-left:8px;flex:none}
 .app .star:hover,.apphead .star:hover{color:var(--accent)}
 .app.pinned .star{color:var(--accent)}
+/* ---- bookmarked log lines ---- */
+.ln.bk{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));border-left:2px solid var(--accent)}
+.ln.bk .act{opacity:1}
 #logs{flex:1;overflow:auto;font:12px/20px var(--font-mono);background:var(--bg);min-height:0}
 #panes{flex:1;display:none;min-height:0;background:var(--bg)}
 .pane+.pane{border-left:1px solid var(--line)}

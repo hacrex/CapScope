@@ -85,7 +85,7 @@ Source docs reviewed: `README.md`, `CHANGELOG.md`, `PRD.md`, `GAP-ANALYSIS.md`, 
 - [ ] Global dashboard with stat row + container grid (P1)
 - [ ] Live streaming metrics charts with SSE + tooltips + PNG export (P1–P2)
 - [ ] Sidebar search + filters + pin/star (P2)
-- [ ] Settings UI page (P3)
+- [x] Settings UI page (P3) - GET /api/settings endpoint + Settings tab with Server/Auth/Storage/Collection/Alerts/Agent sections
 - [ ] Alert rule builder UI + channel tester (P3)
 - [ ] Log bookmarks + split-pane diff (P4)
 - [ ] Crash timeline + one-click restart (P4) — conflicts with read-only stance; needs decision

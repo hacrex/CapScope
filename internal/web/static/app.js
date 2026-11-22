@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s);
 const ROW_H=20,MAXROWS=100000,MAXPANES=4;
 function showLogin(){$('#loginOverlay').style.display='flex';}
 function hideLogin(){$('#loginOverlay').style.display='none';}
-const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true,pinned:new Set(JSON.parse(localStorage.getItem('pinnedApps')||'[]'))};
+const S={app:null,tab:'dashboard',wrapLines:false,jsonPretty:false,groupLines:localStorage.getItem('groupLines')!=='0',tz:localStorage.getItem('tz')||'local',collapseDupes:localStorage.getItem('collapseDupes')!=='0',range:'1h',host:'',hosts:[],accStatus:'',alertStatus:new Map(),alertMuted:new Map(),hl:new Set(),sel:new Set(),selKeys:new Set(),selData:new Map(),lastSelKey:null,selCont:null,panes:[],conts:[],apps:[],theme:localStorage.getItem('theme')||'auto',appCrashes:new Map(),sideNarrow:false,sideMode:localStorage.getItem('sideMode')==='apps'?'apps':'containers',sessionExpires:0,user:'anonymous',role:'viewer',authEnabled:true,pinned:new Set(JSON.parse(localStorage.getItem('pinnedApps')||'[]')),bookmarks:new Set(JSON.parse(localStorage.getItem('bookmarks')||'[]'))};
 
 /* ---------- theme ---------- */
 const THEMES=['auto','dark','light'];
@@ -405,6 +405,12 @@ function togglePin(n){
   if(S.pinned.has(n))S.pinned.delete(n);else S.pinned.add(n);
   localStorage.setItem('pinnedApps',JSON.stringify([...S.pinned]));
   refreshApps();
+}
+function toggleBookmark(r,bk){
+  if(S.bookmarks.has(bk))S.bookmarks.delete(bk);else S.bookmarks.add(bk);
+  localStorage.setItem('bookmarks',JSON.stringify([...S.bookmarks]));
+  renderSel();
+  toast(S.bookmarks.has(bk)?'Bookmarked':'Bookmark removed');
 }
 function selectContainer(id,c){
   S.app=c.app;S.sel=new Set([c.name]);S.selCont=c;
@@ -1306,6 +1312,7 @@ function lineEl(r){
     }
   }
   d.append(t,c,x);
+  if(S.bookmarks.has(lineKey(r)))d.classList.add('bk');
   // Hover actions: copy, filter to this container, filter to this level.
   const mkAct=(glyph,title,fn)=>{
     const b=document.createElement('button');b.type='button';b.className='act';
@@ -1330,6 +1337,8 @@ function lineEl(r){
       renderLegend();redo();
     }));
   }
+  const bk=lineKey(r);
+  lacts.append(mkAct(S.bookmarks.has(bk)?'★':'☆','Bookmark line',()=>{toggleBookmark(r,bk);}));
   d.append(lacts);
   d.onclick=e=>selToggle(r,e);
   d.ondblclick=e=>{e.stopPropagation();const k=d.dataset.key;if(S.hl.has(k))S.hl.delete(k);else{S.hl.add(k);S.selData.set(k,{ts:r.ts,container:r.container,line:r.line});}renderSel();};
@@ -1384,6 +1393,7 @@ function renderSel(){
     const k=d.dataset.key||'';
     d.classList.toggle('sel',S.selKeys.has(k));
     d.classList.toggle('hl',S.hl.has(k));
+    d.classList.toggle('bk',S.bookmarks.has(k));
   });
   updateSelBtn();
 }
