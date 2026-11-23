@@ -125,7 +125,7 @@
 
       <div class="container">
         <div class="hero-inner">
-          <span class="pill"><span class="dot"></span> <b>v0.6</b> &nbsp;·&nbsp; self-hosted container observability</span>
+          <span class="pill"><span class="dot"></span> <b>Latest</b> &nbsp;·&nbsp; self-hosted container observability</span>
           <h1>Containers never truly<br><span class="text-grad">disappear</span>.</h1>
           <p class="sub">CapScope watches your Docker daemon, stores logs and CPU/memory samples in SQLite, and keeps a crash snapshot every time a container exits non-zero or gets OOM killed. Redeploy all you want — the evidence stays searchable.</p>
           <div class="hero-actions">
@@ -182,6 +182,8 @@
           <div class="stat"><div class="num">1</div><div class="lbl">binary · zero external services</div></div>
           <div class="stat"><div class="num">24h</div><div class="lbl">crash catch-up after downtime</div></div>
           <div class="stat"><div class="num">4</div><div class="lbl">alert channels (webhook · Telegram · Slack · Discord)</div></div>
+          <div class="stat"><div class="num">OTLP</div><div class="lbl">logs · metrics · traces ingestion</div></div>
+          <div class="stat"><div class="num">∞</div><div class="lbl">incident states (open · ack · resolved)</div></div>
           <div class="stat"><div class="num">200k</div><div class="lbl">lines per CSV export</div></div>
         </div>
       </div>
@@ -275,6 +277,41 @@
             <h3>Alerts</h3>
             <p>Dead-man, restart loop, metric threshold with duration, and log-pattern rules. Webhook, Telegram, Slack and Discord channels with a test button.</p>
           </div>
+          <div class="card reveal">
+            <div class="icon-box cyan"><i data-lucide="share-2"></i></div>
+            <h3>Distributed tracing</h3>
+            <p>OTLP trace ingestion at <code>/v1/traces</code>, trace list with duration and error filtering, and an SVG waterfall diagram showing every span in a trace.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box err"><i data-lucide="flame"></i></div>
+            <h3>Incident management</h3>
+            <p>Incidents tracked with open / acknowledge / resolved states, linked to alerts and crash snapshots — a single operational view for on-call.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box ok"><i data-lucide="activity"></i></div>
+            <h3>Container health status</h3>
+            <p>Docker health-check status surfaced as badges on every container row and in the dashboard — spot unhealthy containers at a glance.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box"><i data-lucide="star"></i></div>
+            <h3>Pinned apps &amp; bookmarks</h3>
+            <p>Star apps to float them to the top of the sidebar, and bookmark individual log lines to revisit later — both persist across reloads.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box cyan"><i data-lucide="git-diff"></i></div>
+            <h3>Split-pane diff</h3>
+            <p>Compare two replicas side by side and highlight lines unique to each pane — spot configuration drift between replicas in seconds.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box violet"><i data-lucide="settings"></i></div>
+            <h3>Settings page</h3>
+            <p>Admin-only settings view showing server, auth, storage, collection, alerts and agent configuration — secrets are omitted.</p>
+          </div>
+          <div class="card reveal">
+            <div class="icon-box warn"><i data-lucide="shield-alert"></i></div>
+            <h3>Audit log</h3>
+            <p>Append-only admin audit trail: logins, SQL queries, alert rule saves, deploys, user management and incident state changes — all filterable.</p>
+          </div>
         </div>
 
         <div class="callout info reveal" style="margin-top:28px;">
@@ -353,6 +390,31 @@
             <div class="showcase-icon-badge">📦</div>
             <h3>Sneakernet bundle</h3>
             <p>Export a self-contained HTML incident snapshot — no server needed to review crash evidence on an air-gapped machine.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🔗</div>
+            <h3>Distributed tracing</h3>
+            <p>OTLP trace ingestion with a span waterfall diagram — trace requests across containers without a Jaeger or Tempo stack.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🚨</div>
+            <h3>Incident lifecycle</h3>
+            <p>Track incidents from open to acknowledge to resolved, linked to the alerts and crash snapshots that triggered them.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">💚</div>
+            <h3>Health status badges</h3>
+            <p>Docker health-check state on every container row and dashboard cell — unhealthy containers are impossible to miss.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">🔖</div>
+            <h3>Log bookmarks</h3>
+            <p>Star any log line to revisit later — bookmarks persist in your browser and survive reloads.</p>
+          </div>
+          <div class="showcase-card reveal">
+            <div class="showcase-icon-badge">📌</div>
+            <h3>Pinned apps</h3>
+            <p>Star apps to float them to the top of the sidebar — your most important services always visible first.</p>
           </div>
         </div>
       </div>
@@ -595,7 +657,7 @@
       <div class="footer-bottom">
         <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
         <div class="fb-right">
-          <span class="mono">v0.6 · Go 1.24</span>
+          <span class="mono">Latest · Go 1.26</span>
           <a href="https://hub.docker.com/r/hacrex/capscope" target="_blank" rel="noopener">Docker Hub</a>
           <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
         </div>

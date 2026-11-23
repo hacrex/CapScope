@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit log — CapScope</title>
+  <meta name="description" content="Audit log in CapScope: append-only admin audit trail for security-sensitive actions.">
+  <meta name="theme-color" content="#08090c">
+  <meta property="og:title" content="Audit log — CapScope">
+  <meta property="og:description" content="Append-only admin audit trail: logins, SQL queries, alert rule saves, deploys, user management and incident changes.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://capscope.live/docs/audit.html">
+  <meta property="og:image" content="https://capscope.live/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CapScope — audit log entries.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://capscope.live/assets/og-image.png">
+  <link rel="canonical" href="https://capscope.live/docs/audit.html">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+icon">
+  <link rel="icon" href="../assets/favicon.ico" sizes="48x48">
+  <link rel="icon" href="../assets/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="../assets/favicon-16x16.png" type="image/png" sizes="16x16">
+  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("capscope-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/style.css?v=3">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js" defer></script>
+  <script src="../assets/script.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../index.html" aria-label="CapScope home">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+        </span>
+        CapScope
+      </a>
+
+      <nav class="nav-links" id="nav-links">
+        <a href="../index.html#features">Features</a>
+        <a href="index.html">Docs</a>
+        <a href="../guides/index.html">Guides</a>
+        <a href="api.html">API</a>
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a class="btn btn-sm btn-github" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">
+          <i data-lucide="github"></i>
+          <span class="gh-label">Star</span>
+          <span class="gh-count" data-gh-count>GitHub</span>
+        </a>
+        <button class="icon-btn theme-toggle" data-theme-toggle aria-label="Switch theme" type="button">
+          <i class="icon-moon" data-lucide="moon"></i>
+          <i class="icon-sun" data-lucide="sun"></i>
+        </button>
+      </nav>
+
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation" type="button">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="docs-layout">
+
+      <aside class="sidebar">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <ul>
+            <li><a href="index.html">Introduction</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+            <li><a href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="api.html">API reference</a></li>
+            <li><a href="traces.html">Distributed tracing</a></li>
+            <li><a href="incidents.html">Incident management</a></li>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a class="active" href="audit.html">Audit log</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Guides</div>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Resources</div>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope#readme" target="_blank" rel="noopener">README</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/tree/main/docs" target="_blank" rel="noopener">Source docs</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issue tracker</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <article class="doc-content">
+        <div class="breadcrumbs">
+          <a href="../index.html">Home</a><i data-lucide="chevron-right"></i><a href="index.html">Docs</a><i data-lucide="chevron-right"></i><span>Audit log</span>
+        </div>
+
+        <h1>Audit log</h1>
+        <p class="doc-lead">Append-only admin audit trail for security-sensitive actions. Every login, SQL query, alert rule save, deploy, user management action and incident state change is recorded — filterable by actor and action.</p>
+
+        <h2 id="api">API</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/audit</span>
+          <span class="ep-note">List audit entries, newest first; filter by <code>?actor=</code>, <code>?action=</code> and <code>?limit=</code> (admin only)</span>
+        </div>
+        <p class="muted small">Audit writes are fail-closed: a database error is logged but never blocks the underlying action. Audit entries are written for login, logout, SQL queries, alert rule saves, deploy creates, user management (create/role/apps/delete) and incident state changes.</p>
+
+        <h2 id="entry">Audit entry fields</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>Auto-incrementing entry id</td></tr>
+              <tr><td><code>ts</code></td><td>When the action occurred (unix ms)</td></tr>
+              <tr><td><code>actor</code></td><td>Who performed the action — user name, user id, <code>proxy</code> or <code>anonymous</code></td></tr>
+              <tr><td><code>action</code></td><td>What was done: <code>login</code>, <code>logout</code>, <code>sql</code>, <code>alert_rule</code>, <code>deploy</code>, <code>user_mgmt</code> or <code>incident</code></td></tr>
+              <tr><td><code>resource</td><td>The resource acted on — e.g. <code>/api/sql</code>, an app name, a user id, an incident id</td></tr>
+              <tr><td><code>target</code></td><td>Additional target context (e.g. rule count, version, role)</td></tr>
+              <tr><td><code>meta</code></td><td>JSON blob of extra context (e.g. channel names, apps assigned)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="actions">Actions tracked</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Action</th><th>Triggered by</th></tr></thead>
+            <tbody>
+              <tr><td><code>login</code></td><td>Successful <code>POST /api/login</code> (includes auth provider)</td></tr>
+              <tr><td><code>logout</code></td><td><code>POST /api/logout</code></td></tr>
+              <tr><td><code>sql</code></td><td><code>GET /api/sql</code> (includes the query text truncated to 200 chars and limit)</td></tr>
+              <tr><td><code>alert_rule</code></td><td><code>POST /api/alerts/rules</code> (includes rule count)</td></tr>
+              <tr><td><code>deploy</code></td><td><code>POST /api/deploys</code> (includes app, version and note)</td></tr>
+              <tr><td><code>user_mgmt</code></td><td>Create / role change / app assignment / delete via the users API</td></tr>
+              <tr><td><code>incident</code></td><td><code>POST /api/incidents/{id}/state</code> (includes the new state)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="example">Example entry</h2>
+        <div class="code-block">
+          <div class="code-head">
+            <span>JSON</span>
+            <button class="copy-btn" data-copy type="button"><i data-lucide="copy"></i><span data-copy-label>Copy</span></button>
+          </div>
+          <pre><code>{
+  "id": 42,
+  "ts": 1793158659437,
+  "actor": "admin",
+  "action": "sql",
+  "resource": "SELECT app, level, count(*) FROM logs WHERE ts > ... GROUP BY app, level",
+  "target": "limit=1000",
+  "meta": {}
+}</code></pre>
+        </div>
+
+        <div class="callout info">
+          <i data-lucide="shield-check"></i>
+          <div><b>Retention:</b> Audit entries share the database retention and size caps — they are subject to the same <code>MAX_DB_MB</code> and <code>LOG_RETENTION</code> policies as other data.</div>
+        </div>
+
+        <nav class="doc-pager">
+          <a class="pager-link" href="settings.html">
+            <span class="dir">← Previous</span>
+            <span class="ttl">Settings</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="../index.html">
+            <span class="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 9.5 6.5 16 10 22.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="14" width="3.4" height="4" rx="1.2" fill="currentColor"/><rect x="18" y="11" width="3.4" height="7" rx="1.2" fill="currentColor"/><rect x="23" y="8.5" width="3.4" height="9.5" rx="1.2" fill="currentColor"/></svg>
+            </span>
+            CapScope
+          </a>
+          <p>Persistent container logs, crash snapshots and metrics in one self-hosted binary.</p>
+          <p class="footer-origin"><strong>Cap</strong>tain + <strong>Scope</strong> - a captain who checks his containers.</p>
+          <div class="footer-social">
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener" aria-label="CapScope on GitHub"><i data-lucide="github"></i></a>
+            <a class="icon-btn" href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener" aria-label="Report an issue"><i data-lucide="circle-dot"></i></a>
+            <a class="icon-btn" href="api.html" aria-label="API reference"><i data-lucide="webhook"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="../index.html#features">Features</a></li>
+            <li><a href="../guides/docker.html">Quick start</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="configuration.html">Configuration</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul>
+            <li><a href="index.html">Docs home</a></li>
+            <li><a href="api.html">API reference</a></li>
+            <li><a href="alerts.html">Alert rules</a></li>
+            <li><a href="architecture.html">How it works</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Platforms</h4>
+          <ul>
+            <li><a href="../guides/docker.html">Docker Compose</a></li>
+            <li><a href="../guides/caprover.html">CapRover</a></li>
+            <li><a href="../guides/coolify.html">Coolify</a></li>
+            <li><a href="../guides/dokploy.html">Dokploy</a></li>
+            <li><a href="../guides/dokku.html">Dokku</a></li>
+            <li><a href="../guides/portainer.html">Portainer &amp; others</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">GitHub repository</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/hacrex/CapScope/discussions" target="_blank" rel="noopener">Discussions</a></li>
+            <li><a href="https://pkg.go.dev/github.com/hacrex/CapScope" target="_blank" rel="noopener">Go reference</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p style="margin:0;">© 2026 CapScope · MIT License · Not affiliated with Docker, CapRover, Coolify or Portainer.</p>
+        <div class="fb-right">
+          <span class="mono">Latest · Go 1.26</span>
+          <a href="https://github.com/hacrex/CapScope" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-wordmark">
+      <a href="../index.html" aria-label="CapScope">CapScope</a>
+    </div>
+  </footer>
+
+</body>
+</html>

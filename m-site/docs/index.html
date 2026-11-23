@@ -87,6 +87,10 @@
             <li><a href="alerts.html">Alert rules</a></li>
             <li><a href="architecture.html">Architecture</a></li>
             <li><a href="api.html">API reference</a></li>
+            <li><a href="traces.html">Distributed tracing</a></li>
+            <li><a href="incidents.html">Incident management</a></li>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="audit.html">Audit log</a></li>
           </ul>
         </div>
         <div class="sidebar-group">
@@ -139,6 +143,26 @@
             <h3>API reference</h3>
             <p>Logs, SSE stream, metrics, snapshots, access logs, SQL, deploys and alerts — parameters, shapes and rules.</p>
           </a>
+          <a class="card" href="traces.html">
+            <div class="card-top"><span class="icon-box cyan" style="margin:0;"><i data-lucide="share-2"></i></span><i data-lucide="arrow-right"></i></div>
+            <h3>Distributed tracing</h3>
+            <p>OTLP trace ingestion at <code>/v1/traces</code>, trace list, SVG waterfall diagrams, and trace-to-log correlation.</p>
+          </a>
+          <a class="card" href="incidents.html">
+            <div class="card-top"><span class="icon-box err" style="margin:0;"><i data-lucide="flame"></i></span><i data-lucide="arrow-right"></i></div>
+            <h3>Incident management</h3>
+            <p>Open / acknowledge / resolved incident lifecycle, linked to alerts and crash snapshots.</p>
+          </a>
+          <a class="card" href="settings.html">
+            <div class="card-top"><span class="icon-box violet" style="margin:0;"><i data-lucide="settings"></i></span><i data-lucide="arrow-right"></i></div>
+            <h3>Settings</h3>
+            <p>Admin-only settings view: server, auth, storage, collection, alerts and agent configuration.</p>
+          </a>
+          <a class="card" href="audit.html">
+            <div class="card-top"><span class="icon-box warn" style="margin:0;"><i data-lucide="shield-alert"></i></span><i data-lucide="arrow-right"></i></div>
+            <h3>Audit log</h3>
+            <p>Append-only admin audit trail: logins, SQL queries, alert rule saves, deploys, user management and incident changes.</p>
+          </a>
         </div>
 
         <h2 id="what">What it does</h2>
@@ -156,7 +180,10 @@
               <tr><td>Access logs</td><td>GoAccess-style panels: status codes, top paths, IPs (anonymized), referrers, timeline, CSV export.</td></tr>
               <tr><td>Deploy markers</td><td>Recorded from CI or the UI; drawn on charts, inline in the timeline, attached to crash details.</td></tr>
               <tr><td>Alerts</td><td>Four rule kinds, four channels, hot-reloaded rules file, test button in the UI.</td></tr>
-              <tr><td>Security</td><td>Secret redaction before storage, Basic auth required by default.</td></tr>
+              <tr><td>Distributed tracing</td><td>OTLP trace ingestion, trace list with duration/error filtering, SVG span waterfall diagrams.</td></tr>
+              <tr><td>Incident management</td><td>Open / acknowledge / resolved incident lifecycle linked to alerts and crash snapshots.</td></tr>
+              <tr><td>Container health</td><td>Docker health-check status surfaced as badges on container rows and dashboard cells.</td></tr>
+              <tr><td>Security</td><td>Secret redaction before storage, Basic auth required by default, admin audit log.</td></tr>
             </tbody>
           </table>
         </div>
