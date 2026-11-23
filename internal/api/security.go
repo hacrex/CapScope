@@ -22,9 +22,10 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		// Feature policy: disable rarely-used powerful features.
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=(), usb=()")
 		// Content Security Policy: only allow resources from our own origin.
-		// The SPA is a single file served from the same origin; no inline
-		// scripts or external resources are needed.
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';")
+		// The marketing HTML uses inline style attributes for layout; allow
+		// them via 'unsafe-inline' on style-src. Scripts remain strictly
+		// 'self' — no inline JavaScript execution.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';")
 		// HSTS: tell browsers to only use HTTPS for this host for one year.
 		// Only set when the connection is actually TLS or terminated behind
 		// a reverse proxy that advertises X-Forwarded-Proto: https.

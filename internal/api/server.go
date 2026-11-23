@@ -14,8 +14,10 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -193,7 +195,21 @@ func (s *Server) Handler() http.Handler {
 	// Settings: sanitized configuration view (admin only). Secrets are omitted.
 	mux.HandleFunc("GET /api/settings", s.settings)
 	sub, _ := fs.Sub(web.FS, "static")
-	mux.Handle("GET /", http.FileServerFS(sub))
+	staticHandler := http.FileServerFS(sub)
+	// Static assets must be served with correct Content-Type (text/css for .css,
+	// application/javascript for .js, etc.) because Go's http.FileServer only
+	// sniffs content from the first 512 bytes — which returns text/plain for
+	// CSS/JS. With X-Content-Type-Options: nosniff set, browsers then refuse
+	// to apply those assets. Setting the header explicitly before ServeContent
+	// runs prevents the sniffing fallback.
+	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ext := filepath.Ext(r.URL.Path); ext != "" {
+			if ct := mime.TypeByExtension(ext); ct != "" {
+				w.Header().Set("Content-Type", ct)
+			}
+		}
+		staticHandler.ServeHTTP(w, r)
+	}))
 	// Apply security headers and rate limiting to everything.
 	return s.securityHeaders(s.rateLimit(s.auth(mux)))
 }
@@ -254,7 +270,8 @@ func (s *Server) proxyAuth(next http.Handler) http.Handler {
 		// so authentication stays with the reverse proxy entirely. /s/ share
 		// links are capability links: the token authorizes the redirect, and
 		// the view the SPA then loads is auth-protected as usual.
-		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") ||
+			strings.HasPrefix(r.URL.Path, "/favicon") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -293,7 +310,8 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") ||
+			strings.HasPrefix(r.URL.Path, "/favicon") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -400,7 +418,8 @@ func (s *Server) requireScopedApp(w http.ResponseWriter, r *http.Request, app st
 // requests to /api/oidc/login to start the OIDC flow.
 func (s *Server) oidcAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/s/") ||
+			strings.HasPrefix(r.URL.Path, "/favicon") {
 			next.ServeHTTP(w, r)
 			return
 		}
