@@ -26,7 +26,7 @@ func setupNoAuth(t *testing.T) (*httptest.Server, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -224,3 +224,4 @@ func TestPrometheusMetricsEndpoint(t *testing.T) {
 		}
 	}
 }
+

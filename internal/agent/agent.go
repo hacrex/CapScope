@@ -136,7 +136,7 @@ func runOnce(ctx context.Context, cfg config.Config, dk *docker.Client, hostID s
 		}
 	}()
 	// Nil store: agent streams, never persists locally.
-	mgr := collector.NewManagerWithSink(cfg, dk, nil, hub.New(), sink, log)
+	mgr := collector.NewManagerWithSink(cfg, dk, nil, hub.New(int(cfg.SSERowBuffer)), sink, log)
 	mgr.SetEventSink(sink.sendEvent)
 	mgr.SetTrackIf(trackIfFromFilter(cfg.DockerFilter))
 

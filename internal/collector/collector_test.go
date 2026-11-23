@@ -195,10 +195,11 @@ func TestCatchUpDeathWhileDownAndRestartLoop(t *testing.T) {
 		InitialTail: 100, MaxLineBytes: 16384, Redact: true,
 		SnapshotKinds: map[string]bool{"crash": true}, SnapshotLogLines: 200, SnapshotMetricSamples: 60,
 		RestartLoopCount: 3, RestartLoopWindow: 10 * time.Minute,
+		SSERowBuffer: 1024, WriterBuffer: 2048, SnapshotLogRingMB: 2,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // runs before srv.Close(): an early t.Fatal must not leak the /events connection
-	m := NewManager(cfg, dk, st, hub.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	m := NewManager(cfg, dk, st, hub.New(1024), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	done := make(chan struct{})
 	go func() { m.Run(ctx); close(done) }()
 
@@ -304,10 +305,11 @@ func TestCrashSnapshotEndToEnd(t *testing.T) {
 	cfg := config.Config{
 		StatsInterval: 20 * time.Millisecond, InitialTail: 100, MaxLineBytes: 16384, Redact: true,
 		SnapshotKinds: map[string]bool{"crash": true, "oom": true}, SnapshotLogLines: 200, SnapshotMetricSamples: 60,
+		SSERowBuffer: 1024, WriterBuffer: 2048, SnapshotLogRingMB: 2,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // runs before srv.Close(): an early t.Fatal must not leak the /events connection
-	m := NewManager(cfg, dk, st, hub.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	m := NewManager(cfg, dk, st, hub.New(1024), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	done := make(chan struct{})
 	go func() { m.Run(ctx); close(done) }()
 

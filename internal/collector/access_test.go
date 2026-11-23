@@ -118,7 +118,7 @@ func TestAccessDetectionAndPipeline(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m := NewManager(cfg, dk, st, hub.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	m := NewManager(cfg, dk, st, hub.New(1024), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	done := make(chan struct{})
 	go func() { m.Run(ctx); close(done) }()
 

@@ -31,7 +31,7 @@ func setupAlerts(t *testing.T, rulesFile string) (*httptest.Server, *store.Store
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{AuthUser: "u", AuthPass: "p", SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -112,7 +112,7 @@ func TestAlertsTestEndpointSendsAndReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{AuthUser: "u", AuthPass: "p", SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -281,3 +281,4 @@ func TestAlertsRuleBuilder(t *testing.T) {
 		t.Errorf("cooldown not persisted: %+v", got[2])
 	}
 }
+

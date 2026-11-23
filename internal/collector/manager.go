@@ -105,7 +105,7 @@ func NewManager(cfg config.Config, dk *docker.Client, st *store.Store, h *hub.Hu
 		// eagerly and each row may carry up to MaxLineBytes of text, so a
 		// deep buffer is retained memory that only ever fills under write
 		// pressure — where the non-blocking send drops and counts instead.
-		lines:         make(chan store.LogRow, 2048),
+		lines:         make(chan store.LogRow, cfg.WriterBuffer),
 		accessRows:    make(chan store.AccessRow, 1024),
 		accDet:        access.NewDetector(cfg.AccessLog),
 		tracked:       map[string]*tracker{},
@@ -442,6 +442,7 @@ func (m *Manager) newTracker(ctx context.Context, id string) (*tracker, bool, er
 		accessOnly: m.excluded(name, app),
 		acc:        m.accDet.Stream(app),
 		maxLogs:    m.cfg.SnapshotLogLines, maxMets: m.cfg.SnapshotMetricSamples,
+		maxLogBytes: m.cfg.SnapshotLogRingMB << 20,
 		sizeRW: -1, // not measured yet; sizeLoop fills it in
 	}, true, nil
 }

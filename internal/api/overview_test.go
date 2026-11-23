@@ -189,7 +189,7 @@ func setupOverview(t *testing.T) (*httptest.Server, string, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{
 		AuthUser: "u", AuthPass: "p", SnapshotKinds: map[string]bool{},
 		StatsInterval: 100 * time.Millisecond, InitialTail: 10, MaxLineBytes: 4096,
@@ -505,7 +505,7 @@ func TestOverviewEmpty(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := config.Config{SnapshotKinds: map[string]bool{}}
-	h := hub.New()
+	h := hub.New(1024)
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	srv := httptest.NewServer(New(cfg, st, mgr, h, slog.Default(), WithDocker(dk)).Handler())
 	t.Cleanup(srv.Close)
@@ -537,3 +537,4 @@ func TestOverviewEmpty(t *testing.T) {
 		t.Fatalf("body missing empty arrays: %s", raw)
 	}
 }
+

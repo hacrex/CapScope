@@ -17,7 +17,7 @@ func TestHighVolumeFanout500(t *testing.T) {
 	const subscribers = 500
 	const rowsPerSecond = 10_000
 	const duration = 3 * time.Second
-	h := New()
+	h := New(1024)
 	subs := make([]*Sub, 0, subscribers)
 	for i := 0; i < subscribers; i++ {
 		s, ok := h.Subscribe(store.LogQuery{App: "load"})

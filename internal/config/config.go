@@ -47,9 +47,12 @@ type Config struct {
 
 	SnapshotKinds         map[string]bool
 	SnapshotLogLines      int
+	SnapshotLogRingMB     int // per-container in-memory log ring byte budget (MiB)
 	RestartLoopCount      int // deaths of one container inside the window that flag a restart loop
 	RestartLoopWindow     time.Duration
 	SnapshotMetricSamples int
+	SSERowBuffer          int // per-SSE-subscriber unread row buffer
+	WriterBuffer          int // writer channel buffer rows
 
 	AccessLog string // access-log detection: auto | all | off
 	AnonIPS   bool   // store access-log client IPs anonymized (last octet/IPv6 hextets zeroed)
@@ -169,6 +172,9 @@ func Load() (Config, error) {
 		Redact:                     envBool("REDACT", true, &errs),
 		SnapshotLogLines:           envInt("SNAPSHOT_LOG_LINES", 200, &errs),
 		SnapshotMetricSamples:      envInt("SNAPSHOT_METRIC_SAMPLES", 60, &errs),
+		SnapshotLogRingMB:          envInt("SNAPSHOT_LOG_RING_MB", 2, &errs),
+		SSERowBuffer:               envInt("SSE_SUB_BUFFER_ROWS", 1024, &errs),
+		WriterBuffer:               envInt("SSE_WRITER_BUFFER_ROWS", 2048, &errs),
 		SnapshotKinds:              map[string]bool{},
 		RestartLoopCount:           envInt("RESTART_LOOP_COUNT", 3, &errs),
 		AccessLog:                  env("ACCESS_LOG", "auto"),
@@ -348,6 +354,17 @@ func Load() (Config, error) {
 	// Load's error as fatal at startup.
 	if c.MaxDBMB <= 0 {
 		errs = append(errs, errors.New("MAX_DB_MB must be a positive number of megabytes"))
+	}
+	// Memory tuning: all three must be positive so trackers, SSE subscribers
+	// and the writer always have a bounded buffer.
+	if c.SnapshotLogRingMB <= 0 {
+		errs = append(errs, errors.New("SNAPSHOT_LOG_RING_MB must be a positive number of megabytes"))
+	}
+	if c.SSERowBuffer <= 0 {
+		errs = append(errs, errors.New("SSE_SUB_BUFFER_ROWS must be a positive number of rows"))
+	}
+	if c.WriterBuffer <= 0 {
+		errs = append(errs, errors.New("SSE_WRITER_BUFFER_ROWS must be a positive number of rows"))
 	}
 
 	return c, errors.Join(errs...)

@@ -125,6 +125,9 @@ make test       # full test suite
 | `GEOIP_DB` | none | Path to a GeoLite2-Country MMDB file; labels parsed access-log rows with a two-letter country code (empty disables GeoIP) |
 | `SNAPSHOT_KINDS` | `crash,oom,unhealthy` | Which stops create snapshots (`unhealthy` = health-check-failure snapshots, PRD X8) |
 | `SNAPSHOT_LOG_LINES` | `200` | Log lines per crash snapshot |
+| `SNAPSHOT_LOG_RING_MB` | `2` | Per-container in-memory log ring byte budget (MiB) — tune down on memory-constrained hosts |
+| `SSE_SUB_BUFFER_ROWS` | `1024` | Per-SSE-subscriber unread row buffer — tune down to reduce memory per live-tail connection |
+| `SSE_WRITER_BUFFER_ROWS` | `2048` | Writer channel buffer rows — tune down to reduce memory under ingestion backpressure |
 | `RESTART_LOOP_COUNT` | `3` | Deaths in window to flag a restart loop |
 | `RESTART_LOOP_WINDOW` | `5m` | Window for restart-loop detection |
 | `INCLUDE` / `EXCLUDE` | none | Regexes matched against container and app names |

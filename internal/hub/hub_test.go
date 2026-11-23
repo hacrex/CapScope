@@ -9,7 +9,7 @@ import (
 )
 
 func TestConcurrentPublishFanoutDoesNotBlock(t *testing.T) {
-	h := New()
+	h := New(1024)
 	const subscribers = 96
 	const publishers = 8
 	const rowsPerPublisher = 4000

@@ -9,14 +9,6 @@ import (
 )
 
 const (
-	// subBuffer is the per-subscriber queue. It only has to absorb the gap
-	// between two browser polls, not the whole session: rows beyond it are
-	// dropped and counted (the UI surfaces the count as "dropped"). Keeping
-	// it small matters because the slot array is allocated eagerly, so the
-	// cost is subBuffer × sizeof(LogRow) per connected client whether or not
-	// the queue ever fills. It stays above one publish batch (1000 rows) so
-	// a caught-up consumer never loses rows to a burst it has not read yet.
-	subBuffer = 1024
 	// maxSubs caps concurrent subscribers. Publish is O(rows × subs), and
 	// each sub owns a buffer plus a goroutine in the SSE handler, so an
 	// unbounded count is the one part of the fan-out that can grow without
@@ -31,17 +23,23 @@ type Sub struct {
 }
 
 type Hub struct {
-	mu   sync.RWMutex
-	subs map[*Sub]struct{}
+	mu        sync.RWMutex
+	subs      map[*Sub]struct{}
+	rowBuffer int
 }
 
-func New() *Hub { return &Hub{subs: map[*Sub]struct{}{}} }
+// New creates a hub with the given per-subscriber row buffer size.
+// rowBuffer caps how many unread log rows are queued per connected client
+// before old rows are dropped (counted as SSE dropped rows).
+func New(rowBuffer int) *Hub {
+	return &Hub{subs: map[*Sub]struct{}{}, rowBuffer: rowBuffer}
+}
 
 // Subscribe registers a live log stream. ok is false once maxSubs concurrent
 // subscribers exist; callers should reject the request rather than pin a
 // buffer for a client that will only ever see a degraded stream.
 func (h *Hub) Subscribe(q store.LogQuery) (*Sub, bool) {
-	s := &Sub{C: make(chan store.LogRow, subBuffer), q: q}
+	s := &Sub{C: make(chan store.LogRow, h.rowBuffer), q: q}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if len(h.subs) >= maxSubs {
@@ -51,6 +49,7 @@ func (h *Hub) Subscribe(q store.LogQuery) (*Sub, bool) {
 	return s, true
 }
 
+// Unsubscribe removes a subscriber.
 func (h *Hub) Unsubscribe(s *Sub) {
 	if s == nil {
 		return

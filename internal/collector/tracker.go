@@ -31,6 +31,7 @@ type tracker struct {
 	exited   bool
 	maxLogs  int
 	maxMets  int
+	maxLogBytes int
 	// Writable-layer size from inspect?size=true; -1 until the first
 	// measurement (see Manager.sizeLoop). Guarded by mu like the rest.
 	sizeRW int64
@@ -46,11 +47,9 @@ func parseStartedAt(startedAt string, now time.Time) time.Time {
 	return now
 }
 
-// maxLogRingBytes is the per-container byte budget for the in-memory log
-// ring. Rows are counted too (maxLogs), but each row carries its own line
-// text (up to cfg.MaxLineBytes), so a count-only cap lets a container that
-// logs long lines retain hundreds of megabytes across many trackers.
-const maxLogRingBytes = 2 << 20 // 2 MiB per container
+// defaultMaxLogRingMB is the per-container in-memory log ring byte budget
+// (MiB) when SNAPSHOT_LOG_RING_MB is not set.
+const defaultMaxLogRingMB = 2
 
 // logRowBytes estimates what one retained LogRow costs: the line text (the
 // only per-row allocation; identity strings are shared across rows) plus the
@@ -63,7 +62,7 @@ func (t *tracker) pushLog(r store.LogRow) {
 	t.logBytes += logRowBytes(r)
 	// Trim when either budget is exceeded. The row budget overshoots by 25%
 	// so a steady stream does not re-copy the slice on every line.
-	if len(t.logs) > t.maxLogs+t.maxLogs/4 || t.logBytes > maxLogRingBytes {
+	if len(t.logs) > t.maxLogs+t.maxLogs/4 || t.logBytes > t.maxLogBytes {
 		t.trimLogs()
 	}
 	t.mu.Unlock()
@@ -81,7 +80,7 @@ func (t *tracker) trimLogs() {
 	for i := 0; i < start; i++ {
 		budget -= logRowBytes(t.logs[i])
 	}
-	for start < len(t.logs) && budget > maxLogRingBytes/2 {
+	for start < len(t.logs) && budget > t.maxLogBytes/2 {
 		budget -= logRowBytes(t.logs[start])
 		start++
 	}

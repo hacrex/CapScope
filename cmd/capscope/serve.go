@@ -79,7 +79,7 @@ func serve(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	h := hub.New()
+	h := hub.New(int(cfg.SSERowBuffer))
 
 	// Alerts (A1 to A7): an engine over the store, fed by hot-reloaded rules
 	// and notification channels. Runs independently of Docker connectivity.

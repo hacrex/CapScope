@@ -136,3 +136,4 @@ func TestSnapshotNoDeployWhenNoneRecorded(t *testing.T) {
 		t.Fatalf("want no deploy, got %+v", sn.Deploy)
 	}
 }
+

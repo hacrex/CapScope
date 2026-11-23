@@ -37,7 +37,7 @@ func setup(t *testing.T) (*httptest.Server, *store.Store, *hub.Hub) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{AuthUser: "u", AuthPass: "p", SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -536,7 +536,7 @@ func TestProxyHeaderAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(1024)
 	cfg := config.Config{AuthProvider: "proxy", ProxyUserHeader: "Remote-User", SnapshotKinds: map[string]bool{}}
 	dk, _ := docker.New("tcp://127.0.0.1:1")
 	mgr := collector.NewManager(cfg, dk, st, h, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -652,3 +652,4 @@ func TestLogsExportPagination(t *testing.T) {
 		t.Fatalf("export returned %d lines (header + %d rows), want header + %d rows", lines, lines-1, total)
 	}
 }
+

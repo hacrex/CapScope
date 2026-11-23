@@ -171,6 +171,9 @@
               <tr><td><code>INCLUDE</code> / <code>EXCLUDE</code></td><td>none</td><td>Regexes matched against container and app names. <code>EXCLUDE</code>ed containers are still followed for access logs only.</td></tr>
               <tr><td><code>SNAPSHOT_KINDS</code></td><td><code>crash,oom</code></td><td>Which stop kinds create snapshots: <code>crash</code>, <code>oom</code>, <code>killed</code>, <code>clean_exit</code>.</td></tr>
               <tr><td><code>SNAPSHOT_LOG_LINES</code></td><td><code>200</code></td><td>Log lines stored per crash snapshot.</td></tr>
+              <tr><td><code>SNAPSHOT_LOG_RING_MB</code></td><td><code>2</code></td><td>Per-container in-memory log ring byte budget (MiB). Tune down on memory-constrained hosts.</td></tr>
+              <tr><td><code>SSE_SUB_BUFFER_ROWS</code></td><td><code>1024</code></td><td>Per-SSE-subscriber unread row buffer. Tune down to reduce memory per live-tail connection.</td></tr>
+              <tr><td><code>SSE_WRITER_BUFFER_ROWS</code></td><td><code>2048</code></td><td>Writer channel buffer rows. Tune down to reduce memory under ingestion backpressure.</td></tr>
               <tr><td><code>RESTART_LOOP_COUNT</code></td><td><code>3</code></td><td>Deaths inside the window required to flag a restart loop.</td></tr>
               <tr><td><code>RESTART_LOOP_WINDOW</code></td><td><code>5m</code></td><td>Sliding window used for restart-loop detection.</td></tr>
             </tbody>
@@ -225,6 +228,21 @@
           </table>
         </div>
         <p class="muted small">Metrics are cheap: one row per container every 10 seconds is about 8,600 rows per container per day.</p>
+
+        <h2 id="memory">Memory tuning</h2>
+        <p>CapScope keeps a small in-memory ring buffer per tracked container for crash evidence (final log lines and metric samples). It also keeps a per-subscriber row buffer for live SSE tailing and a writer channel buffer for ingestion. On memory-constrained hosts, tune these down:</p>
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div><b>Per-container log ring:</b> <code>SNAPSHOT_LOG_RING_MB</code> caps the bytes kept per container (default 2 MiB). With 50 containers at the default, that's about 100 MB of in-memory log rings. Reduce to <code>1</code> or <code>0.5</code> for low-memory hosts.</div>
+        </div>
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div><b>Per-SSE-connection buffer:</b> <code>SSE_SUB_BUFFER_ROWS</code> caps unread rows queued per live-tail connection (default 1024 rows). Each row can hold up to <code>MAX_LINE_BYTES</code> (default 16384) bytes of log text. Reduce to <code>256</code> or <code>512</code> if many clients connect simultaneously.</div>
+        </div>
+        <div class="callout info">
+          <i data-lucide="info"></i>
+          <div><b>Writer channel:</b> <code>SSE_WRITER_BUFFER_ROWS</code> caps rows buffered while SQLite flushes (default 2048 rows). At max line size that's about 33 MB. Reduce under sustained ingestion backpressure.</div>
+        </div>
 
         <h2 id="example">Full example</h2>
         <div class="code-block">
