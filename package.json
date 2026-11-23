@@ -5,9 +5,28 @@
   "description": "CapScope self-hosted container log viewer UI",
   "scripts": {
     "build": "esbuild internal/web/static/app.js --bundle --minify --outfile=internal/web/static/app.min.js --sourcemap",
-    "watch": "esbuild internal/web/static/app.js --bundle --watch --outfile=internal/web/static/app.min.js --sourcemap"
+    "watch": "esbuild internal/web/static/app.js --bundle --watch --outfile=internal/web/static/app.min.js --sourcemap",
+    "test:ui": "playwright test"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
-  }
+    "@playwright/test": "^1.65.1",
+    "esbuild": "^0.24.0",
+    "playwright": "^1.65.1"
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hacrex/CapScope.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hacrex/CapScope/issues"
+  },
+  "homepage": "https://github.com/hacrex/CapScope#readme"
 }
