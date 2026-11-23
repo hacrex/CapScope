@@ -29,13 +29,15 @@ test.describe('CapScope UI', () => {
 
   async function switchTab(page: any, tabName: string) {
     await page.evaluate((t) => {
-      window.setTab(t);
-      const target = document.getElementById('view-' + t);
-      if (target) target.style.display = t === 'logs' ? 'flex' : 'block';
-      // Also ensure inner #logs div is visible
+      window.S.tab = t;
+      const tabs = ['dashboard','logs','metrics','access','crashes','alerts','traces','incidents','settings'];
+      tabs.forEach(name => {
+        const el = document.getElementById('view-' + name);
+        if (el) el.style.display = name === t ? (t === 'logs' ? 'flex' : 'block') : 'none';
+      });
       if (t === 'logs') {
-        const logsEl = document.getElementById('logs');
-        if (logsEl) logsEl.style.display = 'block';
+        const el = document.getElementById('logs');
+        if (el) el.style.display = 'block';
       }
     }, tabName);
     await page.waitForTimeout(500);
