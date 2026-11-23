@@ -29,12 +29,16 @@ test.describe('CapScope UI', () => {
 
   async function switchTab(page: any, tabName: string) {
     await page.evaluate((t) => {
+      window.setTab(t);
       const target = document.getElementById('view-' + t);
-      if (target) {
-        target.style.display = t === 'logs' ? 'flex' : 'block';
+      if (target) target.style.display = t === 'logs' ? 'flex' : 'block';
+      // Also ensure inner #logs div is visible
+      if (t === 'logs') {
+        const logsEl = document.getElementById('logs');
+        if (logsEl) logsEl.style.display = 'block';
       }
     }, tabName);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
   }
 
   test('logs tab renders live tail', async ({ page }) => {
