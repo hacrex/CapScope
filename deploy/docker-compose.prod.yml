@@ -1,0 +1,97 @@
+# Production Docker Compose for CapScope with read-only socket proxy
+
+This compose file runs CapScope behind `tecnativa/docker-socket-proxy` so the
+Docker socket is read-only (CONTAINERS, EVENTS, PING only — no POST/start/stop).
+
+CapScope itself is NOT exposed publicly; only the reverse proxy should reach it.
+Run CapScope on an internal Docker network.
+
+```yaml
+services:
+  # Read-only Docker socket proxy. Exposes only GET endpoints.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-socket-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      POST: 0
+      # Do not expose any other actions (start, stop, restart, kill, remove, etc.)
+    networks:
+      - capscope-internal
+    # Do NOT publish any port — internal only
+    restart: unless-stopped
+
+  capscope:
+    image: ghcr.io/hacrex/capscope:latest
+    container_name: capscope
+    environment:
+      LISTEN: :8080
+      DB_PATH: /data/capscope.db
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      AUTH_USER: admin
+      AUTH_PASS: ${CAPSCOPE_AUTH_PASS}   # set in .env — never commit
+      MAX_DB_MB: "2048"
+      LOG_RETENTION: 7d
+      METRICS_RETENTION: 7d
+      SNAPSHOT_RETENTION: 30d
+      REDACT: "true"
+      ACCESS_LOG: auto
+      ANON_IPS: "true"
+      UPDATE_CHECK: "true"
+    volumes:
+      - capscope-data:/data        # SQLite lives here — back this up
+    networks:
+      - capscope-internal
+    # Do NOT publish port publicly — reverse proxy owns TLS + auth exposure
+    restart: unless-stopped
+
+networks:
+  capscope-internal:
+    driver: bridge
+
+volumes:
+  capscope-data:
+```
+
+### .env (never commit)
+
+```
+CAPSCOPE_AUTH_PASS=<long-random-password>
+```
+
+### Reverse proxy (nginx example)
+
+Terminate TLS here, forward to CapScope on the internal network. Do not buffer
+SSE for `/api/logs/stream`:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name capscope.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/capscope.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/capscope.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://capscope:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+
+    # SSE live-tail must not be buffered
+    location /api/logs/stream {
+        proxy_pass http://capscope:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+}
+```
