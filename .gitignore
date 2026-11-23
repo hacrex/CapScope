@@ -31,3 +31,7 @@ node_modules/
 npm-debug.log*
 package/capscope-linux-amd64
 capScope-caprover-linux-amd64.tar.gz
+test-results/
+playwright-report/
+test-results/
+playwright-report/
