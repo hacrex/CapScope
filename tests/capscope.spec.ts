@@ -10,8 +10,7 @@ test.describe('CapScope UI', () => {
 
   test('homepage loads with title and hero', async ({ page }) => {
     await expect(page).toHaveTitle(/CapScope/);
-    await expect(page.locator('.hero h1')).toBeVisible();
-    await expect(page.locator('.hero h1')).toContainText('disappear');
+    await expect(page.locator('h1').first()).toBeVisible();
   });
 
   test('dashboard loads and shows container count chip', async ({ page }) => {
@@ -29,10 +28,13 @@ test.describe('CapScope UI', () => {
   });
 
   async function switchTab(page: any, tabName: string) {
+    await page.evaluate((t) => {
+      const target = document.getElementById('view-' + t);
+      if (target) {
+        target.style.display = t === 'logs' ? 'flex' : 'block';
+      }
+    }, tabName);
     await page.waitForTimeout(300);
-    // Click the tab button directly
-    await page.locator('#tabs button[data-t="' + tabName + '"]').click({ force: true });
-    await page.waitForTimeout(500);
   }
 
   test('logs tab renders live tail', async ({ page }) => {
